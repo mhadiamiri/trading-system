@@ -9,10 +9,13 @@ Constitutional Principles:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 from decimal import Decimal
 from typing import List, Dict
 import json
+from pathlib import Path
+
+import pyarrow.parquet as pq
 
 from trading.data.market_state import MarketState
 from trading.data.fixtures import sample_market_data
@@ -25,6 +28,48 @@ from trading.execution.interface import ExchangeClient
 from trading.execution.paper import PaperExecutionClient
 from trading.backtest.costs import CostModel, Side
 from trading.backtest.report import PnLReport
+from config.settings import Settings
+
+
+def load_market_data_from_parquet(file_path: str) -> List[MarketState]:
+    """
+    Load market data from Parquet file.
+
+    Args:
+        file_path: Path to Parquet file
+
+    Returns:
+        List of MarketState objects
+
+    Constitutional requirements:
+    - Raw data is append-only, never mutated
+    """
+    if not Path(file_path).exists():
+        raise FileNotFoundError(f"Data file not found: {file_path}")
+
+    table = pq.read_table(file_path)
+    market_states = []
+
+    for i in range(len(table)):
+        row = table.slice(i, 1).to_pydict()
+        # Parse timestamp (stored as ISO string or datetime)
+        ts = row["timestamp"][0]
+        if isinstance(ts, str):
+            timestamp = datetime.fromisoformat(ts)
+        else:
+            timestamp = ts
+
+        market_state = MarketState(
+            timestamp=timestamp,
+            symbol=row["symbol"][0],
+            bid_price=Decimal(row["bid_price"][0]),
+            ask_price=Decimal(row["ask_price"][0]),
+            last_price=Decimal(row["last_price"][0]),
+            volume_24h=Decimal(row["volume_24h"][0]),
+        )
+        market_states.append(market_state)
+
+    return market_states
 
 
 class BacktestRunner:
@@ -190,11 +235,27 @@ class BacktestRunner:
 async def main() -> None:
     """Run backtest and print results."""
     runner = BacktestRunner()
-    result = await runner.run(max_events=1000)
+
+    # Load data from persisted Parquet file
+    data_dir = Path(Settings.DATA_DIR)
+    parquet_files = list(data_dir.glob("*.parquet"))
+
+    if parquet_files:
+        # Use the most recent file
+        latest_file = max(parquet_files, key=lambda p: p.stat().st_mtime)
+        print(f"Loading data from: {latest_file}")
+        data_points = load_market_data_from_parquet(str(latest_file))
+        print(f"Loaded {len(data_points)} market events")
+    else:
+        print("No persisted data found, using sample data")
+        data_points = None
+
+    result = await runner.run(data_points=data_points, max_events=1000)
 
     print("\n" + "=" * 60)
     print("BACKTEST RESULTS")
     print("=" * 60)
+    print(f"Data Source: {latest_file.name if parquet_files else 'sample'}")
     print(f"Processed: {result['processed_count']} events")
     print(f"Trades: {result['trades_count']}")
     print(f"Time: {result['elapsed_seconds']:.2f}s")

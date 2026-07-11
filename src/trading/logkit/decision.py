@@ -111,6 +111,47 @@ class DecisionLogger:
         # Also print to console
         self._print_log(decision_record)
 
+    def log_feed_event(
+        self,
+        layer: str,
+        event_type: str,
+        reason_code: str,
+        venue: str = "unknown",
+        symbol: str = "unknown",
+        details: str = "",
+    ) -> None:
+        """
+        Log a feed event with reason code.
+
+        Args:
+            layer: Layer identifier (e.g., "data", "feed")
+            event_type: Event type (e.g., "feed_connected", "feed_disconnected")
+            reason_code: Controlled vocabulary reason code
+            venue: Venue identifier
+            symbol: Trading pair
+            details: Additional details about the event
+        """
+        feed_record = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "layer": layer,
+            "event_type": event_type,
+            "reason_code": reason_code,
+            "venue": venue,
+            "symbol": symbol,
+            "details": details,
+        }
+
+        # Sanitize: ensure no secrets in the record
+        self._sanitize(feed_record)
+
+        # Write to log file
+        self._write_log(feed_record)
+
+        # Also print to console
+        print(f"[{layer}] {event_type}: {reason_code}")
+        if details:
+            print(f"  Details: {details}")
+
     def _sanitize(self, record: dict) -> None:
         """
         Sanitize record to ensure no secrets are logged.
