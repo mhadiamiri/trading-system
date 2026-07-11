@@ -1,7 +1,13 @@
-Three fixes to the plan's contracts before we generate tasks. Keep everything else as-is; re-run the Constitution Check afterward.
+now : 
 
-contracts/exchange_client.py — bind the kill-switch cancel semantics to the interface. Add an explicit behavioral contract: when the kill switch is engaged, place_order() MUST refuse (returning/raising a distinct, logged outcome with a reason code) while cancel_order() MUST remain callable and functional. Per Constitution VI, the kill switch blocks new orders but must never disable cancellation. Add a reason code for the refusal (e.g. EXEC_BLOCKED_KILL_SWITCH) to the vocabulary, and note that tests/ must cover "kill switch engaged → place_order refused AND cancel_order still succeeds."
-contracts/strategy.py — give provenance a defined source. DecisionRecord requires strategy_version and feature_snapshot_hash, but nothing currently produces them. Make the Strategy interface expose a version identifier, and have decide() return (or otherwise make available) the feature_snapshot_hash of the market state it acted on — so provenance is captured at the moment of decision rather than reconstructed later. Reflect this in DesiredPosition and in data-model.md.
-Remove confidence from DesiredPosition. No requirement in the spec calls for it, a trivial rule-based strategy has no meaningful confidence value, and it is a latent hook for an ML score to enter the live decision path — which Constitution III forbids. Delete the field from the contract and the data model. If a future phase needs it, it gets added deliberately with a requirement behind it.
+/speckit-tasks
+When generating the task list, honor these sequencing constraints:
 
-Then re-run the Constitution Check gate, confirm it still passes, commit as plan(001): bind kill-switch cancel semantics, define provenance source, drop confidence field, and report the updated contracts. Do not run /speckit-tasks yet.
+import-linter goes in the very first task, alongside repo scaffolding — with the layer contracts written and wired into the test command while the modules are still near-empty. It must be able to fail the build from day one. Do not defer it to a later "quality" or "CI" task.
+.gitignore and .env.example also land in that first task, before any code that could touch a credential exists.
+P1 tasks (live end-to-end paper loop) must complete before P2 tasks (backtest) begin. Walking skeleton first — do not interleave.
+The risk engine's tests must include a clamp case that actually fires (per SC-010) and a "kill switch engaged → place_order refused AND cancel_order still succeeds" case.
+
+Then stop and report the task list: IDs, one-line each, grouped by story/phase, with the parallel [P] markers. Do not run /speckit-implement yet.
+
+I want to see the task list before any code gets written — mainly to check that task 1 really does stand up the guardrail, and that the P1/P2 boundary didn't blur. Paste it back and, if it's sound, the next command actually builds the thing.
