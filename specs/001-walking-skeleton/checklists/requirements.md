@@ -58,7 +58,7 @@ All checklist items validated successfully:
 
 3. **Success Criteria**: All 9 success criteria (SC-001 through SC-009) are measurable, technology-agnostic outcomes. Examples include "processes at least 100 consecutive updates without error", "produces cost-inclusive P&L report", "completes in under 60 seconds", and the Truth Before Profit criterion.
 
-4. **User Scenarios**: Four independent user stories (2 P1, 2 P2 priorities) cover the core flows: end-to-end live paper trading (P1), decision logging (P1), historical backtesting (P2), and cost model verification (P2). Each has acceptance scenarios and can be tested independently.
+4. **User Scenarios**: Two independent user stories (1 P1, 1 P2) cover the core flows: end-to-end live paper trading with decision logging built in (P1), and historical backtesting with cost verification built in (P2). Each story is genuinely independently testable. Logging and cost verification are properties of their parent stories, not separate user journeys.
 
 5. **Edge Cases**: Five edge cases are identified covering data feed interruptions, invalid values, corrupted data, insufficient balance, and rapid signals.
 

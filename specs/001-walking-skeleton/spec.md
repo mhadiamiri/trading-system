@@ -14,25 +14,29 @@
 
 A trader runs the system in live paper trading mode connected to a testnet market data feed. The system receives real-time market updates, evaluates a trivial strategy signal, passes decisions through risk checks, executes simulated trades, and logs every decision with reason codes. The trader can verify that the complete data-flow loop works and that all costs (fees, spread, slippage) are accounted for in the simulated results.
 
-**Why this priority**: This is the core walking skeleton - the end-to-end loop must function before any sophistication can be added. This validates the entire pipeline from data ingestion to simulated execution and reporting.
+**Why this priority**: This is the core walking skeleton - the end-to-end loop must function before any sophistication can be added. This validates the entire pipeline from data ingestion to simulated execution and reporting. Decision logging is an integral property of the live loop; there is no world in which the P1 loop is "done" but logging is pending.
 
-**Independent Test**: Can be fully tested by running the system in live paper trading mode for 5 minutes and observing: (1) market data being received, (2) at least one decision being logged with a reason code, (3) simulated fills being recorded, and (4) a P&L report showing cost-inclusive results.
+**Independent Test**: Can be fully tested by running the system in live paper trading mode for 5 minutes and observing: (1) market data being received, (2) every decision being logged with a reason code (including "no signal"), (3) simulated fills being recorded, and (4) a P&L report showing cost-inclusive results.
 
 **Acceptance Scenarios**:
 
 1. **Given** the system is running in live paper trading mode connected to testnet, **When** a market data update arrives, **Then** the system logs the received data with timestamp
 2. **Given** a market data update has been processed, **When** the strategy evaluates the signal, **Then** a desired position (or "no signal") is emitted with a reason code
 3. **Given** a desired position is generated, **When** it passes through the risk engine, **Then** one of three outcomes occurs: "passed", "clamped" (reduced toward zero), or "rejected" - each with a distinct reason code
-4. **Given** a risk-approved order, **When** it reaches the simulated execution engine, **Then** a fill is recorded with simulated price, fees, spread cost, and slippage applied
-5. **Given** the system has processed at least one trade, **When** a P&L report is requested, **Then** the report shows net profit/loss after all costs with a complete trade list
+4. **Given** a desired position is partially approved, **When** the risk engine clamps it, **Then** a log entry is created with "clamped", the original requested size, the approved size, and the reason code
+5. **Given** a desired position is rejected by the risk engine, **When** the rejection occurs, **Then** a log entry is created with "rejected" and the specific reason code
+6. **Given** a market data update is processed and no signal is generated, **When** this occurs, **Then** a log entry is created with "no signal" and the reason
+7. **Given** a risk-approved order, **When** it reaches the simulated execution engine, **Then** a fill is recorded with simulated price, fees, spread cost, and slippage applied
+8. **Given** an order is executed, **When** the fill is recorded, **Then** a log entry is created with "executed", the fill details, and the final position state
+9. **Given** the system has processed at least one trade, **When** a P&L report is requested, **Then** the report shows net profit/loss after all costs with a complete trade list
 
 ---
 
-### User Story 2 - Decision Logging (Priority: P1)
+### User Story 2 - Historical Backtest (Priority: P2)
 
-A trader runs the same strategy-to-risk-to-execution logic over previously stored market data to evaluate historical performance. The system applies realistic trading costs to every simulated trade and produces a cost-inclusive P&L result. The trader can verify that backtest results are honest and include all material costs.
+A trader runs the same strategy-to-risk-to-execution logic over previously stored market data to evaluate historical performance. The system applies realistic trading costs (fees, bid/ask spread, and slippage) to every simulated trade and produces a cost-inclusive P&L result. The trader can verify that backtest results are honest and include all material costs.
 
-**Why this priority**: Backtesting is separable from the live end-to-end loop (runs offline over stored data) but remains in scope for this sprint. This validates that the cost model is consistently applied across both live and backtest modes.
+**Why this priority**: Backtesting is separable from the live end-to-end loop (runs offline over stored data) but remains in scope for this sprint. This validates that the cost model is consistently applied across both live and backtest modes. Cost verification is an integral property of the backtest; there is no world in which the backtest is "done" but cost-inclusive reporting is pending.
 
 **Independent Test**: Can be fully tested by running the system in backtest mode on a stored dataset with known market conditions and verifying: (1) all market data points are processed in sequence, (2) each simulated trade has fees/spread/slippage applied, (3) final P&L matches manual calculation of costs applied to the same trades.
 
@@ -40,59 +44,12 @@ A trader runs the same strategy-to-risk-to-execution logic over previously store
 
 1. **Given** a stored market data file exists, **When** backtest mode is initiated, **Then** the system loads and processes all data points in chronological order
 2. **Given** a backtest is running, **When** the strategy generates a signal, **Then** the same risk-check and simulated execution logic is applied as in live mode
-3. **Given** a simulated trade occurs in backtest, **When** fill is recorded, **Then** the fill includes: simulated price, trading fee, bid/ask spread cost, and slippage adjustment
-4. **Given** a backtest completes, **When** results are reported, **Then** the output includes: total trades, net P&L after costs, cost breakdown (fees, spread, slippage), and a trade-by-trade list
-
----
-
-### User Story 3 - Historical Backtest (Priority: P2)
-
-A trader runs the same strategy-to-risk-to-execution logic over previously stored market data to evaluate historical performance. The system applies realistic trading costs to every simulated trade and produces a cost-inclusive P&L result. The trader can verify that backtest results are honest and include all material costs.
-
-**Why this priority**: Backtesting is separable from the live end-to-end loop (runs offline over stored data) but remains in scope for this sprint. This validates that the cost model is consistently applied across both live and backtest modes.
-
-**Independent Test**: Can be fully tested by running the system in backtest mode on a stored dataset with known market conditions and verifying: (1) all market data points are processed in sequence, (2) each simulated trade has fees/spread/slippage applied, (3) final P&L matches manual calculation of costs applied to the same trades.
-
-**Acceptance Scenarios**:
-
-1. **Given** a stored market data file exists, **When** backtest mode is initiated, **Then** the system loads and processes all data points in chronological order
-2. **Given** a backtest is running, **When** the strategy generates a signal, **Then** the same risk-check and simulated execution logic is applied as in live mode
-3. **Given** a simulated trade occurs in backtest, **When** fill is recorded, **Then** the fill includes: simulated price, trading fee, bid/ask spread cost, and slippage adjustment
-4. **Given** a backtest completes, **When** results are reported, **Then** the output includes: total trades, net P&L after costs, cost breakdown (fees, spread, slippage), and a trade-by-trade list
-
----
-
-### User Story 2 - Decision Logging (Priority: P1)
-
-A trader reviews the system's decision log to understand why specific trading decisions were made. Every decision - whether "no signal", "clamped", "rejected", or "passed" - is recorded with a clear reason code and supporting context. Silent decisions are never produced.
-
-**Why this priority**: Transparent decision-making is critical for debugging and trusting the system. This validates that the system produces an auditable trail of all decisions.
-
-**Independent Test**: Can be fully tested by examining the decision log after running the system and verifying: (1) every market data update results in a log entry (either "no signal" or a decision), (2) each decision has a reason code, (3) rejected or clamped decisions include the specific reason why.
-
-**Acceptance Scenarios**:
-
-1. **Given** the system is running in any mode (live or backtest), **When** a market data update is processed and no signal is generated, **Then** a log entry is created with "no signal" and the reason (e.g., "insufficient price movement")
-2. **Given** a desired position is generated, **When** the risk engine rejects it, **Then** a log entry is created with "rejected" and the specific reason code (e.g., "position limit exceeded", "drawdown threshold breached")
-3. **Given** a desired position is partially approved, **When** the risk engine clamps it, **Then** a log entry is created with "clamped", the original requested size, the approved size, and the reason code
-4. **Given** an order is executed, **When** the fill is recorded, **Then** a log entry is created with "executed", the fill details, and the final position state
-
----
-
-### User Story 4 - Cost Model Verification (Priority: P2)
-
-A trader verifies that all material trading costs are correctly applied to simulated trades. The system transparently reports which cost assumptions were used and their impact on P&L.
-
-**Why this priority**: Cost-inclusive reporting is mandated by the constitution (Principle I: Truth Before Profit). This validates that the system tells the truth about whether a strategy makes money.
-
-**Independent Test**: Can be fully tested by inspecting the P&L report and verifying: (1) per-trade fees are deducted, (2) bid/ask spread is paid on entry and exit, (3) slippage reduces fill prices, (4) total costs are reported as a line item.
-
-**Acceptance Scenarios**:
-
-1. **Given** a simulated trade is executed, **When** the fill is recorded, **Then** trading fees are calculated and deducted from the notional value
-2. **Given** a market buy order is simulated, **When** fill price is determined, **Then** the price includes the bid/ask spread (buy at ask, sell at bid)
-3. **Given** a simulated trade occurs, **When** fill is recorded, **Then** a slippage adjustment is applied based on order size relative to available liquidity
-4. **Given** a P&L report is generated, **When** cost breakdown is displayed, **Then** the report separately lists: total fees paid, total spread cost, total slippage cost, and net P&L after all costs
+3. **Given** a simulated trade is executed in backtest, **When** the fill is recorded, **Then** trading fees are calculated and deducted from the notional value
+4. **Given** a market buy order is simulated, **When** fill price is determined, **Then** the price includes the bid/ask spread cost (buy at ask, sell at bid)
+5. **Given** a simulated trade occurs, **When** fill is recorded, **Then** a slippage adjustment is applied based on order size relative to available liquidity
+6. **Given** a simulated trade occurs in backtest, **When** fill is recorded, **Then** the fill includes: simulated price, trading fee, bid/ask spread cost, and slippage adjustment
+7. **Given** a backtest completes, **When** results are reported, **Then** the output includes: total trades, net P&L after costs, and a cost breakdown separately listing total fees paid, total spread cost, total slippage cost, and net P&L after all costs
+8. **Given** a backtest completes, **When** results are reported, **Then** the output includes a trade-by-trade list
 
 ---
 
