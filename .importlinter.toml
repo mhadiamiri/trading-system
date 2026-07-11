@@ -1,0 +1,17 @@
+# Import Boundary Configuration for Trading System
+# Constitutional Requirement IV: Layered Architecture, Enforced Boundaries
+# This configuration enforces the four-layer architecture: Data → Strategy → Risk → Execution
+# Build FAILS if any violation is detected.
+
+[unimported_module."trading.risk"]
+[unimported_module."trading.strategy"]
+[unimported_module."trading.data"]
+
+[forbidden_modules_importing]
+modules = ["torch", "tensorflow", "sklearn", "transformers"]
+importing_modules = ["trading.risk"]
+
+[[layers]]
+layer = "trading.execution.adapters"
+importers = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest"]
+ignore_imports = []

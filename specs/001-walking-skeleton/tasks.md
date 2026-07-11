@@ -21,7 +21,7 @@ This document defines the implementation tasks for the walking skeleton feature.
 
 **Goal**: Establish project structure with constitutional guardrails before any code exists.
 
-### Task 001: Initialize repository with guardrails [BLOCKING]
+### Task 001: Initialize repository with guardrails [BLOCKING] [X]
 
 **Description**: Create project structure, guardrails, and configuration files.
 
@@ -88,7 +88,7 @@ contract_layers:
 
 ---
 
-### Task 101: Implement data model entities [P1]
+### Task 101: Implement data model entities [P1] [X]
 
 **Description**: Create core data model entities as defined in `data-model.md`.
 
@@ -109,7 +109,7 @@ contract_layers:
 
 ---
 
-### Task 102: Implement Strategy interface and trivial strategy [P1]
+### Task 102: Implement Strategy interface and trivial strategy [P1] [X]
 
 **Description**: Create Strategy interface and implement trivial momentum/volume strategy.
 
@@ -129,7 +129,7 @@ contract_layers:
 
 ---
 
-### Task 103: Implement RiskEngine interface and engine [P1]
+### Task 103: Implement RiskEngine interface and engine [P1] [X]
 
 **Description**: Create RiskEngine interface and implement pure deterministic risk engine.
 
@@ -153,7 +153,7 @@ contract_layers:
 
 ---
 
-### Task 104: Implement ExchangeClient interface and paper execution [P1]
+### Task 104: Implement ExchangeClient interface and paper execution [P1] [X]
 
 **Description**: Create ExchangeClient interface and implement simulated (paper) execution.
 
@@ -176,7 +176,7 @@ contract_layers:
 
 ---
 
-### Task 105: Implement decision logging (logkit) [P1]
+### Task 105: Implement decision logging (logkit) [P1] [X]
 
 **Description**: Create decision logging module that records every decision with reason codes.
 
@@ -196,7 +196,7 @@ contract_layers:
 
 ---
 
-### Task 106: Implement Bybit testnet market data feed adapter [P1]
+### Task 106: Implement Bybit testnet market data feed adapter [P1] [X]
 
 **Description**: Create Bybit testnet adapter for market data WebSocket feed.
 
@@ -217,7 +217,7 @@ contract_layers:
 
 ---
 
-### Task 107: Implement live trading loop orchestrator [P1]
+### Task 107: Implement live trading loop orchestrator [P1] [X]
 
 **Description**: Create live trading loop that orchestrates all components end-to-end.
 
@@ -237,7 +237,7 @@ contract_layers:
 
 ---
 
-### Task 108: Implement P&L report generation [P1]
+### Task 108: Implement P&L report generation [P1] [X]
 
 **Description**: Create P&L report that shows cost-inclusive results.
 
@@ -256,7 +256,7 @@ contract_layers:
 
 ---
 
-### Task 109: Implement risk engine tests [P1] [CRITICAL]
+### Task 109: Implement risk engine tests [P1] [CRITICAL] [X]
 
 **Description**: Create comprehensive risk engine tests including clamp and kill switch scenarios.
 

@@ -1,0 +1,17 @@
+[[unimported_module]]
+module = "trading.risk"
+
+[[unimported_module]]
+module = "trading.strategy"
+
+[[unimported_module]]
+module = "trading.data"
+
+[[forbidden_modules_importing]]
+modules = ["torch", "tensorflow", "sklearn", "transformers"]
+importing_modules = ["trading.risk"]
+
+# Forbid imports from execution.adapters in other layers (Constitutional Principle IV)
+[[forbidden_modules_importing]]
+modules = ["trading.execution.adapters"]
+importing_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest"]
