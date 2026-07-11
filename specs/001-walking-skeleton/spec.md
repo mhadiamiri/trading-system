@@ -8,6 +8,16 @@
 
 **Input**: Build the walking skeleton of a systematic crypto trading system: the simplest thing that runs end-to-end. The system connects to a single crypto pair's live testnet market data feed, and on each update a strategy component turns the current market state into a desired position. Every desired position passes through a deterministic risk check that can pass it, shrink it toward zero, or reject it, and emits a distinct reason code for what it did. Approved orders go to a simulated (paper) execution path — no real money — which records the simulated fill. Every decision, including "no signal", "clamped", and "rejected", is written to a log with a reason code; silent decisions are not allowed. Separately, the same strategy-to-risk-to-execution logic can be run over previously stored market data as a backtest that applies trading fees, the bid/ask spread, and a realistic slippage/fill model to every simulated trade, producing a profit-and-loss result net of costs and a list of trades. Forecasting accuracy, if reported, is kept separate from tradable profit. Success for this phase is that the whole loop runs end-to-end and reports honest, cost-inclusive results even if the strategy loses money. The strategy itself is deliberately trivial (react to a short-term price move or a volume spike); sophistication is out of scope. Out of scope: multiple pairs or exchanges, leverage, real-money trading, any AI in the decision path, and alternative data.
 
+## Clarifications
+
+### Session 2026-07-11
+
+- Q: Which crypto pair should the system support for Phase 1? → A: BTC/USD (deepest liquidity for realistic spread/slippage modeling)
+- Q: What is the maximum position size the risk engine will allow? → A: Configurable via environment, default 1 BTC
+- Q: What is the maximum daily loss that triggers the kill switch? → A: Configurable as percentage of account equity, default 5% (account equity itself is configurable)
+- Q: What trading fee rate should the backtest and live simulation assume? → A: Configurable via environment, default 0.1% taker fee per side
+- Q: How much historical data does the backtest need to function? → A: No minimum — backtest runs on whatever stored data exists
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - End-to-End Live Paper Trading (Priority: P1)
@@ -70,30 +80,33 @@ A trader runs the same strategy-to-risk-to-execution logic over previously store
 
 ### Functional Requirements
 
-- **FR-001**: System MUST connect to a single crypto pair's live testnet market data feed and receive real-time price/volume updates
+- **FR-001**: System MUST connect to a single crypto pair's live testnet market data feed (BTC/USD) and receive real-time price/volume updates
 - **FR-002**: System MUST implement a trivial strategy that generates desired position signals based on either: (a) short-term price move (e.g., price change > X% in N seconds) or (b) volume spike (e.g., volume > Y times average)
 - **FR-003**: System MUST pass every desired position through a deterministic risk check before execution
 - **FR-004**: Risk check MUST produce exactly one of three outcomes for each desired position: (a) pass unchanged, (b) clamp toward zero (reduce size), or (c) reject entirely. A clamp outcome MAY only reduce order size toward zero; it MUST NOT increase size and MUST NOT flip side or direction.
 - **FR-005**: Risk check MUST emit a distinct reason code for each outcome (e.g., "POSITION_LIMIT", "DRAWDOWN_LIMIT", "INSUFFICIENT_BALANCE", "VOLATILITY_TOO_HIGH", "passed")
-- **FR-006**: When the kill switch is engaged, the system MUST block all new orders while still permitting cancellation logic to run
-- **FR-007**: System MUST execute approved orders through a simulated (paper) execution path that does not interact with real money
-- **FR-008**: System MUST record every simulated fill with: UTC timestamp, venue, symbol, side (buy/sell), size, intended price, executed price, fees paid, a strategy version identifier, and a hash of the market/feature snapshot the decision acted on
-- **FR-009**: System MUST log every decision with a reason code, including: "no signal", "clamped", "rejected", and "executed" decisions
-- **FR-010**: Decision log MUST include: timestamp, decision type, reason code, and relevant context (e.g., requested vs. approved size for clamped orders)
-- **FR-011**: The raw market-data storage path MUST be append-only; stored history is never mutated or rewritten
-- **FR-012**: No credential or secret MUST ever appear in any log line or decision record, nor be committed to version control
-- **FR-013**: System MUST capture the fields required for Canadian tax records from the start: timestamp, pair, side, size, price, fees, and CAD value
-- **FR-014**: System MUST support backtesting over previously stored market data using the same strategy-to-risk-to-execution logic
-- **FR-015**: Backtest mode MUST apply trading fees to every simulated trade
-- **FR-016**: Backtest mode MUST apply bid/ask spread cost on both entry and exit of each position
-- **FR-017**: Backtest mode MUST apply a realistic slippage/fill model that reduces fill prices based on order size and simulated market impact
-- **FR-018**: System MUST produce a profit-and-loss report that is net of all costs (fees, spread, slippage)
-- **FR-019**: System MUST report the cost assumptions used in P&L calculations (fee rate, spread width, slippage model parameters)
-- **FR-020**: If forecasting accuracy metrics are reported, they MUST be kept separate from tradable profit calculations
-- **FR-021**: System MUST be deterministic - the same market data input with the same parameters must produce identical outputs
-- **FR-022**: Risk check MUST NOT depend on any ML/AI model, library, or service (enforced by architecture)
-- **FR-023**: System MUST run the complete loop end-to-end: data in → strategy decision → risk check → simulated execution → logged result → report
-- **FR-024**: System MUST handle testnet market data disconnections gracefully (log, pause, resume on reconnect)
+- **FR-006**: Risk check MUST enforce a maximum position size limit (configurable, default 1 BTC)
+- **FR-007**: Risk check MUST enforce a maximum daily loss limit (configurable as percentage of account equity, default 5%) and engage kill switch when exceeded
+- **FR-008**: When the kill switch is engaged, the system MUST block all new orders while still permitting cancellation logic to run
+- **FR-009**: System MUST execute approved orders through a simulated (paper) execution path that does not interact with real money
+- **FR-010**: System MUST record every simulated fill with: UTC timestamp, venue, symbol, side (buy/sell), size, intended price, executed price, fees paid, a strategy version identifier, and a hash of the market/feature snapshot the decision acted on
+- **FR-011**: System MUST log every decision with a reason code, including: "no signal", "clamped", "rejected", and "executed" decisions
+- **FR-012**: Decision log MUST include: timestamp, decision type, reason code, and relevant context (e.g., requested vs. approved size for clamped orders)
+- **FR-013**: The raw market-data storage path MUST be append-only; stored history is never mutated or rewritten
+- **FR-014**: No credential or secret MUST ever appear in any log line or decision record, nor be committed to version control
+- **FR-015**: System MUST capture the fields required for Canadian tax records from the start: timestamp, pair, side, size, price, fees, and CAD value
+- **FR-016**: System MUST support backtesting over previously stored market data using the same strategy-to-risk-to-execution logic
+- **FR-017**: Backtest mode MUST apply trading fees to every simulated trade (configurable, default 0.1% taker fee per side)
+- **FR-018**: Backtest mode MUST apply bid/ask spread cost on both entry and exit of each position
+- **FR-019**: Backtest mode MUST apply a realistic slippage/fill model that reduces fill prices based on order size and simulated market impact
+- **FR-020**: System MUST produce a profit-and-loss report that is net of all costs (fees, spread, slippage)
+- **FR-021**: System MUST report the cost assumptions used in P&L calculations (fee rate, spread width, slippage model parameters)
+- **FR-022**: Backtest results MUST report the data window they ran on: start timestamp, end timestamp, and number of events/trades
+- **FR-023**: If forecasting accuracy metrics are reported, they MUST be kept separate from tradable profit calculations
+- **FR-024**: System MUST be deterministic - the same market data input with the same parameters must produce identical outputs
+- **FR-025**: Risk check MUST NOT depend on any ML/AI model, library, or service (enforced by architecture)
+- **FR-026**: System MUST run the complete loop end-to-end: data in → strategy decision → risk check → simulated execution → logged result → report
+- **FR-027**: System MUST handle testnet market data disconnections gracefully (log, pause, resume on reconnect)
 
 ### Key Entities
 
@@ -119,14 +132,15 @@ A trader runs the same strategy-to-risk-to-execution logic over previously store
 - **SC-007**: End-to-end loop completes successfully: market data feed connects → strategy generates at least one signal → risk check processes it → simulated fill occurs → decision log contains entries → P&L report generates
 - **SC-008**: A manual calculation of costs applied to 5 sample trades matches the system's reported costs within 0.01% (cost model accuracy)
 - **SC-009**: A strategy that loses money is an acceptable Phase-1 outcome provided the measurement is honest and cost-inclusive; profitability is explicitly not the pass condition (Truth Before Profit)
+- **SC-010**: Risk engine tests MUST include a case where the configured position limit is small enough that a clamp actually fires, ensuring clamp behavior is exercised during Sprint 1
 
 ## Assumptions
 
-- The system operates on a single crypto pair (e.g., BTC/USD) - multiple pairs are out of scope
+- The system operates on a single crypto pair (BTC/USD) - multiple pairs are out of scope
 - Market data is sourced from a testnet environment - real-money trading is out of scope
 - The strategy is deliberately trivial (reacts to short-term price moves or volume spikes) - sophisticated strategies are out of scope
-- Initial capital for paper trading and backtesting is a configurable parameter with a default of $10,000 USD
-- Trading fees are configured as a percentage of notional value (e.g., 0.1% per side, typical of many exchanges)
+- Initial capital for paper trading and backtesting is a configurable parameter
+- Trading fees are configured as a percentage of notional value (default 0.1% taker fee per side)
 - Bid/ask spread is modeled as a fixed percentage (e.g., 0.05%) or loaded from the market data feed
 - Slippage model is a simple linear function of order size relative to average volume (e.g., slippage = k * order_volume / avg_volume)
 - Only one position may be open at a time - new signals either add to, reduce, or close the existing position

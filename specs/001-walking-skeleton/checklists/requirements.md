@@ -54,9 +54,9 @@ All checklist items validated successfully:
 
 1. **Content Quality**: The specification is written in technology-agnostic language, focused on what the system must do rather than how. No specific programming languages, frameworks, or APIs are mentioned.
 
-2. **Requirement Completeness**: All 24 functional requirements (FR-001 through FR-024) are testable and unambiguous. Each requirement states a specific capability or behavior that can be verified. No clarification markers remain - all details are specified with reasonable defaults documented in the Assumptions section.
+2. **Requirement Completeness**: All 27 functional requirements (FR-001 through FR-027) are testable and unambiguous. Each requirement states a specific capability or behavior that can be verified. No clarification markers remain - all details are specified with reasonable defaults documented in the Assumptions section.
 
-3. **Success Criteria**: All 9 success criteria (SC-001 through SC-009) are measurable, technology-agnostic outcomes. Examples include "processes at least 100 consecutive updates without error", "produces cost-inclusive P&L report", "completes in under 60 seconds", and the Truth Before Profit criterion.
+3. **Success Criteria**: All 10 success criteria (SC-001 through SC-010) are measurable, technology-agnostic outcomes. Examples include "processes at least 100 consecutive updates without error", "produces cost-inclusive P&L report", "completes in under 60 seconds", and the Truth Before Profit criterion.
 
 4. **User Scenarios**: Two independent user stories (1 P1, 1 P2) cover the core flows: end-to-end live paper trading with decision logging built in (P1), and historical backtesting with cost verification built in (P2). Each story is genuinely independently testable. Logging and cost verification are properties of their parent stories, not separate user journeys.
 
@@ -68,7 +68,7 @@ All checklist items validated successfully:
 
 8. **Assumptions**: 18 assumptions are documented covering target environment, scope boundaries, cost model parameters, and architectural constraints.
 
-9. **Constitutional Invariants**: All load-bearing invariants from the reference specification have been restored: clamp constraint, kill switch, provenance fields, append-only data, no secrets in logs, CAD tax fields, and Truth Before Profit.
+9. **Constitutional Invariants**: All load-bearing invariants from the reference specification have been restored: clamp constraint, kill switch, provenance fields, append-only data, no secrets in logs, CAD tax fields, and Truth Before Profit. Clarified values: BTC/USD pair, configurable risk limits (max position default 1 BTC, max daily loss default 5% of equity), configurable taker fees (default 0.1% per side), no minimum backtest data requirement.
 
 ## Notes
 
