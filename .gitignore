@@ -1,6 +1,17 @@
 # Environment and secrets
 .env
 .env.*
+!.env.example
+
+# Credential files (never commit these)
+api.txt
+*.key
+*.pem
+secrets*
+credentials*
+*_secret*
+*apikey*
+*api_key*
 
 # Data and logs
 data/

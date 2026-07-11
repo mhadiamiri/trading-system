@@ -159,6 +159,14 @@ Import-linter: 2 kept, 0 broken
 - ⚠️ **ALWAYS** test on testnet before any real-money consideration
 - ⚠️ **VERIFY** import boundaries pass before committing
 
+## Secrets
+
+**Credential Management:**
+- All credentials live only in `.env` (which is gitignored)
+- **NEVER** create loose credential files in the repo (e.g., `api.txt`, `*.key`, `secrets*`)
+- `.env.example` holds variable names only — never actual values
+- The `.gitignore` blocks: `api.txt`, `*.key`, `*.pem`, `secrets*`, `credentials*`, `*_secret*`, `*apikey*`, `*api_key*`, and `.env.*` (except `.env.example`)
+
 ## Project Structure
 
 ```
