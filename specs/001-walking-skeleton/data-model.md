@@ -24,6 +24,11 @@ Represents a single aggregated view of market data at a point in time.
 - `ask_price >= bid_price` (spread is non-negative)
 - `timestamp` is monotonically increasing per feed
 
+**Methods**:
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `compute_snapshot_hash()` | `str` | SHA256 hash of market state for provenance (Principle VIII) |
+
 **Source**: Market data feed adapter
 
 ---
@@ -39,12 +44,19 @@ Represents the strategy's desired position output.
 | `symbol` | `str` | Trading pair |
 | `side` | `Side` | `Side.BUY` (long), `Side.SELL` (short), or `Side.HOLD` (flat) |
 | `quantity` | `Decimal` | Position size in base currency (positive for long, negative for short) |
-| `confidence` | `float` | Strategy confidence score (0.0 to 1.0) |
+| `feature_snapshot_hash` | `str` | Hash of MarketState this decision acted on (for provenance) |
 
 **Invariants**:
 - `quantity > 0` if `side == Side.BUY`
 - `quantity < 0` if `side == Side.SELL`
 - `quantity == 0` if `side == Side.HOLD`
+- `feature_snapshot_hash` is computed from the MarketState using SHA256
+
+**Constitutional Notes**:
+- No `confidence` field: This is a latent hook for ML scores to enter live decision path (Principle III)
+- A trivial rule-based strategy has no meaningful confidence value
+- If a future phase needs confidence, it gets added deliberately with a requirement
+- `feature_snapshot_hash` enables decision reconstruction for audit trails (Principle VIII)
 
 **Source**: Strategy.decide()
 

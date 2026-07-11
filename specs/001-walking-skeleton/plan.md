@@ -63,6 +63,7 @@ Build the walking skeleton of a systematic crypto trading system: the simplest e
 
 ### Principle III: AI Proposes, Deterministic Code Disposes
 ✅ **SATISFIED**: Risk engine has no ML/AI dependencies (FR-025). AI is not in live decision path. Import boundary will enforce this mechanically.
+**Contract update**: DesiredPosition no longer includes confidence field — this was a latent hook for ML scores to enter live decision path. Removed to enforce Principle III. If future phase needs confidence, it gets added deliberately with a requirement.
 
 ### Principle IV: Layered Architecture, Enforced Boundaries
 ✅ **SATISFIED**: Four layers specified: data → strategy → risk → execution. Import-linter will enforce boundaries in CI. No cross-layer imports allowed.
@@ -72,12 +73,14 @@ Build the walking skeleton of a systematic crypto trading system: the simplest e
 
 ### Principle VI: The Risk Engine Is Sovereign
 ✅ **SATISFIED**: Risk engine returns pass/clamp/veto (FR-004). Clamp only reduces toward zero (FR-004). Kill switch blocks new orders (FR-007, FR-008). Hard limits: max position (FR-006), max daily loss (FR-007).
+**Contract update**: ExchangeClient interface explicitly binds kill-switch semantics — place_order() raises KillSwitchEngagedError when engaged, cancel_order() remains callable. Tests verify: kill switch engaged → place_order refused AND cancel_order succeeds.
 
 ### Principle VII: Venue Independence
 ✅ **SATISFIED**: Bybit testnet is provisional, accessed only through strict ExchangeClient interface. All venue-specific code confined to single adapter module. Swapping venue is one-module change.
 
 ### Principle VIII: Total Observability & Provenance
 ✅ **SATISFIED**: Every decision logged with reason code and context (FR-009, FR-010). Decision records include all required fields (FR-010). Raw data is append-only (FR-013). CAD tax fields captured (FR-015).
+**Contract update**: Strategy interface now exposes version identifier and provides feature_snapshot_hash via MarketState.compute_snapshot_hash(). Provenance is captured at decision moment, not reconstructed later.
 
 ### Principle IX: Secrets and Safety Rails
 ✅ **SATISFIED**: Secrets only in gitignored .env (FR-014). No secrets in logs (FR-014). TRADING_ENV defaults to testnet. Execution client refuses live/mainnet without explicit override.
@@ -86,6 +89,12 @@ Build the walking skeleton of a systematic crypto trading system: the simplest e
 ✅ **SATISFIED**: One pair (BTC/USD), spot, one strategy, one venue (Bybit testnet), no leverage, no derivatives, no AI in decision path, no alternative data, no Kafka/Redis/microservices.
 
 **CONSTITUTION CHECK RESULT**: ✅ **PASS** — All principles satisfied.
+
+*Re-checked after Phase 1 contract changes:*
+- ✅ Kill-switch cancel semantics explicitly bound in ExchangeClient interface
+- ✅ Provenance source defined in Strategy interface (version + feature_snapshot_hash)
+- ✅ Confidence field removed from DesiredPosition (no ML score hook)
+- ✅ All constitutional principles still satisfied
 
 ## Project Structure
 

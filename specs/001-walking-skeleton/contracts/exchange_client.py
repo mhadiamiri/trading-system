@@ -82,6 +82,19 @@ class MarketState:
     volume_24h: Decimal
 
 
+class KillSwitchEngagedError(Exception):
+    """
+    Raised when place_order is called while kill switch is engaged.
+
+    Constitutional requirement: Per Principle VI, the kill switch blocks new orders
+    but must never disable cancellation. This exception is the distinct, logged outcome
+    for blocked orders with reason code EXEC_BLOCKED_KILL_SWITCH.
+
+    Tests must verify: kill switch engaged → place_order refused AND cancel_order still succeeds.
+    """
+    pass
+
+
 class ExchangeClient:
     """
     Exchange client interface.
@@ -92,19 +105,28 @@ class ExchangeClient:
     - Venue-specific code MUST be confined to single adapter module (Principle VII)
     - MUST refuse live/mainnet connection without explicit TRADING_ENV override (Principle IX)
     - MUST implement operational defaults: idempotent order IDs, exponential backoff (Principle IX)
+    - Kill switch semantics: place_order refuses, cancel_order remains callable (Principle VI)
 
     Implementation notes:
     - Bybit testnet is provisional venue (src/trading/execution/adapters/bybit_testnet.py)
     - Swapping to Canada-legal venue (Kraken/Coinbase) MUST be one-module change
     - No venue-specific types, payloads, enums, or error shapes may leak above adapter
+
+    Reason codes for execution layer:
+    - EXEC_ORDER_SUBMITTED: Order submitted to venue
+    - EXEC_ORDER_FILLED: Order filled completely
+    - EXEC_ORDER_CANCELLED: Order cancelled
+    - EXEC_BACKOFF_RATE_LIMIT: Backing off due to rate limit
+    - EXEC_BLOCKED_KILL_SWITCH: Order blocked due to kill switch engaged
     """
 
-    async def place_order(self, order: ApprovedOrder) -> Fill:
+    async def place_order(self, order: ApprovedOrder, kill_switch_engaged: bool = False) -> Fill:
         """
         Place order and return fill.
 
         Args:
             order: Risk-approved order
+            kill_switch_engaged: Current state of the kill switch (from RiskEngine)
 
         Returns:
             Fill with all cost components applied
@@ -116,28 +138,48 @@ class ExchangeClient:
         - MUST use idempotent client order IDs (Principle IX)
         - For paper/testnet: simulated fill only (no real money)
 
+        KILL SWITCH BEHAVIOR (Principle VI: The Risk Engine Is Sovereign):
+        - When kill_switch_engaged=True: MUST refuse to place order
+        - MUST raise KillSwitchEngagedError with reason code EXEC_BLOCKED_KILL_SWITCH
+        - This refusal MUST be logged with reason code and timestamp
+        - The distinct exception type enables logged outcome tracking
+
         Raises:
+            KillSwitchEngagedError: If kill_switch_engaged=True (with EXEC_BLOCKED_KILL_SWITCH reason code)
             ConnectionError: Venue unavailable
             RateLimitError: Rate limited (implement exponential backoff)
+
+        Test requirement (from Constitution Check):
+        - tests/ must cover: kill switch engaged → place_order refused AND cancel_order still succeeds
         """
         raise NotImplementedError("ExchangeClient must implement place_order()")
 
-    async def cancel_order(self, order_id: str) -> bool:
+    async def cancel_order(self, order_id: str, kill_switch_engaged: bool = False) -> bool:
         """
         Cancel order.
 
         Args:
             order_id: Order ID to cancel
+            kill_switch_engaged: Current state of the kill switch (from RiskEngine)
 
         Returns:
             True if cancelled, False if not found
 
         Behavioral contract:
         - MUST permit cancellation even when kill switch engaged (Principle VI)
-        - Kill switch blocks new orders only
+        - Kill switch blocks new orders only, never disables cancellation
+        - This is the emergency stop: we can always close positions, even during kill switch
+
+        KILL SWITCH BEHAVIOR (Principle VI: The Risk Engine Is Sovereign):
+        - When kill_switch_engaged=True: MUST still process cancellation normally
+        - MUST NOT raise KillSwitchEngagedError for cancellation
+        - Cancellation remains fully functional regardless of kill switch state
 
         Raises:
             ConnectionError: Venue unavailable
+
+        Test requirement (from Constitution Check):
+        - tests/ must cover: kill switch engaged → place_order refused AND cancel_order still succeeds
         """
         raise NotImplementedError("ExchangeClient must implement cancel_order()")
 
@@ -175,7 +217,7 @@ class ExchangeClient:
         """
         if env == "mainnet" and not explicit_override:
             raise PermissionError(
-                "Refusing to connect to mainnet without explicit override. "
+                "Refusing to connect to connect to mainnet without explicit override. "
                 "Set TRADING_ENV=testnet for paper trading, or explicitly confirm "
                 "mainnet access with the --allow-mainnet flag."
             )

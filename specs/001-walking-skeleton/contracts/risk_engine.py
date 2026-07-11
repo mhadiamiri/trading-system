@@ -37,7 +37,7 @@ class DesiredPosition:
     symbol: str
     side: str  # "BUY", "SELL", "HOLD"
     quantity: Decimal
-    confidence: float
+    feature_snapshot_hash: str  # Hash of MarketState this decision acted on
 
 
 @dataclass(frozen=True)
