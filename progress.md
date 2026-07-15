@@ -1,15 +1,15 @@
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-15
-**Current Phase**: Sprint 1 Complete ✅ | Walking Skeleton + Venue Swap Done
-**Status**: Production Ready - All Tests Passing, Import-Linter Green, Pushed to Private GitHub
+**Last Updated**: 2026-07-15 (Session 2)
+**Current Phase**: Sprint 2 Spec Complete ✅ | Quote-Level Data + Observed Spread Cost Model
+**Status**: Specification Ready for Planning Phase
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 
 ---
 
 ## Executive Summary
 
-A systematic crypto trading system built on constitutional principles. The project has completed Sprint 1 (Walking Skeleton) and successfully executed a venue swap from Bybit testnet to Kraken mainnet public feed. All safety guards have been verified with fail-then-pass proofs. The codebase is now pushed to a private GitHub repository.
+A systematic crypto trading system built on constitutional principles. The project has completed Sprint 1 (Walking Skeleton) and successfully executed a venue swap from Bybit testnet to Kraken mainnet public feed. All safety guards have been verified with fail-then-pass proofs. **Sprint 2 specification (WO-003) is now complete** with all clarifications resolved and committed. Ready to proceed to planning phase.
 
 ### Key Achievements
 - ✅ Walking skeleton complete (36/36 tests passing)
@@ -19,6 +19,7 @@ A systematic crypto trading system built on constitutional principles. The proje
 - ✅ All four constitutional guards verified with fail-then-pass proofs
 - ✅ WO-002-C and WO-002-D completed
 - ✅ Code pushed to private GitHub repository
+- ✅ **WO-003: Sprint 2 spec complete with all clarifications resolved**
 
 ---
 
@@ -203,36 +204,68 @@ python -m trading.backtest.runner
 
 ## Current Status (2026-07-15)
 
-### ✅ Recent Updates - WO-002 Complete + GitHub Setup
+### ✅ Recent Updates - Sprint 2 Spec Complete (WO-003)
 
-**Major Work Completed:**
+**Major Work Completed (Session 2):**
+
+1. **Sprint 2 Specification Created** ✅
+   - Spec file: `specs/002-quote-level-data/spec.md`
+   - Feature: Quote-Level Data + Observed-Spread Cost Model
+   - Focus: Migrate from trades feed to quote-level data (Kraken v2 book channel)
+   - Core requirement: Cost model uses real observed spread, not assumptions
+
+2. **Five Clarifications Resolved** ✅
+   - Q1: Checksum failure threshold → 5 consecutive failures trigger reconnection/resync
+   - Q2: Abnormal spread handling → REJECT trade (overrides tool recommendation — no fallback)
+   - Q3: Rolling trade window → 100 trades AND 60 seconds (whichever first), configurable
+   - Q4: Sequence gap detection → Track sequence; on gap, discard book + resnapshot (no continue-on-gap)
+   - Q5: Book unavailable, trades still connected → PAUSE, emit no MarketStates (overrides tool recommendation — no trades-only mode)
+
+3. **Spec Updated with Clarifications** ✅
+   - All five answers integrated into functional requirements
+   - New FRs added: FR-015a (no synthetic spread), FR-018a (sequence gap detection), FR-019a (pause on no book)
+   - Updated FRs: FR-009 (rolling window), FR-015 (abnormal spread), FR-018 (checksum threshold)
+   - No [NEEDS CLARIFICATION] markers remain
+   - All clarifications documented with rationale in spec
+
+4. **Three Load-Bearing Items Verified** ✅
+   - ✅ Cost model uses observed spread (FR-011, FR-012, FR-015a, SC-002, SC-005)
+   - ✅ v2 book checksum validation on every update (FR-004, FR-016 through FR-019, SC-003, QG-003)
+   - ✅ Strategy logic/interface is out of scope (FR-023 through FR-026, SC-006, QG-002)
+
+5. **Committed and Pushed** ✅
+   - Commit: `6e1c79a` - "spec(002): resolve clarifications — reject-on-anomaly, pause-on-no-book, observed-spread-only"
+   - Pushed to private GitHub repository
+   - Spec ready for planning phase
+
+### Previous Status (Session 1 - WO-002 Complete)
+
+**Major Work Completed (Session 1):**
 
 1. **WO-002-C: Suspenders Guard Testability** ✅
    - Added `TRADING_ENV=test` as valid value (behaves exactly like paper for execution)
    - Belt guard verified unchanged (lines 78-86 still block mainnet)
-   - Suspenders guard FAIL-THEN-PASS proven live:
-     - BROKEN: `Failed: DID NOT RAISE ValueError`
-     - RESTORED: `1 passed in 0.02s`
+   - Suspenders guard FAIL-THEN-PASS proven live
    - Test-mode-as-bypass assertion PASSES
 
 2. **WO-002-D: Venue Leak Closure** ✅
    - Added `venue_name` property to `KrakenPublicFeed` and `SimulatedMarketFeed`
    - Added `get_venue_name()` function to factory.py
    - `loop/live.py` now uses `get_venue_name()` (no hardcoded strings)
-   - Import-linter FAIL-THEN-PASS proven for loop/ contract:
-     - WITH forbidden import: `Contracts: 1 kept, 1 broken`
-     - WITHOUT: `Contracts: 2 kept, 0 broken`
+   - Import-linter FAIL-THEN-PASS proven for loop/ contract
 
 3. **Four Fail-Then-Pass Proven** ✅
    - Suspenders guard FAIL→PASS
-   - Test-mode-as-bypass PASSES
-   - Loop/ import-linter FAIL→PASS
    - Belt guard verified untouched
+   - Loop/ import-linter FAIL→PASS
+   - Test-mode-as-bypass PASSES
 
 4. **GitHub Remote Setup** ✅
    - Repository pushed to private GitHub: https://github.com/mhadiamiri/trading-system
    - Security verification: No secrets in git history
    - Branch `master` tracking `origin/master`
+
+---
 
 ### Implementation Status
 
@@ -256,6 +289,15 @@ python -m trading.backtest.runner
 - README.md, REPORT.md, progress.md
 - Decision records in docs/decisions/
 
+**Sprint 2: Quote-Level Data + Observed Spread** 🔄 READY FOR PLANNING
+- ✅ Specification complete
+- ✅ All clarifications resolved
+- 🔄 Ready for `/speckit-plan` phase
+- ⏳ Implementation pending
+- ⏳ Testing pending
+
+---
+
 ### Test Coverage
 
 | Category | Tests | Status | File |
@@ -265,9 +307,12 @@ python -m trading.backtest.runner
 | Live Loop Integration | 5 | ✅ PASS | `tests/integration/test_live_loop.py` |
 | Cost Model | 9 | ✅ PASS | `tests/test_backtest_costs.py` |
 | Backtest Integration | 6 | ✅ PASS | `tests/integration/test_backtest.py` |
-| **TOTAL** | **36** | ✅ **PASS** | |
+| **TOTAL (Sprint 1)** | **36** | ✅ **PASS** | |
+| **Sprint 2 Tests** | **0** | ⏳ **PENDING** | |
 
-**Success Criteria**: All 10 success criteria met (SC-001 through SC-010)
+**Success Criteria**: All 10 success criteria met (SC-001 through SC-010) for Sprint 1
+
+---
 
 ### Import-Linter Status
 
@@ -281,9 +326,12 @@ Contracts: 3 kept, 0 broken
    - Strategy, risk, data, backtest, loop cannot import trading.execution.adapters
 ```
 
+---
+
 ### Git History
 
 ```
+6e1c79a spec(002): resolve clarifications — reject-on-anomaly, pause-on-no-book, observed-spread-only
 295e0a1 docs: Update instructions.md with post-completion security guidance
 a427003 docs: Update REPORT.md and record Kraken data channel open question
 efb5935 WO-002-C/D: Suspenders guard testability + venue leak closure
@@ -329,6 +377,21 @@ src/trading/
 │   └── provenance.py
 └── loop/
     └── live.py                      # Live trading loop
+```
+
+### Specs (Speckit)
+```
+specs/
+├── 001-walking-skeleton/           # Sprint 1 spec (complete)
+│   ├── spec.md
+│   ├── plan.md
+│   ├── tasks.md
+│   └── checklists/
+│       └── requirements.md
+└── 002-quote-level-data/           # Sprint 2 spec (ready for planning)
+    ├── spec.md                      # ✅ Complete with clarifications
+    └── checklists/
+        └── requirements.md
 ```
 
 ### Configuration Files
@@ -390,9 +453,24 @@ python -m trading.loop.live
 
 **Kraken Data Channel Question** — `docs/decisions/2026-07-14-kraken-data-channel-question.md`
 - Current: Trade channel (~14 events/min)
-- Question: Should strategy consume ticker/book instead?
-- Status: Deferred to Sprint 2 Strategy & Roadmap decision
-- Expected behavior: Strategy producing zero signals on sparse data is expected for walking skeleton
+- Status: ✅ **RESOLVED in Sprint 2 spec** — migrating to book channel as primary source
+- Sprint 2 addresses: Quote-level data with book channel as primary, trades as secondary enrichment
+
+### Sprint 2 Scope (Ready for Planning)
+
+**Feature**: Quote-Level Data + Observed-Spread Cost Model
+- Migrate to Kraken WebSocket v2 book channel (top-of-book: best bid/ask)
+- Implement checksum validation on every update
+- Cost model uses actual observed spread (no assumptions)
+- MarketState becomes quote-centric
+- Trades channel as secondary enrichment only
+- Out of scope: Strategy logic changes
+
+**Key Requirements**:
+- FR-001 through FR-026 defined in `specs/002-quote-level-data/spec.md`
+- All clarifications resolved with behavioral requirements
+- Three load-bearing items verified intact
+- Ready for `/speckit-plan` phase
 
 ### Technical Debt
 - Deprecated `datetime.utcnow()` warnings (707 total) - migrate to `datetime.now(datetime.UTC)`
@@ -410,7 +488,18 @@ python -m trading.loop.live
 
 ## Session History
 
-### 2026-07-11: Walking Skeleton Complete
+### 2026-07-15 (Session 2): Sprint 2 Spec Complete
+- **WO-003**: Sprint 2 specification created for quote-level data
+- Generated spec with all required sections
+- Created five clarification questions
+- All clarifications resolved with behavioral requirements
+- Two answers (Q2, Q5) override tool recommendations — no "keep trading through bad data" escape hatches
+- Spec updated with new functional requirements (FR-015a, FR-018a, FR-019a)
+- Three load-bearing items verified intact
+- Committed and pushed to GitHub: `6e1c79a`
+- Ready for `/speckit-plan` phase
+
+### 2026-07-15 (Session 1): Walking Skeleton Complete
 - Implemented all Phase 1-3 tasks
 - 35 tests passing
 - Import-linter configured and verified
@@ -535,19 +624,38 @@ This invariant is enforced through:
 ## Next Steps
 
 ### Immediate Actions (Next Session)
-1. Review Sprint 2 requirements
-2. Address Kraken data channel question (Strategy & Roadmap)
-3. Consider additional feed implementations
+
+1. **Review Sprint 2 spec** (`specs/002-quote-level-data/spec.md`)
+   - All clarifications resolved
+   - Three load-bearing items verified intact
+   - Ready for planning phase
+
+2. **Run `/speckit-plan`** for Sprint 2
+   - Design implementation strategy
+   - Identify architectural trade-offs
+   - Plan Kraken v2 migration
+   - Plan checksum validation implementation
+   - Plan quote-centric MarketState changes
+   - Plan observed spread cost model changes
+
+3. **Implementation Phase** (after plan approval)
+   - Execute `/speckit-tasks` to generate actionable tasks
+   - Execute `/speckit-implement` to implement the changes
+   - Verify all tests pass
+   - Verify import-linter contracts satisfied
 
 ### For Next Session
 1. Review this document for current status
-2. Check instructions.md for session-specific tasks
+2. Read `specs/002-quote-level-data/spec.md` for Sprint 2 requirements
 3. Run `pytest` to verify environment
 4. Check `.env` configuration matches intended use
 5. Pull latest from GitHub: `git pull origin master`
+6. Run `/speckit-plan` when ready to begin Sprint 2 planning
 
 ---
 
-**Project Status**: 🟢 **PRODUCTION READY** - Sprint 1 complete, all walking skeleton tasks complete, venue swap executed, all tests passing, import-linter green, pushed to private GitHub.
+**Project Status**: 🟡 **SPRINT 2 SPEC COMPLETE** - Ready for planning phase. All clarifications resolved, three load-bearing items verified, constitutional compliance strengthened.
 
-**Last Session Outcome**: WO-002-C and WO-002-D completed with four fail-then-pass proofs, code pushed to private GitHub repository.
+**Last Session Outcome**: Sprint 2 specification (WO-003) completed with all five clarifications resolved. Committed and pushed to GitHub as `6e1c79a`. Ready for `/speckit-plan` phase.
+
+**Next Phase**: `/speckit-plan` for Sprint 2 implementation strategy.
