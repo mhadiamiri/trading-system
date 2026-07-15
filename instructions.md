@@ -1,35 +1,28 @@
-Most of this is genuinely done and well-evidenced — but **one of the four proofs is not what it claims, and it's the safety-critical one.** Read carefully before you commit.
+**That's the proof I wanted, and it's real.** The suspenders guard, broken, produced an actual test failure — `Failed: DID NOT RAISE ValueError` — and restored, `1 passed in 0.02s`. That's the guard being *watched* to fire, this session, with terminal output. All four guards now have genuine fail-then-pass evidence. WO-002 is complete, and it's complete *honestly* — which, given where this run started (a leaked credential, a weakened guard, and a test that couldn't fail), is the whole point.
 
-**What's solid (I checked each against the actual output):**
+Worth marking what just happened, because it's the arc of this entire work order: the very first version of proof #3 was "Proven (per instructions.md)" — an assertion. You (via me) refused it, demanded the live output, and *then* it turned out fine. The lesson isn't "it was fine all along." It's that the only reason you *know* it's fine is that you didn't accept the assertion. That reflex is the deliverable.
 
-- **Loop/ import-linter contract bites — real fail-then-pass.** With the forbidden import: `Contracts: 1 kept, 1 broken — trading.loop.live -> trading.execution.adapters (l.28)`. Without it: `2 kept, 0 broken`. That's a genuine observed failure and recovery. ✅
-- **Venue leak closed properly.** Before: `venue = "kraken_mainnet" if is_using_live_feed() else "simulated"`. After: `venue = get_venue_name()` sourced from the factory. No venue literals in `loop/` anymore, and the new import-linter contract now *guards* that. ✅
-- **Belt guard untouched** — `settings.py` lines 78-86 still hard-raise on `mainnet`. ✅
-- **Test-mode-is-not-a-bypass** — `pytest.raises(ValueError, match="CANNOT be used when TRADING_ENV")` when constructing `PaperExecutionClient()` under `test`. Real assertion, passes. ✅
-- **`is_paper_trading()` returns False for `test`** — correct, that's what makes the suspenders guard reachable for testing. ✅
+Two commits are in (`efb5935` guard + leak, `a427003` docs), working tree clean, Kraken channel question correctly parked in `docs/decisions/` for Sprint 2. Claude Code is now asking to **push**.
 
-**What's NOT solid — the suspenders-guard fail-then-pass (proof #3):**
+**Before you push — one deliberate pause, and it's not about the code.**
 
-Look at how it reported that one, versus the other three. For the loop/ contract it *showed you the actual broken/kept output*. For the suspenders guard it said:
+Pushing sends this to a remote (GitHub, presumably). Given that this exact run started with a Bybit key printed in plaintext, the one thing you must confirm before anything leaves your machine is that **no secret is in the history you're about to publish.** Local git being clean is not the same as history being clean. Paste this into Claude Code:
 
-> "Suspenders guard breaks test → **Proven (instructions.md status)**" and "Already completed per status section in instructions.md."
-
-That's not a fresh fail-then-pass. It's pointing back at a *claim in the instructions file* and treating that as the evidence. §0.6 requires you to break the guard, **run it, watch it fail, show the failure**, restore, show pass — this turn, with output. Three of the four proofs did exactly that. The fourth — the single most important one, the guard that stands between paper mode and a real order — was marked "Proven" by reference rather than demonstrated. That's precisely the D3 pattern (assert-don't-demonstrate) we built this whole format to kill, surfacing on the one proof that matters most.
-
-It may well be genuinely fine. But "probably fine" is exactly the standard we've agreed doesn't apply to the real-money guard. **Do not commit until it's shown.**
-
-Paste into Claude Code:
-
-> Before committing: three of the four fail-then-pass proofs are demonstrated with output. The fourth — the **suspenders guard** — was marked "Proven (instructions.md status)" by reference to the instructions file, not demonstrated this session. §0.5 and §0.6 require observed evidence, not an assertion. Redo it live now:
+> Before I push: verify no secret has ever entered git history, without printing any secret value.
 >
-> 1. Show the current suspenders-guard code in `PaperExecutionClient` (the `is_paper_trading()` check) and the test that exercises it.
-> 2. Temporarily break the guard so `PaperExecutionClient` would construct/allow a real order even when it shouldn't. Run that specific test. **Paste the actual FAILED output** — the assertion error, the test name, the traceback.
-> 3. Restore the guard. Run the test again. **Paste the actual PASSED output.**
+> 1. Run `git log --all --oneline -- .env api.txt` and report whether either file appears in any commit.
+> 2. Search history for the leaked Bybit key pattern **without displaying it**: run `git log -p -S "THjVW4qXNw" --all --oneline` and report only whether it returns any commits (yes/no + hashes) — do NOT print the matching lines.
+> 3. Confirm `.env` is gitignored and not tracked: `git ls-files | grep -E "\.env$"` should return nothing.
+> 4. Report what remote `git remote -v` points to, and whether it's private or public — if you can't tell, say so and I'll check.
 >
-> I want the real terminal output for both states, this session — not a reference to a prior claim. If for any reason the guard cannot be broken in a way the test catches, STOP and tell me exactly why, because that would mean the test still isn't biting.
->
-> Do not commit until this is shown.
+> Report the results. Do not push yet.
 
-Once you see a real assertion failure when the guard is broken, and a pass when it's restored, then all four guards have been *watched* to fire and you commit — one clean commit covering WO-002-C plus the leak fix.
+If all four come back clean — no `.env` in history, the key pattern returns nothing, `.env` untracked, remote is private — then **push**, and this work order is genuinely closed.
 
-I know we're deep in the weeds on one proof, and it might feel like overkill on a testnet-only, no-real-money system. Here's why I'm holding the line anyway: this is the exact guard that, in Sprint 3, is the only thing between a fat-fingered config and a real order with real money. The habit of demanding to *watch* it fire — not read that someone says it fires — is the muscle you're actually building right now. The trading system is almost the side effect. Show the proof, then commit.
+If item 2 returns *anything*, stop and tell me immediately: it would mean the key is in a commit and the history needs surgery (`git filter-repo` or BFG) before pushing, plus the testnet key revoked on Bybit — which is cheap now and impossible after it's on a public remote.
+
+Then — after the push is clean — the honest status of the project is worth stating plainly, because it's easy to lose in the weeds:
+
+**Sprint 1 + the venue swap are done. What's proven: the machine runs end-to-end on a live exchange feed, every safety guard has been watched to fire, and the architecture survived its first real venue swap (with one leak, now caught and closed).** What's *not* yet known: whether the strategy does anything useful on real data — because Kraken's trade channel is too sparse to fire it, which is the open Sprint 2 question. That's not a failure; that's the walking skeleton having done its entire job. It walks, it tells the truth, and it's honest about what it can't yet see.
+
+When you're ready to pick up the Kraken data-channel question — trade vs. book/ticker, v1 vs v2 — that's a Strategy & Roadmap conversation, and it's the right first move of Sprint 2. But push first, verify clean, and take the win.
