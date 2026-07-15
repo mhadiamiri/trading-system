@@ -49,5 +49,5 @@ root_package = "trading"
 include_external_packages = true
 contracts = [
     { type = "forbidden", name = "Forbidden ML in Risk Layer", source_modules = ["trading.risk"], forbidden_modules = ["torch", "tensorflow", "sklearn", "transformers"] },
-    { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest"], forbidden_modules = ["trading.execution.adapters"] }
+    { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.execution.adapters"] }
 ]

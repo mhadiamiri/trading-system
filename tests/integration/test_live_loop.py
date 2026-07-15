@@ -10,6 +10,7 @@ Constitutional Principles:
 
 import pytest
 import asyncio
+import os
 from datetime import datetime
 from decimal import Decimal
 
@@ -29,15 +30,33 @@ class TestLiveLoopIntegration:
             - SC-001: 100 consecutive market data updates processed without error
             - SC-007: End-to-end loop completes successfully
         """
-        loop = LiveTradingLoop()
+        # Force simulated feed for consistent test results
+        original_data_source = os.environ.get("DATA_SOURCE")
+        os.environ["DATA_SOURCE"] = "simulated"
 
-        # Run loop with simulated feed
-        result = await loop.run(max_updates=100)
+        try:
+            # Reload settings to pick up the change
+            import importlib
+            import config.settings
+            importlib.reload(config.settings)
 
-        # Verify results
-        assert result["processed_count"] == 100
-        assert "trades_count" in result
-        assert "final_pnl" in result
+            loop = LiveTradingLoop()
+
+            # Run loop with simulated feed
+            result = await loop.run(max_updates=100)
+
+            # Verify results
+            assert result["processed_count"] == 100
+            assert "trades_count" in result
+            assert "final_pnl" in result
+        finally:
+            # Restore original setting
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+            # Reload settings to restore
+            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_every_decision_logged(self):
@@ -48,27 +67,51 @@ class TestLiveLoopIntegration:
             - SC-002: Every decision has a reason code
             - Zero silent decisions (Principle VIII)
         """
-        loop = LiveTradingLoop()
+        # Clear log file before running
+        if os.path.exists("logs/decisions.log"):
+            os.remove("logs/decisions.log")
 
-        # Run loop
-        await loop.run(max_updates=10)
+        # Force simulated feed for consistent test results
+        original_data_source = os.environ.get("DATA_SOURCE")
+        os.environ["DATA_SOURCE"] = "simulated"
 
-        # Verify log file exists and has entries
-        import os
-        assert os.path.exists("logs/decisions.log")
+        try:
+            # Reload settings to pick up the change
+            import importlib
+            import config.settings
+            importlib.reload(config.settings)
 
-        with open("logs/decisions.log", "r") as f:
-            log_lines = f.readlines()
+            loop = LiveTradingLoop()
 
-        # Should have log entries for each update
-        assert len(log_lines) > 0
+            # Run loop
+            await loop.run(max_updates=10)
 
-        # Verify each log entry has reason_code
-        import json
-        for line in log_lines:
-            entry = json.loads(line)
-            assert "reason_code" in entry
-            assert entry["reason_code"] is not None
+            # Verify log file exists and has entries
+            assert os.path.exists("logs/decisions.log")
+
+            with open("logs/decisions.log", "r") as f:
+                log_lines = f.readlines()
+
+            # Should have log entries for each update
+            assert len(log_lines) > 0
+
+            # Verify each log entry has reason_code
+            import json
+            for line in log_lines:
+                line = line.strip()
+                if not line:  # Skip empty lines
+                    continue
+                entry = json.loads(line)
+                assert "reason_code" in entry
+                assert entry["reason_code"] is not None
+        finally:
+            # Restore original setting
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+            # Reload settings to restore
+            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_simulated_fills_recorded(self):
@@ -79,13 +122,31 @@ class TestLiveLoopIntegration:
             - All cost components included (Principle I)
             - Simulated fills recorded
         """
-        loop = LiveTradingLoop()
+        # Force simulated feed for consistent test results
+        original_data_source = os.environ.get("DATA_SOURCE")
+        os.environ["DATA_SOURCE"] = "simulated"
 
-        # Run loop
-        result = await loop.run(max_updates=50)
+        try:
+            # Reload settings to pick up the change
+            import importlib
+            import config.settings
+            importlib.reload(config.settings)
 
-        # Verify fills were recorded
-        # (The exact number depends on strategy signals)
+            loop = LiveTradingLoop()
+
+            # Run loop
+            result = await loop.run(max_updates=50)
+
+            # Verify fills were recorded
+            # (The exact number depends on strategy signals)
+        finally:
+            # Restore original setting
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+            # Reload settings to restore
+            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_kill_switch_blocks_orders(self):
@@ -95,16 +156,34 @@ class TestLiveLoopIntegration:
         Constitutional requirements:
             - Kill switch blocks new orders (Principle VI)
         """
-        loop = LiveTradingLoop()
+        # Force simulated feed for consistent test results
+        original_data_source = os.environ.get("DATA_SOURCE")
+        os.environ["DATA_SOURCE"] = "simulated"
 
-        # Engage kill switch
-        loop._risk_engine.set_kill_switch(True)
+        try:
+            # Reload settings to pick up the change
+            import importlib
+            import config.settings
+            importlib.reload(config.settings)
 
-        # Run loop - should process updates but no trades
-        result = await loop.run(max_updates=20)
+            loop = LiveTradingLoop()
 
-        # With kill switch engaged, no trades should execute
-        # (Strategy may generate signals, but risk will veto)
+            # Engage kill switch
+            loop._risk_engine.set_kill_switch(True)
+
+            # Run loop - should process updates but no trades
+            result = await loop.run(max_updates=20)
+
+            # With kill switch engaged, no trades should execute
+            # (Strategy may generate signals, but risk will veto)
+        finally:
+            # Restore original setting
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+            # Reload settings to restore
+            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_clamp_fires_during_loop(self):
@@ -114,19 +193,37 @@ class TestLiveLoopIntegration:
         Constitutional requirements:
             - SC-010: Clamp test uses small enough limit
         """
-        # Create loop with risk engine that has small limit
-        from trading.risk.engine import DeterministicRiskEngine
+        # Force simulated feed for consistent test results
+        original_data_source = os.environ.get("DATA_SOURCE")
+        os.environ["DATA_SOURCE"] = "simulated"
 
-        small_limit_risk = DeterministicRiskEngine(
-            max_position_btc=Decimal("0.01"),  # Very small limit
-        )
-        loop = LiveTradingLoop(risk_engine=small_limit_risk)
+        try:
+            # Reload settings to pick up the change
+            import importlib
+            import config.settings
+            importlib.reload(config.settings)
 
-        # Run loop
-        result = await loop.run(max_updates=50)
+            # Create loop with risk engine that has small limit
+            from trading.risk.engine import DeterministicRiskEngine
 
-        # Should have processed updates
-        assert result["processed_count"] == 50
+            small_limit_risk = DeterministicRiskEngine(
+                max_position_btc=Decimal("0.01"),  # Very small limit
+            )
+            loop = LiveTradingLoop(risk_engine=small_limit_risk)
+
+            # Run loop
+            result = await loop.run(max_updates=50)
+
+            # Should have processed updates
+            assert result["processed_count"] == 50
+        finally:
+            # Restore original setting
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+            # Reload settings to restore
+            importlib.reload(config.settings)
 
 
 if __name__ == "__main__":

@@ -5,14 +5,19 @@ Creates feed instances based on configuration.
 
 Constitutional Principles:
 - VII. Venue Independence: Abstraction behind factory
+- IX. Secrets and Safety Rails: No credentials for public feeds
 """
 
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 from trading.data.market_state import MarketState
 from trading.data.adapters.simulated_feed import SimulatedMarketFeed
-from trading.data.adapters.bybit_testnet import BybitTestnetFeed
+from trading.data.adapters.kraken_public import KrakenPublicFeed
 from trading.logkit.decision import DecisionLogger
 from config.settings import Settings
+
+
+# Store active feed instance for diagnostics
+_active_feed: Optional[KrakenPublicFeed | SimulatedMarketFeed] = None
 
 
 def create_feed(
@@ -30,32 +35,71 @@ def create_feed(
     Constitutional requirements:
     - Feed selection via config only (no code changes)
     - Default to simulated for tests
+    - No credentials required for any feed (public only)
     """
-    feed_type = Settings.FEED_TYPE
+    global _active_feed
+    data_source = Settings.DATA_SOURCE
 
-    if feed_type == "simulated":
+    if data_source == "simulated":
         print("Using SimulatedMarketFeed")
         feed = SimulatedMarketFeed(update_interval_ms=1000)
+        _active_feed = feed
         return feed.get_market_data()
 
-    elif feed_type == "bybit_testnet":
-        print("Using BybitTestnetFeed (live testnet)")
-        feed = BybitTestnetFeed(
+    elif data_source == "kraken_public":
+        print("Using KrakenPublicFeed (live mainnet public data)")
+        feed = KrakenPublicFeed(
             decision_logger=decision_logger,
             reconnect_base_delay=1.0,
             reconnect_max_delay=60.0,
         )
+        _active_feed = feed
         return feed.get_market_data()
 
     else:
-        raise ValueError(f"Unknown feed type: {feed_type}")
+        raise ValueError(f"Unknown data source: {data_source}")
 
 
-def get_feed_type() -> str:
-    """Get current feed type."""
-    return Settings.FEED_TYPE
+def get_data_source() -> str:
+    """Get current data source."""
+    return Settings.DATA_SOURCE
 
 
 def is_using_live_feed() -> bool:
     """Check if using live feed."""
-    return Settings.FEED_TYPE == "bybit_testnet"
+    return Settings.DATA_SOURCE == "kraken_public"
+
+
+def get_active_feed() -> Optional[KrakenPublicFeed | SimulatedMarketFeed]:
+    """
+    Get the active feed instance.
+
+    Returns:
+        Active feed instance or None if no feed created
+    """
+    return _active_feed
+
+
+def get_diagnostic_counters() -> dict:
+    """
+    Get diagnostic counters from the active feed.
+
+    Returns:
+        Dict with diagnostic counters (empty if not using live feed)
+    """
+    if _active_feed and hasattr(_active_feed, 'get_diagnostic_counters'):
+        return _active_feed.get_diagnostic_counters()
+    return {}
+
+
+def get_venue_name() -> str:
+    """
+    Get the venue name from the active feed adapter.
+
+    Returns:
+        Venue name (e.g., "kraken_mainnet", "simulated")
+        Returns "unknown" if no active feed
+    """
+    if _active_feed and hasattr(_active_feed, 'venue_name'):
+        return _active_feed.venue_name
+    return "unknown"

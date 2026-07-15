@@ -15,7 +15,7 @@ from typing import Optional, AsyncIterator
 
 from trading.data.market_state import MarketState
 from trading.data.desired_position import DesiredPosition
-from trading.data.adapters.factory import create_feed, get_feed_type, is_using_live_feed
+from trading.data.adapters.factory import create_feed, get_data_source, is_using_live_feed, get_venue_name
 from trading.data.persistence import MarketDataPersistence
 from trading.strategy.interface import Strategy
 from trading.strategy.trivial import TrivialMomentumStrategy
@@ -108,7 +108,7 @@ class LiveTradingLoop:
 
         print("Starting live trading loop...")
         print(f"Strategy: {self._strategy.version}")
-        print(f"Feed Type: {get_feed_type()} ({'LIVE TESTNET' if is_using_live_feed() else 'SIMULATED'})")
+        print(f"Feed Type: {get_data_source()} ({'LIVE MAINNET (public)' if is_using_live_feed() else 'SIMULATED'})")
         print(f"Risk Engine: {self._risk_engine.__class__.__name__}")
         print(f"Execution: {self._execution_client.__class__.__name__}")
         print(f"Data Persistence: {self._persistence._data_dir}")
@@ -118,11 +118,10 @@ class LiveTradingLoop:
         # Create feed from factory
         self._feed_iterator = create_feed(decision_logger=self._decision_logger)
 
-        # Track feed stoppable if available (for Bybit feed)
+        # Track feed stoppable if available (for live feeds)
         if is_using_live_feed():
-            from trading.data.adapters.bybit_testnet import BybitTestnetFeed
-            # We need to capture the feed instance to stop it later
-            # This is handled by the factory returning the iterator
+            # Live feed (Kraken public) - factory handles lifecycle
+            pass
 
         async for market_state in self._feed_iterator:
             # Check stop conditions
@@ -140,7 +139,7 @@ class LiveTradingLoop:
                 print(f"Warning: Failed to persist market event: {e}")
 
             # Track events by reason code
-            venue = "bybit_testnet" if is_using_live_feed() else "simulated"
+            venue = get_venue_name()
 
             # Log market data received
             self._decision_logger.log_decision(
@@ -273,6 +272,10 @@ class LiveTradingLoop:
         # Calculate elapsed time
         elapsed_minutes = (datetime.now(UTC) - start_time).total_seconds() / 60
 
+        # Get feed diagnostic counters
+        from trading.data.adapters.factory import get_diagnostic_counters
+        feed_diagnostics = get_diagnostic_counters()
+
         return {
             "processed_count": processed_count,
             "trades_count": trades_count,
@@ -282,6 +285,7 @@ class LiveTradingLoop:
             "feed_events": feed_events,
             "persistence_info": persistence_info,
             "venue": venue,
+            "feed_diagnostics": feed_diagnostics,
         }
 
     def _update_position(self, fill: dict) -> None:
@@ -337,6 +341,37 @@ async def main() -> None:
         print(f"  Exists: {persistence['exists']}")
         print(f"  Events written: {persistence['event_count']}")
         print(f"  Size: {persistence['size_bytes']} bytes")
+
+        # Print feed diagnostics if available
+        if result.get('feed_diagnostics'):
+            print("-" * 60)
+            feed_diag = result['feed_diagnostics']
+            print("Feed Diagnostics:")
+            raw_msg = feed_diag.get('raw_messages_received', 0)
+            emitted = feed_diag.get('market_states_emitted', 0)
+            written = result['persistence_info'].get('rows_written', 0)
+            print(f"  Raw WebSocket messages: {raw_msg}")
+            print(f"  MarketStates emitted: {emitted}")
+            print(f"  Parquet rows written: {written}")
+            print(f"  Subscription confirmations: {feed_diag.get('subscription_confirmations', 0)}")
+            print(f"  Filtered messages: {feed_diag.get('filtered_messages', 0)}")
+            print(f"  Parse errors: {feed_diag.get('parse_errors', 0)}")
+
+            # Calculate events/minute rate
+            raw_rate = raw_msg / result['elapsed_minutes']
+            emitted_rate = emitted / result['elapsed_minutes']
+            written_rate = written / result['elapsed_minutes']
+            print(f"  Raw message rate: {raw_rate:.2f} events/minute")
+            print(f"  Emitted rate: {emitted_rate:.2f} events/minute")
+            print(f"  Written rate: {written_rate:.2f} events/minute")
+
+            # Check for data loss
+            if raw_msg > emitted:
+                loss = raw_msg - emitted
+                print(f"  WARNING: DATA LOSS: {loss} messages not emitted as MarketStates")
+            if emitted > written:
+                loss = emitted - written
+                print(f"  WARNING: DATA LOSS: {loss} MarketStates not written to Parquet")
 
         print("=" * 60)
 

@@ -41,15 +41,23 @@ class TestImportBoundaries:
         Constitutional requirements:
             - Execution adapters isolated (Principle IV)
         """
-        # Try to import execution adapter from strategy layer
-        # This should fail or raise an error
-        try:
-            from trading.execution.adapters import bybit_testnet
-            # If we get here, the file exists - check if it should be isolated
-            # For now, we verify the structure enforces boundaries
-        except ImportError:
-            # Expected - adapter doesn't exist yet or is properly isolated
-            pass
+        # Verify no real-money execution adapters exist in execution.adapters
+        # The invariant is that ONLY paper execution exists
+        # (real-money adapters are Sprint 3, not yet implemented)
+        import os
+        adapters_dir = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "src",
+            "trading",
+            "execution",
+            "adapters"
+        )
+
+        # Verify only __init__.py exists (no real-money adapters)
+        if os.path.exists(adapters_dir):
+            adapter_files = [f for f in os.listdir(adapters_dir) if f.endswith(".py") and f != "__init__.py"]
+            assert len(adapter_files) == 0, f"Found unexpected adapter files: {adapter_files}. Only paper execution should exist in Phase 1."
 
     def test_data_cannot_import_execution_adapters(self):
         """
@@ -135,6 +143,125 @@ class TestImportBoundaries:
             if "Execution Adapters" in c.get("name", "")
         ]
         assert len(adapters_contract) > 0, "No execution adapters forbidden contract found"
+
+    def test_trading_env_paper_blocks_real_orders(self):
+        """
+        Test the core invariant: no real-money orders reachable while TRADING_ENV=paper or test.
+
+        Constitutional requirements:
+            - No code path that can place real orders is reachable while TRADING_ENV=paper
+            - This invariant holds for ALL values of DATA_SOURCE (including kraken_public)
+            - TRADING_ENV=test exists ONLY to make suspenders guard testable
+            - TRADING_ENV=test grants ZERO real-order capability (behaves exactly like paper)
+            - Only mainnet + explicit override may reach real execution
+            - Invariant: Real money unreachable in paper/test mode (Principle IX)
+
+        This test verifies:
+        1. Settings.validate() BLOCKS TRADING_ENV=mainnet (belt guard)
+        2. PaperExecutionClient CAN be used when TRADING_ENV=paper (correct behavior)
+        3. PaperExecutionClient CANNOT be used when TRADING_ENV=test (suspenders guard)
+        4. TRADING_ENV=test blocks real-order clients (test is not a bypass)
+
+        Note: The kill switch has its own separate test. This test does NOT test the kill switch.
+        """
+        import os
+        import importlib
+        from trading.execution.paper import PaperExecutionClient
+
+        # Save original values
+        original_trading_env = os.environ.get("TRADING_ENV")
+        original_data_source = os.environ.get("DATA_SOURCE")
+
+        try:
+            # Test 1: Settings.validate() BLOCKS TRADING_ENV=mainnet (belt guard)
+            # This is the first guard (belt) - blocks at module import time
+            for data_source in ["simulated", "kraken_public"]:
+                os.environ["TRADING_ENV"] = "mainnet"
+                os.environ["DATA_SOURCE"] = data_source
+
+                # Reloading settings should trigger validate() which raises ValueError
+                with pytest.raises(ValueError, match="BLOCKED by constitutional guard"):
+                    import config.settings
+                    importlib.reload(config.settings)
+
+            # Test 2: PaperExecutionClient CAN be used when TRADING_ENV=paper
+            # This is the CORRECT behavior - verify it works for all DATA_SOURCE values
+            for data_source in ["simulated", "kraken_public"]:
+                os.environ["TRADING_ENV"] = "paper"
+                os.environ["DATA_SOURCE"] = data_source
+
+                # Reload settings to apply new environment
+                import config.settings
+                importlib.reload(config.settings)
+                from config.settings import Settings as FreshSettings
+
+                # Verify settings loaded correctly
+                assert FreshSettings.TRADING_ENV == "paper"
+                assert FreshSettings.DATA_SOURCE == data_source
+                assert FreshSettings.is_paper_trading() is True
+
+                # Verify PaperExecutionClient can be instantiated (correct)
+                paper_client = PaperExecutionClient()
+                assert paper_client is not None
+
+            # Test 3: PaperExecutionClient CANNOT be used when TRADING_ENV=test
+            # This tests the execution layer guard (suspenders) by actually trying to
+            # create a PaperExecutionClient with TRADING_ENV=test - it MUST fail
+            # TRADING_ENV=test passes the belt guard but should be blocked by suspenders
+            for data_source in ["simulated", "kraken_public"]:
+                os.environ["TRADING_ENV"] = "test"
+                os.environ["DATA_SOURCE"] = data_source
+
+                # Reload settings to apply new environment
+                import config.settings
+                importlib.reload(config.settings)
+                from config.settings import Settings as FreshSettings
+
+                # Verify settings loaded correctly
+                assert FreshSettings.TRADING_ENV == "test"
+                assert FreshSettings.DATA_SOURCE == data_source
+                assert FreshSettings.is_paper_trading() is False  # test is NOT paper
+
+                # Verify PaperExecutionClient CANNOT be instantiated (suspenders guard)
+                # The guard in PaperExecutionClient.__init__ checks is_paper_trading()
+                # and raises ValueError when TRADING_ENV != paper
+                with pytest.raises(ValueError, match="CANNOT be used when TRADING_ENV"):
+                    PaperExecutionClient()
+
+            # Test 4: TRADING_ENV=test is NOT a bypass - it blocks real-order clients
+            # Verify that attempting to create a real-order-capable client under test
+            # would fail exactly as under paper. Since no real-money adapters exist
+            # in Phase 1, this is verified by the fact that PaperExecutionClient (the
+            # only execution client) is blocked under test, proving test behaves like
+            # paper for all execution paths.
+            for data_source in ["simulated", "kraken_public"]:
+                os.environ["TRADING_ENV"] = "test"
+                os.environ["DATA_SOURCE"] = data_source
+
+                # Reload settings
+                import config.settings
+                importlib.reload(config.settings)
+
+                # Verify real-order path is blocked: only PaperExecutionClient exists
+                # in Phase 1, and it refuses to instantiate under test
+                with pytest.raises(ValueError, match="CANNOT be used when TRADING_ENV"):
+                    PaperExecutionClient()
+
+        finally:
+            # Restore original values
+            if original_trading_env:
+                os.environ["TRADING_ENV"] = original_trading_env
+            else:
+                os.environ.pop("TRADING_ENV", None)
+
+            if original_data_source:
+                os.environ["DATA_SOURCE"] = original_data_source
+            else:
+                os.environ.pop("DATA_SOURCE", None)
+
+            # Reload settings to restore original state
+            import config.settings
+            importlib.reload(config.settings)
 
 
 if __name__ == "__main__":

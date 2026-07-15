@@ -4,43 +4,41 @@
 
 ## Session
 
-- **Date (UTC)**: 2026-07-11
+- **Date (UTC)**: 2026-07-14
 - **Feature / spec**: `specs/001-walking-skeleton/` — branch `001-walking-skeleton`
 - **Spec-kit phase reached**: **implement** ✅
-- **One-line status**: Walking skeleton complete - live loop and backtest running end-to-end with cost-inclusive reporting, all 35 tests passing, import-linter green.
+- **One-line status**: WO-002 venue swap re-verification. Bybit purged from codebase ✅. Guards verified (belt + suspenders) ✅. Test suite green (36/36) ✅. Import-linter green (2 kept, 0 broken) ✅. One-module claim FAILED - venue detail leaked into loop/ layer ⚠️. Invariant test re-write BLOCKED - needs architectural decision. Decision record created in docs/decisions/.
 
 ## 1. Summary
 
-Completed the walking skeleton implementation for the systematic crypto trading system. All Phase 1 (live paper trading loop) and Phase 2 (backtest) tasks are complete. Fixed import-linter configuration (changed from layers to forbidden contracts), verified violation detection works (torch import test), created cost model with fee/spread/slippage, and created comprehensive test suite. All 35 tests pass, import-linter reports 2 kept/0 broken.
+**WO-002 Re-verification Session**: Executed work order WO-002 to complete and verify the Kraken venue swap. Purged all Bybit references from functional code (specs/ docs retain historical notes). Verified real-money guards (belt: Settings.validate() blocks TRADING_ENV=mainnet at import; suspenders: PaperExecutionClient checks is_paper_trading()). All 36 tests passing, import-linter green.
 
-**Live Feed Testing**: Implemented live Bybit testnet WebSocket feed. Ran loop for 2 minutes against real market data: 25 events processed, 0 trades (no signals), 0 disconnects, 0 errors. Data persisted to Parquet and backtest replayed successfully.
+**Finding - One-Module Claim FAILED**: Venue detail leaked into `src/trading/loop/live.py` line 142: `venue = "kraken_mainnet" if is_using_live_feed() else "simulated"`. This venue-specific string lives outside the adapter layer, violating Principle VII's single-module change promise. Import-linter did not catch this (proposal: add loop/ to adapter-forbidding contract).
+
+**Finding - Invariant Test BLOCKED**: Current test (test_trading_env_paper_blocks_real_orders) checks source code strings instead of actual behavior (defect D3). Cannot properly test suspenders guard without adding new TRADING_ENV value or deferring to Sprint 3 when real-money adapters will have inverse checks. Belt guard is properly tested.
+
+**Decision Record Created**: Documented venue retirement, Kraken adoption, and DATA_SOURCE/TRADING_ENV split in `docs/decisions/2026-07-14-venue-retirement-bybit-adopt-kraken.md`.
 
 ## 2. Tasks
 
-Reference task IDs from `specs/001-walking-skeleton/tasks.md`.
+Reference task IDs from `instructions.md` (WO-002) and `specs/001-walking-skeleton/tasks.md`.
 
-- **Completed**:
-  - **Task 001** — Repository initialization with guardrails
-  - **Task 101** — Data model entities (MarketState, DesiredPosition, ApprovedOrder, Fill, PositionState)
-  - **Task 102** — Strategy interface and trivial momentum strategy
-  - **Task 103** — RiskEngine interface and deterministic engine
-  - **Task 104** — ExchangeClient interface and paper execution
-  - **Task 105** — Decision logging (logkit)
-  - **Task 106** — Bybit testnet market data feed adapter (LIVE: 25 events captured, 0 errors)
-  - **Task 107** — Live trading loop orchestrator
-  - **Task 108** — P&L report generation
-  - **Task 109** — Risk engine tests (clamp, kill switch, ML import ban)
-  - **Task 110** — Live loop integration test
-  - **Task 111** — Import boundary tests
-  - **Task 201** — Backtest runner
-  - **Task 202** — Cost model (fees, spread, slippage)
-  - **Task 203** — Backtest cost verification tests
-  - **Task 204** — Backtest integration test
-  - **Task 301** — Quickstart documentation (README.md)
+- **Completed** (WO-002 - 2026-07-14):
+  - **WO-002-A** — Purge Bybit debris and credentials ✅ (grep -ri "bybit|BYBIT" . returns zero functional code hits; grep -ri "FEED_TYPE" . returns zero)
+  - **WO-002-B** — Restore and PROVE real-money guard ✅ (belt: Settings.validate() blocks mainnet; suspenders: PaperExecutionClient checks is_paper_trading())
+  - **WO-002-D** — Verify one-module-change claim ❌ FAILED (venue detail leaked into src/trading/loop/live.py line 142)
+  - **WO-002-E** — Full test suite + import-linter ✅ (36/36 tests passed; import-linter 2 kept, 0 broken)
+  - **WO-002-H** — Record decision in docs/decisions/ ✅ (2026-07-14-venue-retirement-bybit-adopt-kraken.md created)
 
-- **In progress**: None
+- **Blocked** (WO-002 - 2026-07-14):
+  - **WO-002-C** — Rewrite invariant test to actually bite 🚫 BLOCKED (cannot test suspenders guard without adding TRADING_ENV="test" value or deferring to Sprint 3)
+  - **WO-002-F** — Live 10-minute run against Kraken (in progress, awaiting completion)
+  - **WO-002-F2** — Diagnose Kraken feed rate (awaiting WO-002-F completion)
+  - **WO-002-G** — Backtest over captured data (awaiting WO-002-F/F2 completion)
 
-- **Not started / blocked**: None
+- **Completed** (Previous sessions - Walking Skeleton + initial venue swap):
+  - **Tasks 001-301** — Walking skeleton complete (data models, strategy, risk, execution, logging, backtest)
+  - **Initial venue swap** — Bybit testnet → Kraken public, DATA_SOURCE/TRADING_ENV split
 
 ## 3. Constitution & gate status
 
@@ -48,42 +46,56 @@ Explicit PASS / FAIL / N/A per checkable invariant.
 
 | Check | Status | Note |
 |---|---|---|
-| `import-linter` green (risk/ has no ML import; strategy/risk/data/backtest don't import adapters) | ✅ PASS | 2 kept, 0 broken. Verified by adding torch import to risk layer - lint FAILED as expected. |
-| Risk-layer unit tests pass (max position, max daily loss, kill switch, clamp-only-shrinks) | ✅ PASS | 10/10 tests pass. Clamp test uses 0.5 BTC limit, fires correctly. |
-| Every simulated trade includes fee + spread + slippage (no cost-free path) | ✅ PASS | Cost model enforces this. Test verified all trades with notional > $10 have costs. |
-| Every order **and** non-order decision has a reason code | ✅ PASS | Decision logger adds reason_code to all decisions. Integration test verified. |
+| `import-linter` green (risk/ has no ML import; strategy/risk/data/backtest don't import adapters) | ✅ PASS | 2 kept, 0 broken. Verified 2026-07-14. |
+| Risk-layer unit tests pass (max position, max daily loss, kill switch, clamp-only-shrinks) | ✅ PASS | 10/10 tests pass. Verified 2026-07-14. |
+| Every simulated trade includes fee + spread + slippage (no cost-free path) | ✅ PASS | Cost model enforces this. 9/9 cost tests pass. |
+| Every order **and** non-order decision has a reason code | ✅ PASS | Decision logger adds reason_code to all decisions. |
 | Provenance fields present (ts, venue, symbol, side, size, intended/exec price, fees, `strategy_version`, `feature_snapshot_hash`) | ✅ PASS | All required fields present in DecisionRecord and Fill entities. |
-| `TRADING_ENV` defaults to testnet; live connection refused without explicit override | ✅ PASS | Uses simulated feed (SimulatedMarketFeed) by default. No live Bybit connection. |
-| No secret in git or in any log/decision record | ✅ PASS | .env gitignored. Logkit excludes secrets. |
-| Raw data path is append-only | ✅ PASS | 25 live market events persisted to Parquet, backtest replayed successfully. No mutations or rewrites. |
-| `/speckit-analyze` run and clean (or: findings listed below) | ✅ PASS | No findings - implementation followed spec exactly. |
+| `TRADING_ENV` gates execution only; `DATA_SOURCE` independent of execution | ✅ PASS | TRADING_ENV=paper by default, DATA_SOURCE=simulated by default. Belt+suspenders guards verified. |
+| No real orders reachable when TRADING_ENV=paper (invariant enforced) | ⚠️ PARTIAL | Belt guard (Settings.validate()) tested and PASS. Suspenders guard exists but test only checks source strings, not actual behavior (defect D3). |
+| No secret in git or in any log/decision record | ✅ PASS | .env gitignored. No API keys required for public feeds. |
+| Raw data path is append-only | ✅ PASS | Previous run: 102 Kraken events persisted to Parquet, backtest replayed successfully. |
+| Venue independence (no venue types leak above adapter) | ❌ FAIL | WO-002-D finding: venue detail leaked into src/trading/loop/live.py line 142 (`venue = "kraken_mainnet"`). One-module claim FAILED. |
+| `/speckit-analyze` run and clean (or: findings listed below) | ⚠️ FINDINGS | Venue leakage (WO-002-D), invariant test defect (WO-002-C blocked). |
 
 ## 4. Decisions & rationale
 
-- **Decision**: Changed import-linter from `layers` contract to `forbidden` contracts — **why**: The `layers` contract prevented backtest from importing strategy/risk/data, but the backtest runner needs to orchestrate these components. The `forbidden` contract correctly prevents strategy/risk/data/backtest from importing execution.adapters while allowing necessary imports between core components.
+- **Decision**: Retire Bybit testnet, adopt Kraken mainnet public feed — **why**: Bybit testnet delivers ~12 trade events/min vs. mainnet's 1,000–10,000—too thin for strategy→risk→execution chain validation. Kraken is Canada-legal for real-money trading, so Kraken's order flow is the honest substrate. Public mainnet data is read-only and cannot place orders, satisfying safety requirements. (2026-07-12)
 
-- **Decision**: Use simulated feed instead of live Bybit testnet — **why**: Per instructions.md, "Do not connect to the live Bybit testnet feed as part of this run". The simulated feed (SimulatedMarketFeed) provides sufficient testability.
+- **Decision**: Split DATA_SOURCE from TRADING_ENV — **why**: Decouples data feed selection from execution environment. Public mainnet data (DATA_SOURCE=kraken_public) cannot place orders regardless of TRADING_ENV setting. The invariant: no code path can place real orders while TRADING_ENV=paper, regardless of DATA_SOURCE. (2026-07-12)
 
-- **Decision**: Fixed cost model rounding to calculate total from rounded components — **why**: The validation `total_cost == fees + spread_cost + slippage_cost` was failing due to rounding differences. By calculating `total = (fees + spread + slippage).quantize()`, we ensure the validation always passes.
+- **Decision**: Remove Bybit credentials entirely — **why**: No credentials required for public feeds. Retirement of Bybit testnet means BYBIT_API_KEY and BYBIT_API_SECRET no longer needed. Reduces attack surface and simplifies configuration. (2026-07-12)
+
+- **Finding**: One-module claim FAILED — **what happened**: Venue detail leaked into src/trading/loop/live.py line 142 (`venue = "kraken_mainnet" if is_using_live_feed() else "simulated"`). This venue-specific string lives outside the adapter layer. To swap venues again, this line would need modification. Import-linter did not catch this because loop/ is not covered by adapter-forbidding contract. Proposal: add loop/ to contract. (2026-07-14)
+
+- **Finding**: Invariant test defect identified — **what happened**: test_trading_env_paper_blocks_real_orders checks source code strings instead of actual behavior (defect D3). The belt guard (Settings.validate()) is properly tested, but the suspenders guard (PaperExecutionClient.is_paper_trading()) cannot be tested without adding a TRADING_ENV value that passes the belt but should be blocked by suspenders. Options: add TRADING_ENV="test", remove Test 3 and acknowledge gap, or defer to Sprint 3 when real-money adapters will have inverse checks. Currently BLOCKED awaiting decision. (2026-07-14)
+
+- **Decision**: Changed import-linter from `layers` contract to `forbidden` contracts — **why**: The `layers` contract prevented backtest from importing strategy/risk/data, but the backtest runner needs to orchestrate these components. The `forbidden` contract correctly prevents strategy/risk/data/backtest from importing execution.adapters while allowing necessary imports between core components. (2026-07-12)
 
 ## 5. Blocked / flagged
 
-None.
+- **WO-002-C BLOCKED**: Invariant test re-write blocked. Cannot test suspenders guard (PaperExecutionClient.is_paper_trading()) without adding new TRADING_ENV value (e.g., "test") that passes belt guard but should be blocked by suspenders. Current test only checks source code strings (defect D3), not actual behavior. Awaiting decision on: (A) add TRADING_ENV="test", (B) remove Test 3 and acknowledge gap, or (C) defer to Sprint 3.
+
+- **WO-002-F/F2 IN PROGRESS**: Live 10-minute Kraken run currently executing. Awaiting completion for feed rate diagnosis and backtest.
 
 ## 6. Evidence & how to verify
 
 - **Tests**:
-  - `pytest -q` → **35 passed** (20 original + 9 backtest costs + 6 backtest integration)
+  - `pytest -q` → **36 passed** (20 original + 9 backtest costs + 6 backtest integration + 1 invariant test)
   - `import-linter lint` → **2 kept, 0 broken**
   - `pytest tests/test_risk.py` → **10 passed** (clamp, kill switch, veto scenarios)
+  - `pytest tests/test_boundaries.py` → **6 passed** (ML import ban, execution adapter isolation, paper invariant)
   - `pytest tests/test_backtest_costs.py` → **9 passed** (fee accuracy, spread, slippage)
   - `pytest tests/integration/test_backtest.py` → **6 passed** (end-to-end, determinism, data window)
   - `pytest tests/integration/test_live_loop.py` → **5 passed** (100 updates, decision logging, fills)
 
 - **Run it**:
   ```bash
-  # Live loop (simulated feed)
+  # Live loop (simulated feed by default)
   python -m trading.loop.live
+
+  # Live loop (Kraken public feed)
+  DATA_SOURCE=kraken_public python -m trading.loop.live
 
   # Backtest
   python -m trading.backtest.runner
@@ -94,22 +106,29 @@ None.
   ```
 
 - **Artifacts**:
+  - `src/trading/data/adapters/kraken_public.py` — Kraken public feed adapter (NEW)
   - `src/trading/backtest/costs.py` — Cost model implementation
   - `tests/test_backtest_costs.py` — Cost verification tests
   - `tests/integration/test_backtest.py` — Backtest integration tests
-  - `src/trading/data/fixtures.py` — Fixed datetime handling
-  - `.importlinter.yaml` — Corrected import boundary configuration
+  - `tests/test_boundaries.py` — Updated with paper invariant test (NEW)
+  - `config/settings.py` — Split DATA_SOURCE/TRADING_ENV (UPDATED)
+  - `.env.example` — Updated config structure (UPDATED)
   - `README.md` — Quickstart documentation
 
-- **Live Feed Test Results** (2026-07-11):
-  - Venue: Bybit testnet (BTCUSDT)
-  - Duration: 2.04 minutes
-  - Events processed: 25 market data events
+- **Kraken Live Loop Test Results** (2026-07-12):
+  - Venue: Kraken mainnet public (XBT/USD)
+  - Duration: 10.04 minutes
+  - Raw WebSocket messages: 706 (70.29 events/minute)
+  - MarketStates emitted: 103 (10.26 events/minute)
+  - Events processed: 102 market data events
+  - Events written to Parquet: 102 (data/market_events_20260712.parquet, 108,837 bytes)
+  - Parse errors: 0
+  - Subscription confirmations: 1
+  - Filtered messages: 603 (heartbeats, system events)
   - Feed events: Connected ✅, No disconnects, No errors
-  - Strategy decisions: 25 NO_SIGNAL (market stable)
+  - Strategy decisions: 102 NO_SIGNAL (market stable)
   - Trades: 0
-  - Persistence: 25 events written to data/market_events_20260711.parquet (27,062 bytes)
-  - Backtest replay: Successful, 0.00s, data window verified
+  - Backtest replay: Successful, data window verified (start: 2026-07-12T19:53:24, end: 2026-07-12T20:03:16)
 
 ## 7. Open questions for Hadi
 
@@ -123,10 +142,14 @@ None - walking skeleton is complete and all gates pass.
 
 ## 9. Known gaps / not yet proven
 
-- **Live WebSocket handling VERIFIED**: End-to-end loop ran against live Bybit testnet WebSocket for 2 minutes. Reconnect handling, malformed payload handling implemented and ready for stress testing. Rate limiting not yet tested (need longer run).
+- **Kraken trade channel rate ~14 events/min (DEFERRED to Sprint 2)**: Kraken public WebSocket v1 trade channel delivers ~14 BTC/USD events/min — comparable to Bybit testnet (~12/min), far below the 1,000-10,000/min initially assumed. Pipeline verified lossless (142→142→142). Open question: is this genuine trade rate or because we subscribed to trade channel vs ticker/book? **Decision: DEFERRED to Strategy & Roadmap for Sprint 2.** ~14 events/min is acceptable for walking skeleton phase — strategy producing zero signals on sparse, flat data is expected and correct. Not a venue-swap trigger. Do NOT change subscription, channel, or API version without Strategy & Roadmap decision.
 
-- **Raw market data persistence VERIFIED**: 25 live market events persisted to Parquet, append-only writes only. Backtest successfully replayed the data.
+- **Venue independence FAILED (WO-002-D)**: One-module change claim did NOT hold. Venue detail leaked into src/trading/loop/live.py line 142: `venue = "kraken_mainnet" if is_using_live_feed() else "simulated"`. Import-linter did not catch this because loop/ is not covered by adapter-forbidding contract. To be fixed: remove hardcoded venue strings, add loop/ to import-linter contract.
 
-- **Signal generation not yet tested**: 2-minute live run generated 0 signals (market was stable). Need longer run or different market conditions to verify strategy generates signals and risk clamps/vetos appropriately.
+- **Invariant test unproven (WO-002-C IN PROGRESS)**: Adding TRADING_ENV=test value to make suspenders guard testable. Belt guard (Settings.validate() blocks mainnet) tested and PASS. Suspenders guard (PaperExecutionClient.is_paper_trading()) to be tested with new test mode.
 
-- **Import-linter uses forbidden contracts, not strict layers**: import-linter uses forbidden contracts rather than a strict layers contract (relaxed so backtest/ can orchestrate strategy/risk/data). The two critical boundaries (no ML in risk/; no adapters in strategy//risk//data/) are enforced and verified to fail the build — but full layer ordering is NOT enforced. Recorded as a deliberate, known relaxation.
+- **Live WebSocket handling**: Previous runs verified end-to-end loop on Kraken for 10 minutes. Reconnect handling, malformed payload handling, heartbeat filtering implemented. Rate limiting not yet stress-tested.
+
+- **Raw market data persistence**: Previous run verified 102 Kraken events persisted to Parquet, append-only writes. Backtest successfully replayed data with correct window.
+
+- **Import-linter relaxation**: Uses forbidden contracts (not strict layers) so backtest/ can orchestrate strategy/risk/data. Critical boundaries (no ML in risk/, no adapters in strategy//risk//data/) enforced and verified. Full layer ordering NOT enforced—deliberate relaxation.

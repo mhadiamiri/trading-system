@@ -50,7 +50,28 @@ class PaperExecutionClient(ExchangeClient):
             fee_rate_pct: Trading fee rate as percentage (default 0.1%)
             spread_pct: Bid/ask spread as percentage (default 0.05%)
             slippage_factor: Slippage adjustment factor (default 0.001)
+
+        Raises:
+            ValueError: If TRADING_ENV is not 'paper' (constitutional guard)
+
+        Constitutional requirements:
+            - PaperExecutionClient can ONLY be used when TRADING_ENV=paper
+            - This ensures no real-money orders can be placed in paper mode
+            - When real-money adapters are added (Sprint 3), they will have
+              an inverse check requiring TRADING_ENV=mainnet
         """
+        # CONSTITUTIONAL GUARD (Principle IX):
+        # Verify this client is only used in paper trading mode
+        from config.settings import Settings
+
+        if not Settings.is_paper_trading():
+            raise ValueError(
+                f"PaperExecutionClient CANNOT be used when TRADING_ENV={Settings.TRADING_ENV}. "
+                f"PaperExecutionClient is for paper trading only (TRADING_ENV=paper). "
+                f"This is a constitutional guard preventing accidental real-money order placement. "
+                f"See .specify/memory/constitution.md Principle IX."
+            )
+
         self._fee_rate_pct = fee_rate_pct
         self._spread_pct = spread_pct
         self._slippage_factor = slippage_factor

@@ -14,4 +14,4 @@ importing_modules = ["trading.risk"]
 # Forbid imports from execution.adapters in other layers (Constitutional Principle IV)
 [[forbidden_modules_importing]]
 modules = ["trading.execution.adapters"]
-importing_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest"]
+importing_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"]

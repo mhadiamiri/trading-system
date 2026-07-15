@@ -4,7 +4,8 @@ Configuration Settings
 Load settings from environment variables and provide defaults.
 
 Constitutional Principles:
-- IX. Secrets and Safety Rails: Credentials from .env only
+- VII. Venue Independence: DATA_SOURCE selects market data feed
+- IX. Secrets and Safety Rails: TRADING_ENV gates execution only
 """
 
 import os
@@ -19,24 +20,26 @@ class Settings:
     """
     Application settings loaded from environment.
 
-    Credential handling:
-    - All credentials read from .env only (Principle IX)
-    - .env.example shows variable names only
+    Constitutional requirements:
+    - DATA_SOURCE selects market data feed (may point at mainnet public feed)
+    - TRADING_ENV gates execution only (paper/mainnet)
+    - No credentials required for public data feeds (Principle IX)
+    - No code path can place real orders while TRADING_ENV=paper
     """
 
-    # Trading environment (testnet only for safety)
-    TRADING_ENV: Literal["testnet", "mainnet"] = os.getenv(
-        "TRADING_ENV", "testnet"
+    # Data source: selects market data feed (independent of execution)
+    # Options: simulated, kraken_public
+    DATA_SOURCE: Literal["simulated", "kraken_public"] = os.getenv(
+        "DATA_SOURCE", "simulated"
     )
 
-    # Feed type selection
-    FEED_TYPE: Literal["simulated", "bybit_testnet"] = os.getenv(
-        "FEED_TYPE", "simulated"
+    # Trading environment: gates execution only (not data access)
+    # Options: paper, mainnet, test
+    # Default to paper for safety - requires explicit override for mainnet
+    # test: paper-equivalent mode for testing suspenders guard only
+    TRADING_ENV: Literal["paper", "mainnet", "test"] = os.getenv(
+        "TRADING_ENV", "paper"
     )
-
-    # Bybit API credentials (for testnet)
-    BYBIT_API_KEY: str = os.getenv("BYBIT_API_KEY", "")
-    BYBIT_API_SECRET: str = os.getenv("BYBIT_API_SECRET", "")
 
     # Data persistence
     DATA_DIR: str = os.getenv("DATA_DIR", "data")
@@ -49,27 +52,55 @@ class Settings:
 
         Raises:
             ValueError: If settings are invalid
-        """
-        if cls.TRADING_ENV not in ("testnet", "mainnet"):
-            raise ValueError(f"Invalid TRADING_ENV: {cls.TRADING_ENV}")
 
-        if cls.TRADING_ENV == "mainnet":
+        Constitutional requirements:
+        - DATA_SOURCE must be valid
+        - TRADING_ENV=paper is default (safe), mainnet requires explicit override
+        - No credentials are required for public data feeds
+        """
+        if cls.DATA_SOURCE not in ("simulated", "kraken_public"):
             raise ValueError(
-                "Mainnet is not allowed in development. "
-                "Set TRADING_ENV=testnet in .env"
+                f"Invalid DATA_SOURCE: {cls.DATA_SOURCE}. "
+                f"Must be 'simulated' or 'kraken_public'."
             )
 
-        if cls.FEED_TYPE == "bybit_testnet":
-            if not cls.BYBIT_API_KEY or not cls.BYBIT_API_SECRET:
-                raise ValueError(
-                    "BYBIT_API_KEY and BYBIT_API_SECRET required "
-                    "when FEED_TYPE=bybit_testnet"
-                )
+        if cls.TRADING_ENV not in ("paper", "mainnet", "test"):
+            raise ValueError(
+                f"Invalid TRADING_ENV: {cls.TRADING_ENV}. "
+                f"Must be 'paper', 'mainnet', or 'test'."
+            )
+
+        # CONSTITUTIONAL GUARD (Principle IX, Phase-1 Scope):
+        # Real-money trading is OUT OF SCOPE for Phase 1.
+        # TRADING_ENV=mainnet is blocked to prevent accidental real-money orders.
+        # This guard can only be relaxed by a constitutional amendment or
+        # explicit Strategy & Roadmap decision for Phase 3.
+        if cls.TRADING_ENV == "mainnet":
+            raise ValueError(
+                "TRADING_ENV=mainnet is BLOCKED by constitutional guard. "
+                "Phase 1 scope permits paper trading only. "
+                "No code path can place real-money orders in Phase 1. "
+                "To proceed with real-money execution, a constitutional amendment "
+                "or explicit Strategy & Roadmap decision for Phase 3 is required. "
+                "See .specify/memory/constitution.md Principle IX and Phase-1 Scope."
+            )
+
+        # No credentials should be required for any data source (public feeds only)
 
     @classmethod
     def using_live_feed(cls) -> bool:
-        """Check if using live feed."""
-        return cls.FEED_TYPE == "bybit_testnet"
+        """Check if using live feed (vs simulated)."""
+        return cls.DATA_SOURCE == "kraken_public"
+
+    @classmethod
+    def is_paper_trading(cls) -> bool:
+        """
+        Check if running in paper trading mode.
+
+        Returns True only for TRADING_ENV=paper.
+        Returns False for mainnet and test, allowing suspenders guard to be tested.
+        """
+        return cls.TRADING_ENV == "paper"
 
 
 # Validate on import

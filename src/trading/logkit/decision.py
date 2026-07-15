@@ -72,7 +72,7 @@ class DecisionLogger:
             layer: Decision layer (STRATEGY, RISK, EXECUTION, BACKTEST)
             event_type: Event type (e.g., "NO_SIGNAL", "PASS", "CLAMP", "VETO")
             reason_code: Controlled vocabulary reason code
-            venue: Venue identifier (e.g., "bybit_testnet")
+            venue: Venue identifier (e.g., "kraken_public", "simulated")
             symbol: Trading pair
             side: Order side (None for no-signal decisions)
             size: Order size (None for no-signal decisions)

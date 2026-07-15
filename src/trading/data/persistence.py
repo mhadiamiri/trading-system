@@ -53,6 +53,9 @@ class MarketDataPersistence:
             ("volume_24h", pa.string()),
         ])
 
+        # Diagnostic counter
+        self._rows_written = 0
+
     def _get_file_path(self) -> Path:
         """
         Get file path for current session.
@@ -112,6 +115,7 @@ class MarketDataPersistence:
 
         # Write to file
         self._writer.write_table(pa.Table.from_batches([record]))
+        self._rows_written += 1
 
     def _close_writer(self) -> None:
         """Close current writer if open."""
@@ -134,7 +138,7 @@ class MarketDataPersistence:
         Get information about current data file.
 
         Returns:
-            Dict with file info (path, exists, size, event_count)
+            Dict with file info (path, exists, size, event_count, rows_written)
         """
         file_path = self._get_file_path()
         info = {
@@ -142,6 +146,7 @@ class MarketDataPersistence:
             "exists": file_path.exists(),
             "size_bytes": 0,
             "event_count": 0,
+            "rows_written": self._rows_written,
         }
 
         if file_path.exists():
@@ -153,6 +158,19 @@ class MarketDataPersistence:
                 print(f"Warning: Could not read data file: {e}")
 
         return info
+
+    def get_rows_written(self) -> int:
+        """
+        Get the number of rows written in this session.
+
+        Returns:
+            Number of rows written
+        """
+        return self._rows_written
+
+    def reset_counter(self) -> None:
+        """Reset the rows written counter."""
+        self._rows_written = 0
 
     def __del__(self):
         """Cleanup on deletion."""
