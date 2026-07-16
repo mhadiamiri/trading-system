@@ -1,0 +1,364 @@
+# Data Adapter Interface Contract
+
+**Feature**: 002-quote-level-data
+**Version**: 2.0 (Kraken v2 book adapter)
+**Date**: 2026-07-15
+
+---
+
+## Purpose
+
+This contract defines the interface between market data adapters and the rest of the system. All adapters must implement this contract to ensure:
+
+1. **Venue independence** (Principle VII) — No venue-specific detail leaks above the adapter
+2. **Observable honesty** (Principle V) — Cost model uses real observed spread only
+3. **Fail-safe behavior** — Pause on unavailable data, never emit synthetic/fallback values
+
+---
+
+## Consumer Requirements
+
+The following modules consume the data adapter interface and depend on this contract:
+
+- `trading.strategy.*` — Strategy implementations (`decide(market_state)`)
+- `trading.risk.*` — Risk engine (`check(desired_position, market_state)`)
+- `trading.backtest.*` — Backtest runner and cost model
+- `trading.loop.live` — Live trading loop orchestrator
+- `trading.execution.paper` — Paper execution (cost model)
+
+---
+
+## Adapter Interface
+
+### Abstract Base
+
+```python
+from abc import ABC, abstractmethod
+from trading.data.market_state import MarketState
+from trading.data.desired_position import DesiredPosition
+from trading.logkit.decision import ReasonCode
+
+class MarketFeed(ABC):
+    """Abstract market data feed."""
+
+    @abstractmethod
+    async def subscribe(self) -> None:
+        """Subscribe to data source. Raises FeedError if unavailable."""
+        pass
+
+    @abstractmethod
+    async def market_states(self) -> AsyncIterator[MarketState]:
+        """
+        Yield MarketState objects.
+
+        Semantics:
+        - MUST yield only when data is valid and complete
+        - MUST yield NOTHING (pause) when primary data unavailable
+        - MUST NEVER yield MarketState with null/stale/synthetic fields
+        - MUST log non-yield events with reason code
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def venue_name(self) -> str:
+        """Return venue identifier (e.g., 'kraken_public', 'simulated')."""
+        pass
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close connection and cleanup."""
+        pass
+```
+
+### MarketFeed Exceptions
+
+```python
+class FeedError(Exception):
+    """Base exception for feed errors."""
+    pass
+
+class FeedUnavailableError(FeedError):
+    """Primary data channel unavailable. System must pause."""
+    pass
+
+class ChecksumValidationError(FeedError):
+    """Checksum validation failed. Update rejected; recovery triggered."""
+    pass
+
+class SequenceGapError(FeedError):
+    """Sequence gap detected. Book discarded; resnapshot triggered."""
+    pass
+```
+
+---
+
+## MarketState Contract
+
+### Required Fields (Sprint 2)
+
+```python
+@dataclass
+class MarketState:
+    timestamp: datetime      # Event timestamp (UTC)
+    symbol: str              # Trading pair
+    best_bid: Decimal        # Best bid price (>0)
+    best_ask: Decimal        # Best ask price (>0)
+    best_bid_size: Decimal   # Size at best bid (>=0)
+    best_ask_size: Decimal   # Size at best ask (>=0)
+    mid_price: Decimal       # Derived: (bid + ask) / 2
+    spread: Decimal          # Derived: ask - bid (>=0)
+    trade_count: int         # Trades in rolling window (>=0)
+    total_volume: Decimal    # Total volume in rolling window (>=0)
+    last_price: Optional[Decimal]  # Last trade price in window
+```
+
+### Validation Contract
+
+All MarketState objects emitted by adapters MUST satisfy:
+
+```python
+def validate_market_state(ms: MarketState) -> bool:
+    """Verify MarketState is valid for consumption."""
+    assert ms.timestamp is not None
+    assert ms.best_bid > 0
+    assert ms.best_ask > 0
+    assert ms.best_bid < ms.best_ask  # Positive spread
+    assert ms.mid_price == (ms.best_bid + ms.best_ask) / 2
+    assert ms.spread == ms.best_ask - ms.best_bid
+    assert ms.trade_count >= 0
+    assert ms.total_volume >= 0
+    return True
+```
+
+### Pause Contract
+
+When primary data unavailable, adapter MUST:
+
+1. **Stop yielding** MarketState objects
+2. **Log** with reason code (e.g., `PAUSE_ON_BOOK_UNAVAILABLE`)
+3. **Resume** only when data recovers and validation passes
+
+**Forbidden patterns**:
+```python
+# FORBIDDEN: Never yield null/stale fields
+yield MarketState(best_bid=None, best_ask=None, ...)
+
+# FORBIDDEN: Never yield synthetic spread
+yield MarketState(best_bid=last_known_bid, best_ask=last_known_ask, ...)
+
+# FORBIDDEN: Never assume spread on unavailable data
+yield MarketState(best_bid=0, best_ask=estimated_spread, ...)
+```
+
+---
+
+## Adapter Implementations
+
+### KrakenV2BookAdapter (NEW)
+
+**Module**: `src/trading/data/adapters/kraken_v2_book.py`
+
+**Venue**: Kraken WebSocket v2
+
+**Primary Channel**: Book (top-of-book: best bid/ask)
+
+**Secondary Channel**: Trades (enrichment: rolling stats)
+
+**Responsibilities**:
+- Subscribe to v2 book and trades channels
+- Maintain local book state with checksum validation
+- Detect sequence gaps and trigger resnapshot
+- Pause on book unavailability
+- Emit MarketState per contract above
+
+**Venue-Specific Details** (must NOT leak):
+- v2 protocol (snapshot/incremental format)
+- CRC checksum algorithm
+- Sequence number tracking
+- Resync/resnapshot logic
+
+**External Interface** (exposed above adapter):
+```python
+# Only these imports allowed above adapter:
+from trading.data.adapters import KrakenV2BookAdapter
+from trading.data.market_state import MarketState
+```
+
+### SimulatedMarketFeed (EXISTING, UPDATED)
+
+**Module**: `src/trading/data/adapters/simulated_feed.py`
+
+**Changes for Sprint 2**:
+- Add quote-centric fields to MarketState output
+- Maintain backward compatibility with existing tests
+
+### KrakenPublicFeed (DEPRECATED)
+
+**Module**: `src/trading/data/adapters/kraken_public.py`
+
+**Status**: Deprecated (v1 trades-only feed)
+
+**Action**: Mark deprecated; remove in Sprint 3
+
+---
+
+## Import-Linter Contracts
+
+### New Contract: v2/book/checksum Boundary
+
+**Module**: `.importlinter.yaml`
+
+**Contract**:
+```yaml
+- name: Forbidden v2-book-checksum imports above adapter
+  type: forbidden
+  rules:
+    - importing_modules:
+        - trading.strategy
+        - trading.risk
+        - trading.execution
+        - trading.backtest
+        - trading.loop
+      forbidden_modules:
+        - trading.data.adapters.kraken_v2_book
+      forbidden_imports:
+        - from trading.data.adapters.kraken_v2_book import
+        - import trading.data.adapters.kraken_v2_book
+      ignore_imports:
+        - from trading.data.adapters import KrakenV2BookAdapter  # Factory import only
+  rationale: >
+    Principle VII requires venue-specific detail confined to adapter.
+    This is the clean re-test after prior leak into loop/.
+```
+
+### Updated Contract: Loop Isolation
+
+**Module**: `.importlinter.yaml`
+
+**Existing contract (from Sprint 1)**: Loop cannot import adapters directly
+
+**Enforcement**:
+```yaml
+- name: Forbidden adapter imports in loop
+  type: forbidden
+  rules:
+    - importing_modules:
+        - trading.loop
+      forbidden_modules:
+        - trading.data.adapters.kraken_public
+        - trading.data.adapters.kraken_v2_book
+        - trading.data.adapters.simulated_feed
+  rationale: >
+    Loop must use factory.get_feed() only.
+    Direct adapter imports violate Principle VII.
+```
+
+---
+
+## Factory Contract
+
+### get_feed() Function
+
+**Module**: `src/trading/data/adapters/__init__.py`
+
+**Signature**:
+```python
+def get_feed(data_source: str) -> MarketFeed:
+    """
+    Return MarketFeed instance for data_source.
+
+    Args:
+        data_source: 'simulated', 'kraken_public', 'kraken_v2'
+
+    Returns:
+        MarketFeed implementation
+
+    Raises:
+        ValueError: Unknown data_source
+    """
+    if data_source == 'simulated':
+        return SimulatedMarketFeed()
+    elif data_source == 'kraken_v2':
+        return KrakenV2BookAdapter()
+    else:
+        raise ValueError(f"Unknown data_source: {data_source}")
+```
+
+### get_venue_name() Function
+
+**Module**: `src/trading/data/adapters/__init__.py`
+
+**Signature**:
+```python
+def get_venue_name(feed: MarketFeed) -> str:
+    """Return venue name for feed."""
+    return feed.venue_name
+```
+
+---
+
+## Testing Contracts
+
+### Adapter Tests Must Verify
+
+1. **Happy path**: Valid quotes yield valid MarketState
+2. **Checksum rejection**: Corrupted update rejected; logged
+3. **Recovery**: Resync after 5 failures; resnapshot after gap
+4. **Pause**: No yield on book unavailable; logs reason code
+5. **No synthetic spread**: Null/abnormal spread never emitted
+
+### Integration Tests Must Verify
+
+1. **Loop pause**: live loop pauses when book unavailable
+2. **Backtest honesty**: Replay from stored quotes uses observed spread only
+3. **Cost model**: Spread cost computed from bid/ask; no fallback
+
+---
+
+## Reason Codes
+
+### New Codes for Sprint 2
+
+These codes MUST be emitted for non-yield events:
+
+| Code | Context | Semantics |
+|-----|---------|-----------|
+| `PAUSE_ON_BOOK_UNAVAILABLE` | Book channel lost | System paused; no MarketStates until recovery |
+| `CHECKSUM_RESYNC` | 5 consecutive failures | Reconnecting and resyncing book |
+| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+| `ABNORMAL_SPREAD_REJECT` | Spread zero/negative/wide | Trade rejected by cost model |
+
+**Implementation**: Add to `LAYER_VERB_DETAIL` in `trading/logkit/decision.py`
+
+---
+
+## Compliance Matrix
+
+| Principle | Contract Enforcement | Status |
+|-----------|---------------------|--------|
+| I. Truth Before Profit | MarketState validation; no synthetic spread | ✅ Contract defined |
+| IV. Layered Architecture | Import-linter contracts for v2/book boundary | ✅ Contract defined |
+| V. No Backtest Without Costs | Observed spread only; pause on unavailable | ✅ Contract defined |
+| VII. Venue Independence | v2 detail confined to adapter module | ✅ Contract defined |
+| VIII. Total Observability | Reason codes for all non-yield events | ✅ Contract defined |
+
+---
+
+## Summary
+
+**This contract ensures**:
+1. Above the adapter, only `MarketState` (standard interface) is visible
+2. No v2/book/checksum detail leaks into strategy/risk/execution/backtest/loop
+3. Cost model uses real observed spread only (no synthetic/fallback)
+4. System pauses on unavailable data (never emits bad data)
+5. All decisions are observable via reason codes
+
+**Import-linter enforces**:
+- v2/book/checksum imports blocked above adapter
+- Loop uses factory only (no direct adapter imports)
+
+**Tests prove**:
+- Checksum validation bites
+- Recovery fires correctly
+- No synthetic spread path exists

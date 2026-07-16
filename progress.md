@@ -1,15 +1,15 @@
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-15 (Session 2)
-**Current Phase**: Sprint 2 Spec Complete ✅ | Quote-Level Data + Observed Spread Cost Model
-**Status**: Specification Ready for Planning Phase
+**Last Updated**: 2026-07-15 (Session 3)
+**Current Phase**: Sprint 2 Planning Complete ✅ | Quote-Level Data + Observed Spread Cost Model
+**Status**: Task List Ready for Implementation
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 
 ---
 
 ## Executive Summary
 
-A systematic crypto trading system built on constitutional principles. The project has completed Sprint 1 (Walking Skeleton) and successfully executed a venue swap from Bybit testnet to Kraken mainnet public feed. All safety guards have been verified with fail-then-pass proofs. **Sprint 2 specification (WO-003) is now complete** with all clarifications resolved and committed. Ready to proceed to planning phase.
+A systematic crypto trading system built on constitutional principles. The project has completed Sprint 1 (Walking Skeleton) and successfully executed a venue swap from Bybit testnet to Kraken mainnet public feed. All safety guards have been verified with fail-then-pass proofs. **Sprint 2 planning (WO-004, WO-005) is now complete** with all artifacts generated, analyzed, and task list ready. Ready to proceed to implementation phase.
 
 ### Key Achievements
 - ✅ Walking skeleton complete (36/36 tests passing)
@@ -19,7 +19,10 @@ A systematic crypto trading system built on constitutional principles. The proje
 - ✅ All four constitutional guards verified with fail-then-pass proofs
 - ✅ WO-002-C and WO-002-D completed
 - ✅ Code pushed to private GitHub repository
-- ✅ **WO-003: Sprint 2 spec complete with all clarifications resolved**
+- ✅ WO-003: Sprint 2 spec complete with all clarifications resolved
+- ✅ **WO-004: Implementation plan generated (plan.md, research.md, data-model.md, contracts/, quickstart.md)**
+- ✅ **WO-005-A: Cross-artifact consistency analyze — CLEAN**
+- ✅ **WO-005-B: Task list generated (41 tasks across 10 phases)**
 
 ---
 
@@ -238,7 +241,157 @@ python -m trading.backtest.runner
    - Pushed to private GitHub repository
    - Spec ready for planning phase
 
-### Previous Status (Session 1 - WO-002 Complete)
+---
+
+## Current Status (Session 3 - 2026-07-15)
+
+### ✅ Recent Updates - Sprint 2 Planning Complete (WO-004, WO-005)
+
+**Major Work Completed (Session 3):**
+
+#### WO-004: Implementation Plan Generated ✅
+
+**Artifacts Created:**
+1. **plan.md** — Implementation plan with:
+   - Technical context (Python 3.11+, dependencies, storage)
+   - Constraints (no synthetic spread, v2/book detail confined to adapter)
+   - Constitution Check (pre-design and post-design evaluations)
+   - Project structure (all files that need changes)
+   - Load-bearing items verified
+
+2. **research.md** — 10 technical decisions:
+   - Decision 1: Kraken v2 vs v1 (migrate to v2 book channel)
+   - Decision 2: Local book maintenance strategy (checksum + sequence tracking)
+   - Decision 3: Abnormal spread handling (REJECT trade, no fallback)
+   - Decision 4: Rolling trade window (100 trades AND 60 seconds, hybrid)
+   - Decision 5: Book unavailable behavior (PAUSE, no trades-only mode)
+   - Decision 6: Adapter placement & boundary (all v2 detail in kraken_v2_book.py)
+   - Decision 7: MarketState schema changes (quote-centric fields)
+   - Decision 8: Backtest data storage (Parquet append-only, raw quotes)
+   - Decision 9: Checksum/recovery testing strategy (fail-then-pass proofs)
+   - Decision 10: Reason code vocabulary additions
+
+3. **data-model.md** — 4 entities defined:
+   - LocalBookState (adapter-internal)
+   - MarketState (modified — quote-centric)
+   - RollingTradeStats (adapter-internal)
+   - QuoteUpdate (adapter-internal)
+
+4. **contracts/data-adapter.yml** — Interface contracts:
+   - MarketFeed interface (abstract base)
+   - MarketState contract (validation rules, pause contract)
+   - Import-linter contracts (v2/book/checksum boundary, loop isolation)
+   - Factory contract
+   - Testing contracts
+   - Reason codes
+
+5. **quickstart.md** — 10 validation scenarios:
+   - Scenario 1: Quote processing (happy path)
+   - Scenario 2: Checksum validation bites
+   - Scenario 3: Recovery fires (5 failures → resync)
+   - Scenario 4: Sequence gap → resnapshot
+   - Scenario 5: Book unavailable → pause
+   - Scenario 6: Abnormal spread → reject trade
+   - Scenario 7: Observed spread only (no synthetic path)
+   - Scenario 8: Backtest honesty (replay = live)
+   - Scenario 9: Import boundaries enforced
+   - Scenario 10: End-to-end integration
+
+**Constitution Check:**
+- Pre-design evaluation: All 9 principles PASS
+- Post-design evaluation: Principles IV and VII re-verified PASS
+- Adapter boundary confirmed: `src/trading/data/adapters/kraken_v2_book.py`
+- Import-linter contract specified: blocks v2/book/checksum leaks above adapter
+
+**Two Non-Negotiables Verified:**
+1. ✅ No synthetic spread anywhere (Principle V)
+   - FR-011 through FR-015a mandate observed-spread-only
+   - Pause contract: Forbidden patterns block synthetic spread
+   - Research Decision 3: REJECT trade, no fallback
+   - No alternative accepted (all rejected)
+
+2. ✅ v2/book detail confined to adapter (Principle VII)
+   - All v2/book/checksum/sequence/resync detail in kraken_v2_book.py
+   - Import-linter contract blocks leaks (strategy, risk, execution, backtest, loop)
+   - Factory pattern preserved
+
+---
+
+#### WO-005-A: Cross-Artifact Consistency Analyze ✅
+
+**Analyze Result: CLEAN**
+
+**Traceability Matrix:**
+- Spec → Research: 5 clarifications → 10 decisions (100% matched)
+- Spec → Plan: All FRs → constraints enforced (100% covered)
+- Spec → Data Model: All entities defined (100% complete)
+- Spec → Contracts: All enforcement points specified (100% enforced)
+- Quickstart → Spec: 10 scenarios → all requirements covered (100% covered)
+
+**Constitution Alignment:**
+- Principle I (Truth Before Profit): ✅ PASS — Multiple enforcement points
+- Principle II (Walking Skeleton): ✅ PASS — Enhancement to existing loop
+- Principle III (AI Proposes): ✅ PASS — No risk layer changes
+- Principle IV (Layered Architecture): ✅ PASS — Import-linter contract specified
+- Principle V (No Backtest Without Costs): ✅ PASS — Core requirement enforced
+- Principle VI (Risk Sovereign): ✅ PASS — No changes to risk layer
+- Principle VII (Venue Independence): ✅ PASS — Adapter module specified
+- Principle VIII (Total Observability): ✅ PASS — Reason codes specified
+- Principle IX (Secrets and Safety Rails): ✅ PASS — Public feed, no credentials
+
+**Findings:**
+- FINDING-001: Info — plan.md references Bybit in constitution but this sprint uses Kraken (expected, Principle VII permits single-module swap)
+- FINDING-002: Info — "FR has no corresponding task" expected (tasks.md doesn't exist yet, resolves at WO-005-B)
+
+**Load-Bearing Items Verification:**
+1. ✅ Cost model uses observed spread only (multiple enforcement points)
+2. ✅ v2 book checksum validation on every update (tests specified)
+3. ✅ Strategy logic/interface unchanged (no changes)
+
+**Gate Status**: ✅ CLEAN — Ready for tasks generation
+
+---
+
+#### WO-005-B: Task List Generated ✅
+
+**Tasks Generated:** 41 tasks across 10 phases
+
+**Sequencing Constraints (per instructions.md):**
+| Constraint | Tasks | Status |
+|-----------|-------|--------|
+| Import-linter contract early (before adapter internals) | T001 (Phase 1) | ✅ HONORED |
+| Checksum + fail-then-pass test same unit | T005-T008 (tests) + T009-T019 (implementation) in Phase 3 | ✅ HONORED |
+| Explicit no-synthetic-spread tests | T025, T026, T027 (Phase 6) | ✅ HONORED |
+| Backtest reconstructs observed spread from stored raw quotes | T032 (explicit requirement) | ✅ HONORED |
+| MarketState schema change before consumers | T002 (Phase 2) before all consuming tasks | ✅ HONORED |
+| No task changes Strategy interface signature | All tasks honor interface unchanged | ✅ HONORED |
+
+**Task Breakdown by Phase:**
+- Phase 1: Import-Linter Contract (T001) — Establish boundary enforcement first
+- Phase 2: Schema & Interface Changes (T002-T004) — MarketState schema, factory prepared
+- Phase 3: US3 Book Integrity (T005-T019) — Checksum validation + fail-then-pass tests
+- Phase 4: US1 Quote Processing (T020-T021) — Quotes received, MarketState emitted
+- Phase 5: US4 Trades Enrichment (T022-T024) — Rolling stats computed
+- Phase 6: US2 Cost Model (T025-T029) — Observed spread only, abnormal spread reject
+- Phase 7: Backtest Replay (T030-T032) — Replay from stored raw quotes
+- Phase 8: Integration (T033-T036) — Loop handles pause, end-to-end works
+- Phase 9: Regression (T037-T039) — All Sprint 1 tests pass, validation scenarios pass
+- Phase 10: Documentation (T040-T041) — Reason codes documented, deprecated adapters marked
+
+**Parallel Opportunities Identified:**
+- T003, T004 (after T002)
+- T005, T006, T007, T008 (US3 tests)
+- T020, T022 (US1/US4 tests after US3)
+- T025, T026, T027 (US2 tests)
+- T030, T031 (backtest tests)
+- T033, T034 (integration tests)
+- T038, T039, T040, T041 (validation/cleanup)
+
+**Status**: Task list complete; ready for human review before implementation
+
+---
+
+### Previous Status (Session 2 - WO-003 Complete)
 
 **Major Work Completed (Session 1):**
 
@@ -289,11 +442,13 @@ python -m trading.backtest.runner
 - README.md, REPORT.md, progress.md
 - Decision records in docs/decisions/
 
-**Sprint 2: Quote-Level Data + Observed Spread** 🔄 READY FOR PLANNING
-- ✅ Specification complete
+**Sprint 2: Quote-Level Data + Observed Spread** 🔄 READY FOR IMPLEMENTATION
+- ✅ Specification complete (WO-003)
 - ✅ All clarifications resolved
-- 🔄 Ready for `/speckit-plan` phase
-- ⏳ Implementation pending
+- ✅ Implementation plan generated (WO-004)
+- ✅ Cross-artifact analyze — CLEAN (WO-005-A)
+- ✅ Task list generated (WO-005-B)
+- ⏳ Implementation pending (41 tasks across 10 phases)
 - ⏳ Testing pending
 
 ---
@@ -388,8 +543,16 @@ specs/
 │   ├── tasks.md
 │   └── checklists/
 │       └── requirements.md
-└── 002-quote-level-data/           # Sprint 2 spec (ready for planning)
+└── 002-quote-level-data/           # Sprint 2 spec (planning complete)
     ├── spec.md                      # ✅ Complete with clarifications
+    ├── plan.md                      # ✅ Implementation plan (WO-004)
+    ├── research.md                  # ✅ 10 technical decisions
+    ├── data-model.md                 # ✅ 4 entities defined
+    ├── quickstart.md                # ✅ 10 validation scenarios
+    ├── contracts/                   # ✅ Interface contracts
+    │   └── data-adapter.yml         # MarketFeed, MarketState, import-linter
+    ├── analyze-report.md            # ✅ Cross-artifact consistency (WO-005-A)
+    ├── tasks.md                     # ✅ 41 tasks across 10 phases (WO-005-B)
     └── checklists/
         └── requirements.md
 ```
@@ -487,6 +650,31 @@ python -m trading.loop.live
 ---
 
 ## Session History
+
+### 2026-07-15 (Session 3): Sprint 2 Planning Complete
+- **WO-004**: Implementation plan generated for Sprint 2
+- Generated plan.md with technical context and constraints
+- Generated research.md with 10 technical decisions
+- Generated data-model.md with 4 entities defined
+- Generated contracts/data-adapter.yml with interface contracts
+- Generated quickstart.md with 10 validation scenarios
+- Constitution check: All 9 principles PASS
+- Two non-negotiables verified (no synthetic spread, adapter boundary)
+- Pre-approval verification: 3 checks completed
+- **WO-005-A**: Cross-artifact consistency analyze — CLEAN
+  - Traceability matrix: 100% coverage across all artifacts
+  - Constitution alignment: All 9 principles PASS
+  - 2 informational findings (non-blocking)
+  - Load-bearing items: All 3 verified
+- **WO-005-B**: Task list generated — 41 tasks across 10 phases
+  - Sequencing constraints: All 6 honored
+  - Import-linter contract task is early (T001)
+  - Checksum + fail-then-pass test same unit (Phase 3)
+  - Explicit no-synthetic-spread tests (Phase 6)
+  - Backtest replay reconstructs observed spread from stored raw quotes
+  - MarketState schema change before consumers
+  - No task changes Strategy interface signature
+- Status: Task list ready for human review before implementation
 
 ### 2026-07-15 (Session 2): Sprint 2 Spec Complete
 - **WO-003**: Sprint 2 specification created for quote-level data
@@ -625,37 +813,77 @@ This invariant is enforced through:
 
 ### Immediate Actions (Next Session)
 
-1. **Review Sprint 2 spec** (`specs/002-quote-level-data/spec.md`)
-   - All clarifications resolved
-   - Three load-bearing items verified intact
-   - Ready for planning phase
+1. **Review Sprint 2 task list** (`specs/002-quote-level-data/tasks.md`)
+   - 41 tasks across 10 phases
+   - Sequencing constraints honored
+   - Ready for implementation after approval
 
-2. **Run `/speckit-plan`** for Sprint 2
-   - Design implementation strategy
-   - Identify architectural trade-offs
-   - Plan Kraken v2 migration
-   - Plan checksum validation implementation
-   - Plan quote-centric MarketState changes
-   - Plan observed spread cost model changes
+2. **Review Sprint 2 artifacts** (if needed)
+   - `specs/002-quote-level-data/spec.md` — Requirements (WO-003 complete)
+   - `specs/002-quote-level-data/plan.md` — Implementation plan (WO-004 complete)
+   - `specs/002-quote-level-data/research.md` — 10 technical decisions
+   - `specs/002-quote-level-data/data-model.md` — 4 entities defined
+   - `specs/002-quote-level-data/contracts/data-adapter.yml` — Interface contracts
+   - `specs/002-quote-level-data/quickstart.md` — 10 validation scenarios
+   - `specs/002-quote-level-data/analyze-report.md` — Cross-artifact consistency (WO-005-A CLEAN)
+   - `specs/002-quote-level-data/tasks.md` — Task list (WO-005-B complete)
 
-3. **Implementation Phase** (after plan approval)
-   - Execute `/speckit-tasks` to generate actionable tasks
-   - Execute `/speckit-implement` to implement the changes
-   - Verify all tests pass
-   - Verify import-linter contracts satisfied
+3. **Implementation Phase** (after task list approval)
+   - Begin with T001: Update .importlinter.yaml with v2/book/checksum boundary contract
+   - Follow task sequencing: Phase 1 → Phase 2 → Phase 3 → ... → Phase 10
+   - Write tests first (fail-then-pass pattern)
+   - Verify each task completes before proceeding
+   - Run pytest after each phase
+   - Run import-linter lint after boundary changes
 
 ### For Next Session
 1. Review this document for current status
-2. Read `specs/002-quote-level-data/spec.md` for Sprint 2 requirements
-3. Run `pytest` to verify environment
+2. Read `specs/002-quote-level-data/tasks.md` for task breakdown
+3. Run `pytest` to verify Sprint 1 tests still pass
 4. Check `.env` configuration matches intended use
 5. Pull latest from GitHub: `git pull origin master`
-6. Run `/speckit-plan` when ready to begin Sprint 2 planning
+6. Begin implementation with T001 when ready
 
 ---
 
-**Project Status**: 🟡 **SPRINT 2 SPEC COMPLETE** - Ready for planning phase. All clarifications resolved, three load-bearing items verified, constitutional compliance strengthened.
+**Project Status**: 🟢 **SPRINT 2 PLANNING COMPLETE** - Task list ready for implementation. All artifacts generated, cross-artifact consistency verified CLEAN, 41 tasks across 10 phases with sequencing constraints honored.
 
-**Last Session Outcome**: Sprint 2 specification (WO-003) completed with all five clarifications resolved. Committed and pushed to GitHub as `6e1c79a`. Ready for `/speckit-plan` phase.
+**Last Session Outcome**:
+- WO-004: Implementation plan generated (plan.md, research.md, data-model.md, contracts/, quickstart.md)
+- WO-005-A: Cross-artifact consistency analyze — CLEAN (all 9 constitutional principles PASS)
+- WO-005-B: Task list generated (41 tasks across 10 phases, 6 sequencing constraints honored)
 
-**Next Phase**: `/speckit-plan` for Sprint 2 implementation strategy.
+**Next Phase**: Begin implementation with T001 (import-linter contract update) after human review of task list.
+
+---
+
+## Artifacts Summary (Session 3)
+
+### WO-004: Implementation Plan Generated
+| Artifact | Purpose | Status |
+|----------|---------|--------|
+| `plan.md` | Technical context, constraints, constitution check, project structure | ✅ COMPLETE |
+| `research.md` | 10 technical decisions with rationale and alternatives | ✅ COMPLETE |
+| `data-model.md` | 4 entities defined (LocalBookState, MarketState, RollingTradeStats, QuoteUpdate) | ✅ COMPLETE |
+| `contracts/data-adapter.yml` | Interface contracts, import-linter rules, testing contracts | ✅ COMPLETE |
+| `quickstart.md` | 10 validation scenarios with expected outcomes | ✅ COMPLETE |
+
+### WO-005-A: Cross-Artifact Consistency Analyze
+| Check | Result | Details |
+|-------|--------|---------|
+| Spec → Research traceability | ✅ 100% | 5 clarifications → 10 decisions |
+| Spec → Plan traceability | ✅ 100% | All FRs → constraints enforced |
+| Spec → Data Model traceability | ✅ 100% | All entities defined |
+| Spec → Contracts traceability | ✅ 100% | All enforcement points specified |
+| Quickstart → Spec traceability | ✅ 100% | 10 scenarios → all requirements |
+| Constitution alignment | ✅ 100% | All 9 principles PASS |
+| Load-bearing items | ✅ 3/3 | All verified |
+
+### WO-005-B: Task List Generated
+| Metric | Value |
+|-------|-------|
+| Total tasks | 41 |
+| Phases | 10 |
+| Sequencing constraints | 6 honored |
+| Parallel opportunities | Multiple identified |
+| Critical path phases | Phase 1 → Phase 2 → Phase 3 → Phase 6 → Phase 7 → Phase 8 → Phase 9 |
