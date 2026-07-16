@@ -49,5 +49,7 @@ root_package = "trading"
 include_external_packages = true
 contracts = [
     { type = "forbidden", name = "Forbidden ML in Risk Layer", source_modules = ["trading.risk"], forbidden_modules = ["torch", "tensorflow", "sklearn", "transformers"] },
-    { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.execution.adapters"] }
+    { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.execution.adapters"] },
+    { type = "forbidden", name = "Forbidden v2-book-checksum imports above adapter", source_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_v2_book"] },
+    { type = "forbidden", name = "Forbid loop from importing adapters directly", ignore_imports = ["trading.loop.live -> trading.data.adapters.factory"], source_modules = ["trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] }
 ]

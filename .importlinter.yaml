@@ -11,7 +11,14 @@ module = "trading.data"
 modules = ["torch", "tensorflow", "sklearn", "transformers"]
 importing_modules = ["trading.risk"]
 
-# Forbid imports from execution.adapters in other layers (Constitutional Principle IV)
 [[forbidden_modules_importing]]
 modules = ["trading.execution.adapters"]
 importing_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"]
+
+[[forbidden_modules_importing]]
+modules = ["trading.data.adapters.kraken_v2_book"]
+importing_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"]
+
+[[forbidden_modules_importing]]
+modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"]
+importing_modules = ["trading.loop"]
