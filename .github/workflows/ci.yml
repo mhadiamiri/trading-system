@@ -32,7 +32,7 @@ jobs:
       run: import-linter
 
     - name: Run pytest (Constitutional Requirements verification)
-      run: PYTHONPATH=$PYTHONPATH:$(pwd)/src pytest --cov=src/trading --cov-report=xml --cov-report=term
+      run: pytest --cov=src/trading --cov-report=xml --cov-report=term
 
     - name: Upload coverage
       uses: codecov/codecov-action@v3
