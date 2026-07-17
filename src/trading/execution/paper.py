@@ -34,13 +34,12 @@ class PaperExecutionClient(ExchangeClient):
 
     # Default cost parameters
     DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side
-    DEFAULT_SPREAD_PCT = Decimal("0.05")  # 0.05% spread
+    # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - pass observed spread
     DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # 0.1% slippage factor
 
     def __init__(
         self,
         fee_rate_pct: Decimal = DEFAULT_FEE_RATE_PCT,
-        spread_pct: Decimal = DEFAULT_SPREAD_PCT,
         slippage_factor: Decimal = DEFAULT_SLIPPAGE_FACTOR,
     ) -> None:
         """
@@ -48,8 +47,7 @@ class PaperExecutionClient(ExchangeClient):
 
         Args:
             fee_rate_pct: Trading fee rate as percentage (default 0.1%)
-            spread_pct: Bid/ask spread as percentage (default 0.05%)
-            slippage_factor: Slippage adjustment factor (default 0.001)
+            slippage_factor: Slippage adjustment factor (default 0.001%)
 
         Raises:
             ValueError: If TRADING_ENV is not 'paper' (constitutional guard)
@@ -59,6 +57,10 @@ class PaperExecutionClient(ExchangeClient):
             - This ensures no real-money orders can be placed in paper mode
             - When real-money adapters are added (Sprint 3), they will have
               an inverse check requiring TRADING_ENV=mainnet
+
+        Note (T028):
+            spread_pct parameter REMOVED: No synthetic spread allowed.
+            Pass observed spread to _simulate_fill() instead.
         """
         # CONSTITUTIONAL GUARD (Principle IX):
         # Verify this client is only used in paper trading mode
@@ -73,7 +75,6 @@ class PaperExecutionClient(ExchangeClient):
             )
 
         self._fee_rate_pct = fee_rate_pct
-        self._spread_pct = spread_pct
         self._slippage_factor = slippage_factor
         self._orders: dict[str, dict] = {}  # Simulated order book
 
@@ -157,7 +158,8 @@ class PaperExecutionClient(ExchangeClient):
         return
 
     def _simulate_fill(
-        self, symbol: str, side: str, size: float, price: float
+        self, symbol: str, side: str, size: float, price: float,
+        spread_cost: Decimal = None
     ) -> Fill:
         """
         Simulate fill with realistic cost modeling.
@@ -167,13 +169,24 @@ class PaperExecutionClient(ExchangeClient):
             side: "BUY" or "SELL"
             size: Order size
             price: Intended price
+            spread_cost: Observed spread cost from market (required for T028)
 
         Returns:
             Fill with all cost components
 
         Constitutional requirements:
             - All costs included (Principle I: Truth Before Profit)
+            - No synthetic spread (T028): spread_cost must be passed in
+
+        Raises:
+            ValueError: If spread_cost is not provided (T028: no synthetic spread)
         """
+        if spread_cost is None:
+            raise ValueError(
+                "spread_cost is required (T028: no synthetic spread). "
+                "Use calculate_costs_from_market_state() to get observed spread cost."
+            )
+
         size_dec = Decimal(str(size))
         price_dec = Decimal(str(price))
         notional = size_dec * price_dec
@@ -181,14 +194,14 @@ class PaperExecutionClient(ExchangeClient):
         # Calculate trading fee
         fees = notional * (self._fee_rate_pct / Decimal("100"))
 
-        # Calculate spread cost
-        spread_cost = notional * (self._spread_pct / Decimal("100"))
+        # Use observed spread cost (passed in, not synthetic)
+        spread_cost_dec = Decimal(str(spread_cost))
 
         # Calculate slippage cost
         slippage_cost = notional * self._slippage_factor
 
         # Total cost
-        total_cost = fees + spread_cost + slippage_cost
+        total_cost = fees + spread_cost_dec + slippage_cost
 
         # CAD value (assume 1 USD = 1.35 CAD for simplicity)
         cad_value = notional * Decimal("1.35")
@@ -199,7 +212,7 @@ class PaperExecutionClient(ExchangeClient):
             side=side,
             size=size_dec,
             fill_price=price_dec,
-            spread_cost=spread_cost,
+            spread_cost=spread_cost_dec,
             slippage_cost=slippage_cost,
             fees=fees,
             total_cost=total_cost,

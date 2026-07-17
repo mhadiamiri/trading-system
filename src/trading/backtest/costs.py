@@ -6,12 +6,19 @@ Models realistic trading costs: fees, spread, and slippage.
 Constitutional Principles:
 - I. Truth Before Profit: All costs modeled explicitly
 - V. No Backtest Without Costs: No cost-free code path
+- FR-011: Spread cost computed from observed bid/ask
+- FR-015a: No synthetic spread anywhere
+- FR-015b: REJECT trade on abnormal spread
 """
 
 from decimal import Decimal
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional, TYPE_CHECKING
 from enum import Enum
+
+# Avoid circular import
+if TYPE_CHECKING:
+    from trading.data.market_state import MarketState
 
 
 class Side(Enum):
@@ -60,13 +67,12 @@ class CostModel:
 
     # Default parameters (configurable)
     DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side
-    DEFAULT_SPREAD_PCT = Decimal("0.01")  # 0.01% spread (0.5 bps)
+    # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - use calculate_costs_from_market_state()
     DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # Linear slippage factor
 
     def __init__(
         self,
         fee_rate_pct: Decimal = None,
-        spread_pct: Decimal = None,
         slippage_factor: Decimal = None,
     ) -> None:
         """
@@ -74,11 +80,13 @@ class CostModel:
 
         Args:
             fee_rate_pct: Taker fee rate as % of notional (default 0.1%)
-            spread_pct: Bid/ask spread as % of mid-price (default 0.01%)
             slippage_factor: Linear slippage factor (default 0.001)
+
+        Note:
+            spread_pct parameter REMOVED (T028): No synthetic spread allowed.
+            Use calculate_costs_from_market_state() with observed spread instead.
         """
         self._fee_rate_pct = fee_rate_pct or self.DEFAULT_FEE_RATE_PCT
-        self._spread_pct = spread_pct or self.DEFAULT_SPREAD_PCT
         self._slippage_factor = slippage_factor or self.DEFAULT_SLIPPAGE_FACTOR
 
     def calculate_costs(
@@ -89,50 +97,19 @@ class CostModel:
         avg_volume: Decimal = Decimal("1000"),
     ) -> CostBreakdown:
         """
-        Calculate all trading costs for an order.
+        DEPRECATED (T028): No synthetic spread allowed.
 
-        Args:
-            side: Order side (BUY or SELL)
-            size: Order size in base currency
-            price: Mid-price or reference price
-            avg_volume: Average volume for slippage calculation (default 1000)
+        Use calculate_costs_from_market_state() with observed spread instead.
 
-        Returns:
-            CostBreakdown with all cost components
+        This method is kept for backward compatibility but now raises an error
+        to prevent synthetic spread usage.
 
-        Constitutional requirements:
-            - Fees applied to every trade (Principle V)
-            - Spread applied on both entry and exit
-            - Slippage reduces fill prices
-            - No cost-free code path exists
+        Raises:
+            NotImplementedError: Always - use calculate_costs_from_market_state()
         """
-        notional = size * price
-
-        # 1. Trading fees (taker fee for momentum strategy)
-        fees = notional * (self._fee_rate_pct / Decimal("100"))
-
-        # 2. Spread cost (buy at ask, sell at bid)
-        # Spread is paid on both entry and exit
-        spread_cost = notional * (self._spread_pct / Decimal("100"))
-
-        # 3. Slippage (linear function of order size vs liquidity)
-        # Slippage increases with order size relative to average volume
-        volume_ratio = size / avg_volume if avg_volume > 0 else Decimal("0")
-        slippage_cost = notional * self._slippage_factor * volume_ratio
-
-        # Round to 2 decimal places
-        fees_rounded = fees.quantize(Decimal("0.01"))
-        spread_rounded = spread_cost.quantize(Decimal("0.01"))
-        slippage_rounded = slippage_cost.quantize(Decimal("0.01"))
-
-        # Calculate total from rounded components to ensure validation passes
-        total_rounded = (fees_rounded + spread_rounded + slippage_rounded).quantize(Decimal("0.01"))
-
-        return CostBreakdown(
-            fees=fees_rounded,
-            spread_cost=spread_rounded,
-            slippage_cost=slippage_rounded,
-            total_cost=total_rounded,
+        raise NotImplementedError(
+            "calculate_costs() is DEPRECATED (T028: no synthetic spread). "
+            "Use calculate_costs_from_market_state() with observed bid/ask spread instead."
         )
 
     def get_fill_price(
@@ -143,38 +120,87 @@ class CostModel:
         avg_volume: Decimal = Decimal("1000"),
     ) -> Decimal:
         """
-        Calculate effective fill price including spread and slippage.
+        DEPRECATED (T028): No synthetic spread allowed.
+
+        Use calculate_costs_from_market_state() with observed spread instead.
+
+        This method is kept for backward compatibility but now raises an error
+        to prevent synthetic spread usage.
+
+        Raises:
+            NotImplementedError: Always - use calculate_costs_from_market_state()
+        """
+        raise NotImplementedError(
+            "get_fill_price() is DEPRECATED (T028: no synthetic spread). "
+            "Use calculate_costs_from_market_state() with observed bid/ask spread instead."
+        )
+
+    def calculate_costs_from_market_state(
+        self,
+        side: Side,
+        size: Decimal,
+        market_state: "MarketState",
+        avg_volume: Decimal = Decimal("1000"),
+    ) -> CostBreakdown:
+        """
+        Calculate trading costs using OBSERVED spread from MarketState.
+
+        This is the PRIMARY method for Sprint 2 cost calculation.
+        It uses the actual observed bid/ask spread from the market,
+        NOT any synthetic/assumed/fallback spread.
 
         Args:
             side: Order side (BUY or SELL)
-            mid_price: Mid-price or reference price
-            size: Order size
-            avg_volume: Average volume for slippage calculation
+            size: Order size in base currency
+            market_state: MarketState with observed bid/ask
+            avg_volume: Average volume for slippage calculation (default 1000)
 
         Returns:
-            Effective fill price after spread and slippage
+            CostBreakdown with all cost components
+
+        Raises:
+            ValueError: If spread is abnormal (>5% of mid price)
 
         Constitutional requirements:
-            - Buy at ask (mid + spread/2)
-            - Sell at bid (mid - spread/2)
-            - Slippage worsens the price
+            - FR-011: Spread cost computed from observed bid/ask
+            - FR-015a: No synthetic spread anywhere
+            - FR-015b: REJECT trade on abnormal spread (>5%)
         """
-        costs = self.calculate_costs(side, size, mid_price, avg_volume)
+        # Calculate notional
+        notional = size * market_state.mid_price
 
-        # Calculate spread adjustment (half spread each way)
-        half_spread = mid_price * (self._spread_pct / Decimal("100")) / Decimal("2")
+        # 1. Trading fees (taker fee for momentum strategy)
+        fees = notional * (self._fee_rate_pct / Decimal("100"))
 
-        if side == Side.BUY:
-            # Buy at ask: mid + half spread + slippage impact
-            spread_adjustment = half_spread
-        else:
-            # Sell at bid: mid - half spread - slippage impact
-            spread_adjustment = -half_spread
+        # 2. Check for abnormal spread before calculating spread cost
+        spread_pct = (market_state.spread / market_state.mid_price) * 100
+        if spread_pct > 5:
+            raise ValueError(
+                f"ABNORMAL_SPREAD_REJECT: Spread {spread_pct:.2f}% exceeds 5% threshold. "
+                f"Bid: {market_state.best_bid}, Ask: {market_state.best_ask}, "
+                f"Spread: {market_state.spread}"
+            )
 
-        # Slippage also worsens the price (higher for buy, lower for sell)
-        slippage_per_unit = costs.slippage_cost / size if size > 0 else Decimal("0")
+        # 3. Spread cost using OBSERVED spread (not synthetic)
+        # Buy at ask: pay (ask - mid) = half spread
+        # Sell at bid: pay (mid - bid) = half spread
+        spread_cost = (market_state.spread / Decimal("2")) * size
 
-        if side == Side.BUY:
-            return mid_price + spread_adjustment + slippage_per_unit
-        else:
-            return mid_price + spread_adjustment - slippage_per_unit
+        # 4. Slippage (linear function of order size vs liquidity)
+        volume_ratio = size / avg_volume if avg_volume > 0 else Decimal("0")
+        slippage_cost = notional * self._slippage_factor * volume_ratio
+
+        # Round to 2 decimal places
+        fees_rounded = fees.quantize(Decimal("0.01"))
+        spread_rounded = spread_cost.quantize(Decimal("0.01"))
+        slippage_rounded = slippage_cost.quantize(Decimal("0.01"))
+
+        # Calculate total from rounded components
+        total_rounded = (fees_rounded + spread_rounded + slippage_rounded).quantize(Decimal("0.01"))
+
+        return CostBreakdown(
+            fees=fees_rounded,
+            spread_cost=spread_rounded,
+            slippage_cost=slippage_rounded,
+            total_cost=total_rounded,
+        )
