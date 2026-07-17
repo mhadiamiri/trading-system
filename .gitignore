@@ -13,10 +13,12 @@ credentials*
 *apikey*
 *api_key*
 
-# Data and logs
-data/
-logs/
+# Data and logs (repo root only — NOT source under src/)
+/data/
+/logs/
 *.log
+*.parquet
+*.sqlite
 
 # Python
 __pycache__/
