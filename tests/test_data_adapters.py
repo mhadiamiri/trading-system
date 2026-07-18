@@ -19,7 +19,9 @@ from trading.data.adapters.kraken_v2_book import (
     KrakenV2BookAdapter,
     LocalBookData,
     LocalBookState,
-    QuoteUpdate
+    QuoteUpdate,
+    RollingTradeStats,
+    TradeEvent,
 )
 from trading.data.market_state import MarketState
 
@@ -322,3 +324,202 @@ class TestQuoteUpdate:
         assert quote.bid_price == Decimal("65000.00")
         assert quote.ask_price == Decimal("65005.00")
         assert quote.sequence == 1
+
+
+class TestRollingTradeStats:
+    """
+    Test rolling trade statistics (T022-T024).
+
+    Tests for US4: Trades as Secondary Enrichment.
+
+    Constitutional requirements:
+    - FR-009: Rolling window of 100 trades AND 60 seconds (hybrid truncation)
+    """
+
+    def test_rolling_trade_stats_initialization(self):
+        """
+        Test RollingTradeStats initialization.
+
+        Verifies:
+        - trades list starts empty
+        - window_count_cap defaults to 100
+        - window_time_cap defaults to 60 seconds
+        """
+        stats = RollingTradeStats()
+
+        assert stats.count == 0
+        assert stats.trades == []
+        assert stats.window_count_cap == 100
+        assert stats.window_time_cap == 60
+        assert stats.total_volume == Decimal("0")
+        assert stats.last_price is None
+
+    def test_add_trade_increases_count(self):
+        """
+        Test adding a trade increases count and volume.
+
+        Verifies:
+        - count increments with each trade
+        - total_volume accumulates correctly
+        - last_price updates to most recent trade
+        """
+        stats = RollingTradeStats()
+
+        # Add first trade
+        trade1 = TradeEvent(
+            price=Decimal("65000.00"),
+            size=Decimal("1.5"),
+            timestamp=datetime.now(UTC),
+        )
+        stats.add_trade(trade1)
+
+        assert stats.count == 1
+        assert stats.total_volume == Decimal("1.5")
+        assert stats.last_price == Decimal("65000.00")
+
+        # Add second trade
+        trade2 = TradeEvent(
+            price=Decimal("65100.00"),
+            size=Decimal("2.0"),
+            timestamp=datetime.now(UTC),
+        )
+        stats.add_trade(trade2)
+
+        assert stats.count == 2
+        assert stats.total_volume == Decimal("3.5")
+        assert stats.last_price == Decimal("65100.00")
+
+    def test_window_count_cap_truncation(self):
+        """
+        Test window count cap truncation.
+
+        Verifies that when count exceeds window_count_cap (100),
+        the oldest trades are removed.
+
+        Constitutional requirements:
+        - FR-009: Count cap removes oldest trades when exceeded
+        """
+        stats = RollingTradeStats(window_count_cap=5)
+
+        # Add 10 trades
+        for i in range(10):
+            trade = TradeEvent(
+                price=Decimal(f"6500{i}.00"),
+                size=Decimal("1.0"),
+                timestamp=datetime.now(UTC),
+            )
+            stats.add_trade(trade)
+
+        # Should only have 5 trades (most recent)
+        assert stats.count == 5
+        assert stats.last_price == Decimal("65009.00")
+        # Total volume should be from trades 5-9 (most recent 5)
+        assert stats.total_volume == Decimal("5.0")
+
+    def test_window_time_cap_truncation(self):
+        """
+        Test window time cap truncation.
+
+        Verifies that trades older than window_time_cap (60 seconds)
+        are removed from the window.
+
+        Constitutional requirements:
+        - FR-009: Time cap removes trades older than 60 seconds
+        """
+        from datetime import timedelta
+
+        stats = RollingTradeStats(window_time_cap=60)
+
+        base_time = datetime.now(UTC)
+
+        # Add trade at t=0
+        trade1 = TradeEvent(
+            price=Decimal("65000.00"),
+            size=Decimal("1.0"),
+            timestamp=base_time,
+        )
+        stats.add_trade(trade1, current_timestamp=base_time)
+
+        # Add trade at t=30 seconds
+        trade2 = TradeEvent(
+            price=Decimal("65100.00"),
+            size=Decimal("2.0"),
+            timestamp=base_time + timedelta(seconds=30),
+        )
+        stats.add_trade(trade2, current_timestamp=base_time + timedelta(seconds=30))
+
+        # Add trade at t=90 seconds (past time cap)
+        trade3 = TradeEvent(
+            price=Decimal("65200.00"),
+            size=Decimal("3.0"),
+            timestamp=base_time + timedelta(seconds=90),
+        )
+        stats.add_trade(trade3, current_timestamp=base_time + timedelta(seconds=90))
+
+        # Only trade2 and trade3 should remain (trade1 is older than 60 seconds)
+        assert stats.count == 2
+        assert stats.total_volume == Decimal("5.0")
+        assert stats.last_price == Decimal("65200.00")
+
+    def test_hybrid_truncation_both_caps(self):
+        """
+        Test hybrid truncation with BOTH caps applied.
+
+        Verifies that BOTH count and time caps are applied,
+        not just one or the other.
+
+        Constitutional requirements:
+        - FR-009: Hybrid truncation (BOTH caps applied, not either/or)
+        """
+        from datetime import timedelta
+
+        stats = RollingTradeStats(window_count_cap=5, window_time_cap=60)
+
+        base_time = datetime.now(UTC)
+
+        # Add 10 trades, with timestamps spaced to test hybrid logic
+        for i in range(10):
+            trade = TradeEvent(
+                price=Decimal(f"6500{i}.00"),
+                size=Decimal("1.0"),
+                timestamp=base_time + timedelta(seconds=i * 10),  # 0, 10, 20, ... 90 seconds
+            )
+            # Use current time at 90 seconds for pruning
+            stats.add_trade(trade, current_timestamp=base_time + timedelta(seconds=90))
+
+        # After hybrid truncation:
+        # - Time cap: trades older than 30 seconds (90 - 60 = 30 threshold) removed
+        # - Count cap: if more than 5, keep only 5 most recent
+        # Result: Should have exactly 5 trades (most recent)
+        assert stats.count == 5
+        assert stats.last_price == Decimal("65009.00")
+
+    def test_reset_clears_window(self):
+        """
+        Test reset clears the rolling window.
+
+        Verifies:
+        - All trades are removed
+        - Count returns to 0
+        - Volume returns to 0
+        - Last price returns to None
+        """
+        stats = RollingTradeStats()
+
+        # Add some trades
+        for i in range(5):
+            trade = TradeEvent(
+                price=Decimal(f"6500{i}.00"),
+                size=Decimal("1.0"),
+                timestamp=datetime.now(UTC),
+            )
+            stats.add_trade(trade)
+
+        assert stats.count == 5
+
+        # Reset
+        stats.reset()
+
+        assert stats.count == 0
+        assert stats.total_volume == Decimal("0")
+        assert stats.last_price is None

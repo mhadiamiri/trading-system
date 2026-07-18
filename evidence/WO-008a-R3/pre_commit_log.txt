@@ -1,0 +1,15 @@
+400a28b fix(ci): track all src/trading/data modules previously excluded by unanchored data/ ignore rule
+71eb901 fix(ci): track data-layer modules excluded by unanchored .gitignore data/ pattern
+4aeaa41 chore(ci): remove PYTHONPATH from pytest command (pytest.ini handles it)
+10e0a4d fix(ci): consolidate pytest configs and add pythonpath to resolve ModuleNotFoundError
+73205df fix(ci): add setuptools wheel and PYTHONPATH to fix module import error
+c17c1f7 Revert "fix(ci): add setuptools wheel and PYTHONPATH to fix module import error"
+1b25072 fix(ci): add setuptools wheel and PYTHONPATH to fix module import error
+4be149b Fix CI: Add pip install -e . and setuptools src layout config
+79b8aa8 WO-007 COMPLETE: Phases 4-7 (Quote Processing + Trades Enrichment + Cost Model + Backtest Replay)
+db8ef1e WO-006 COMPLETE: Phases 1-3 foundation (Adapter Boundary + Book Integrity)
+5a4af16 WO-005: Sprint 2 analyze + tasks — quote-level data feature
+1f4e401 docs: Update progress.md with Sprint 2 spec completion status
+6e1c79a spec(002): resolve clarifications — reject-on-anomaly, pause-on-no-book, observed-spread-only
+a33a8bf chore: scrub leaked example key fragment from docs
+59523bb docs: Update progress.md with comprehensive project overview and current status

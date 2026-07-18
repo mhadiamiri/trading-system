@@ -1,0 +1,14 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_live_loop.py::TestThroughputInstrumentationSection2_4::test_counters_diverge_using_pause_mechanism DIVERGENCE PROOF: raw=10, emitted=3
+Mechanism: Pause state (FR-019a) caused 7 messages to not emit
+PASSED
+
+============================== 1 passed in 0.26s ==============================

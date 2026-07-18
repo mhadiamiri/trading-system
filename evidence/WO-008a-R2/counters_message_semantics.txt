@@ -1,0 +1,33 @@
+ANALYSIS: Counter Message Semantics (WO-008a-R2 §1.3(c))
+
+Pipeline Architecture:
+- Fixtures supply QuoteUpdate objects (representing raw book messages)
+- Each QuoteUpdate is processed through _process_quote_update()
+- _process_quote_update() performs: checksum validation, sequence gap check, book update
+- Result: Exactly one MarketState per successful parse, None per rejection
+
+Counter Semantics:
+- raw_messages_received: Incremented at LAYER 1 (feed/parse boundary) for EVERY QuoteUpdate
+- market_states_emitted: Incremented at LAYER 4 (yield boundary) only when MarketState produced
+
+Current Pipeline Behavior:
+- 1:1 correspondence: Each raw QuoteUpdate produces exactly 0 or 1 MarketState
+- No coalescing: Multiple raw updates never combine into one MarketState
+- No accumulation: Raw messages are never buffered for later emission
+- Rejection cases: Checksum failure, sequence gap, pause state
+
+Finding:
+No case exists where raw message count differs from MarketState count WITHOUT being caused by dropping/rejection. The current pipeline architecture is 1:1 by design:
+- Successful parse: 1 raw message → 1 MarketState emitted
+- Failed parse: 1 raw message → 0 MarketStates emitted (rejected)
+
+This is the intended behavior for a quote-centric feed where each update represents the current best bid/ask. The divergence proof (b) already demonstrates that raw_received > market_states_emitted when updates are rejected via pause mechanism.
+
+WO-008a-R2 §1.3(c) Question: "feed a fixture where the raw message count deliberately differs from the MarketState count in a way that is NOT caused by dropping"
+
+Answer: NO SUCH CASE EXISTS in current pipeline. All divergence is caused by dropping (rejection). This is correct behavior for quote-centric feed processing.
+
+Evidence: 
+- Pass-through proof (a): raw=N, emitted=N when all messages succeed
+- Divergence proof (b): raw=10, emitted=3 when 7 messages dropped via pause
+- Rate reporting refusal: Implemented for sub-60s windows per WO-008a-R2

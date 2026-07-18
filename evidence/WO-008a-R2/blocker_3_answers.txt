@@ -1,0 +1,92 @@
+BLOCKER 3: Git Evidence for settings.py
+
+COMMANDS RUN:
+1. git diff config/settings.py
+2. git diff HEAD -- config/settings.py  
+3. git status --short
+4. git log --oneline -15
+5. git log --oneline -- config/settings.py
+
+ANSWERS TO QUESTIONS:
+
+1. Is config/settings.py currently modified relative to HEAD? 
+   ANSWER: YES
+   
+2. If YES, paste every changed line and justify each:
+   
+   CHANGES (all legitimate WO-008a kraken_v2 support):
+   
+   Line 31-32: Added "kraken_v2" to DATA_SOURCE options
+   OLD: # Options: simulated, kraken_public
+        DATA_SOURCE: Literal["simulated", "kraken_public"] = os.getenv(
+   NEW: # Options: simulated, kraken_public, kraken_v2 (Sprint 2: T004 prepared, raises NotImplementedError until T009-T019)
+        DATA_SOURCE: Literal["simulated", "kraken_public", "kraken_v2"] = os.getenv(
+   JUSTIFICATION: Legitimate WO-008a change for kraken_v2 adapter support
+   
+   Line 61: Updated validation to include "kraken_v2"
+   OLD: if cls.DATA_SOURCE not in ("simulated", "kraken_public"):
+   NEW: if cls.DATA_SOURCE not in ("simulated", "kraken_public", "kraken_v2"):
+   JUSTIFICATION: Legitimate WO-008a change for kraken_v2 adapter support
+   
+   Line 63: Updated error message
+   OLD: f"Must be 'simulated' or 'kraken_public'."
+   NEW: f"Must be 'simulated', 'kraken_public', or 'kraken_v2'."
+   JUSTIFICATION: Legitimate WO-008a change for kraken_v2 adapter support
+   
+   Line 93: Updated using_live_feed() to include "kraken_v2"
+   OLD: return cls.DATA_SOURCE == "kraken_public"
+   NEW: return cls.DATA_SOURCE in ("kraken_public", "kraken_v2")
+   JUSTIFICATION: Legitimate WO-008a change for kraken_v2 adapter support
+
+3. Confirm the TRADING_ENV == "mainnet" guard is byte-identical to its pre-WO-008a state:
+   
+   EVIDENCE: git diff shows NO changes to lines 78-86 (the mainnet guard)
+   The mainnet guard code is NOT in the diff, meaning it is unchanged.
+   
+   Current guard source (lines 78-86):
+   if cls.TRADING_ENV == "mainnet":
+       raise ValueError(
+           "TRADING_ENV=mainnet is BLOCKED by constitutional guard. "
+           "Phase 1 scope permits paper trading only. "
+           "No code path can place real-money orders in Phase 1. "
+           "To proceed with real-money execution, a constitutional amendment "
+           "or explicit Strategy & Roadmap decision for Phase 3 is required. "
+           "See .specify/memory/constitution.md Principle IX and Phase-1 Scope."
+       )
+
+4. Reconcile the contradiction:
+   
+   PRIOR CONTRADICTION: 
+   - BLOCKER 3 in WO-008a-R said: "settings.py WAS modified (kraken_v2 lines)"
+   - "Files Changed" in WO-008a-R said: "restored to original state. Git diffs are empty."
+   
+   RESOLUTION:
+   The statement "Git diffs are empty" in WO-008a-R was WRONG.
+   
+   The diff shows kraken_v2 changes ARE present (4 lines changed).
+   These changes are legitimate WO-008a changes for kraken_v2 support.
+   The mainnet guard (lines 78-86) is NOT in the diff and is unchanged.
+   
+   WO-008a-R "Files Changed" section incorrectly stated the diff was empty.
+
+5. Is WO-008a committed?
+   
+   ANSWER: NO
+   
+   EVIDENCE:
+   - git status shows "M config/settings.py" (modified, not staged)
+   - git log --oneline -15 shows no WO-008a commit
+   - All changes are in working directory only, not committed
+   
+   Latest commits are:
+   - 400a28b fix(ci): track all src/trading/data modules...
+   - 71eb901 fix(ci): track data-layer modules excluded...
+   - (No WO-008a or WO-008a-R commits visible)
+   
+   CONCLUSION: WO-008a and WO-008a-R work are NOT committed, all changes are uncommitted working directory modifications.
+
+SUMMARY:
+- settings.py IS modified (4 lines for kraken_v2 support)
+- Mainnet guard (lines 78-86) is INTACT and unchanged
+- Prior statement "diff is empty" was WRONG
+- WO-008a work is NOT committed

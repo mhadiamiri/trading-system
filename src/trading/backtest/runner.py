@@ -18,6 +18,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from trading.data.market_state import MarketState
+from trading.backtest.costs import Side
 from trading.data.fixtures import sample_market_data
 from trading.strategy.interface import Strategy
 from trading.strategy.trivial import TrivialMomentumStrategy
@@ -33,7 +34,7 @@ from config.settings import Settings
 
 def load_market_data_from_parquet(file_path: str) -> List[MarketState]:
     """
-    Load market data from Parquet file.
+    Load market data from Parquet file with quote-centric schema.
 
     Args:
         file_path: Path to Parquet file
@@ -42,7 +43,9 @@ def load_market_data_from_parquet(file_path: str) -> List[MarketState]:
         List of MarketState objects
 
     Constitutional requirements:
-    - Raw data is append-only, never mutated
+    - FR-022: Report data window (start, end, event count)
+    - T032: Reconstruct observed spread from stored raw bid/ask
+    - No pre-computed spread column - spread computed from bid/ask
     """
     if not Path(file_path).exists():
         raise FileNotFoundError(f"Data file not found: {file_path}")
@@ -59,13 +62,19 @@ def load_market_data_from_parquet(file_path: str) -> List[MarketState]:
         else:
             timestamp = ts
 
+        # Load from NEW quote-centric schema (T032: Sprint 2 schema)
+        # Reconstruct MarketState from stored raw bid/ask
+        # Spread is DERIVED from bid/ask, not stored pre-computed
         market_state = MarketState(
             timestamp=timestamp,
             symbol=row["symbol"][0],
-            bid_price=Decimal(row["bid_price"][0]),
-            ask_price=Decimal(row["ask_price"][0]),
-            last_price=Decimal(row["last_price"][0]),
-            volume_24h=Decimal(row["volume_24h"][0]),
+            best_bid=Decimal(row["best_bid"][0]),
+            best_ask=Decimal(row["best_ask"][0]),
+            best_bid_size=Decimal(row["best_bid_size"][0]),
+            best_ask_size=Decimal(row["best_ask_size"][0]),
+            trade_count=int(row["trade_count"][0]),
+            total_volume=Decimal(row["total_volume"][0]),
+            last_price=Decimal(row["last_price"][0]) if row["last_price"][0] else None,
         )
         market_states.append(market_state)
 
@@ -174,7 +183,23 @@ class BacktestRunner:
                 processed_count += 1
                 continue
 
-            # Simulate execution with costs
+            # Simulate execution with costs using OBSERVED spread from MarketState
+            # Use the new cost model method that respects FR-015a (no synthetic spread)
+            try:
+                # Calculate costs from observed market state
+                side_enum = Side.BUY if approved_order.side == "BUY" else Side.SELL
+                costs = self._cost_model.calculate_costs_from_market_state(
+                    side=side_enum,
+                    size=Decimal(str(approved_order.size)),
+                    market_state=market_state,
+                )
+            except ValueError as e:
+                # Abnormal spread detected - reject this trade
+                # Log the rejection and continue to next event
+                print(f"Trade rejected: {e}")
+                continue
+
+            # Simulate execution with calculated costs
             fill = await self._execution_client.place_order(
                 symbol=approved_order.symbol,
                 side=approved_order.side,

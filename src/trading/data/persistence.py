@@ -43,14 +43,19 @@ class MarketDataPersistence:
         self._writer: Optional[pq.ParquetWriter] = None
         self._current_file: Optional[Path] = None
 
-        # Schema for market events
+        # Schema for market events (Sprint 2: quote-centric schema)
         self._schema = pa.schema([
             ("timestamp", pa.timestamp("ns")),
             ("symbol", pa.string()),
-            ("bid_price", pa.string()),
-            ("ask_price", pa.string()),
+            ("best_bid", pa.string()),
+            ("best_ask", pa.string()),
+            ("best_bid_size", pa.string()),
+            ("best_ask_size", pa.string()),
+            ("mid_price", pa.string()),
+            ("spread", pa.string()),
+            ("trade_count", pa.int64()),
+            ("total_volume", pa.string()),
             ("last_price", pa.string()),
-            ("volume_24h", pa.string()),
         ])
 
         # Diagnostic counter
@@ -107,10 +112,15 @@ class MarketDataPersistence:
         record = pa.record_batch([
             [market_state.timestamp],
             [market_state.symbol],
-            [str(market_state.bid_price)],
-            [str(market_state.ask_price)],
-            [str(market_state.last_price)],
-            [str(market_state.volume_24h)],
+            [str(market_state.best_bid)],
+            [str(market_state.best_ask)],
+            [str(market_state.best_bid_size)],
+            [str(market_state.best_ask_size)],
+            [str(market_state.mid_price)],
+            [str(market_state.spread)],
+            [market_state.trade_count],
+            [str(market_state.total_volume)],
+            [str(market_state.last_price)] if market_state.last_price else [None],
         ], schema=self._schema)
 
         # Write to file

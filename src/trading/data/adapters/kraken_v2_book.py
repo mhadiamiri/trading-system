@@ -708,3 +708,217 @@ class KrakenV2BookAdapter:
             timestamp=timestamp,
         )
         self._rolling_stats.add_trade(trade, current_timestamp=timestamp)
+
+    async def get_market_data(self, fixture_data: List = None) -> AsyncIterator[MarketState]:
+        """
+        Stream market data updates (fixture-based for WO-008a FIXTURES ONLY).
+
+        Args:
+            fixture_data: Optional list of QuoteUpdate objects representing raw book messages
+
+        Yields:
+            MarketState objects with quote-centric data
+
+        Constitutional requirements:
+            - WO-008a: FIXTURES ONLY - no live WebSocket connections
+            - FR-019a: Pause on book unavailable
+            - §2.4: Diagnostic counters at different layers (WO-008a-R2 BLOCKER 1 fix)
+
+        Counters (WO-008a-R2 fix):
+            - raw_messages_received: Incremented at feed/parse boundary for EACH raw message
+            - market_states_emitted: Incremented only when MarketState is yielded
+            - These MUST be at different layers to allow divergence detection
+
+        Parse path (WO-008a-R2):
+            - Fixtures supply QuoteUpdate objects (representing raw book messages)
+            - Each QuoteUpdate is parsed through _process_quote_update()
+            - Only successful parses produce MarketState (checksum validation, sequence check)
+            - Rejected updates (checksum fail, sequence gap) return None, not emitted
+        """
+        import asyncio
+        from datetime import timedelta
+        import time
+
+        # Diagnostic counters (WO-008a-R2: separated at different layers)
+        self._raw_received = 0
+        self._market_states_emitted = 0
+        self._start_time = time.time()  # Track start time for rate reporting
+
+        if fixture_data:
+            # Replay fixture data (FIXTURES ONLY mode)
+            # Each item in fixture_data is a QuoteUpdate representing a raw book message
+            for raw_message in fixture_data:
+                # LAYER 1: Feed/Parse boundary - count EVERY raw message received
+                self._raw_received += 1
+
+                # LAYER 2: Check if adapter can process this message
+                # If paused/unavailable, raw message is received but no MarketState emitted
+                if self._local_book.is_paused:
+                    # Raw message was received (counter already incremented above)
+                    # But no MarketState emitted due to pause (FR-019a)
+                    # This creates the divergence: raw_received > market_states_emitted
+                    await asyncio.sleep(0.01)
+                    continue
+
+                # LAYER 3: Parse boundary - process raw message through quote update pipeline
+                # This performs checksum validation, sequence gap check, and book update
+                # Returns MarketState on success, None on rejection
+                market_state = await self._process_quote_update(raw_message)
+
+                # LAYER 4: Yield boundary - only emit when parsing succeeded
+                if market_state is not None:
+                    self._market_states_emitted += 1
+                    yield market_state
+                # Note: If market_state is None (rejected), raw_received incremented but emitted not
+                # This creates divergence for rejected updates
+
+                await asyncio.sleep(0.01)  # Small delay between events
+        else:
+            # Placeholder: Would connect to WebSocket in WO-008b
+            # For now, generate minimal test data using QuoteUpdate format
+            from datetime import datetime, UTC
+            from decimal import Decimal
+
+            # Initialize book with a snapshot so checksum validation works
+            snapshot_bids = [
+                ('65000.0', '1.50000000'),
+                ('64999.0', '1.00000000'),
+                ('64998.0', '1.00000000'),
+                ('64997.0', '1.00000000'),
+                ('64996.0', '1.00000000'),
+                ('64995.0', '1.00000000'),
+                ('64994.0', '1.00000000'),
+                ('64993.0', '1.00000000'),
+                ('64992.0', '1.00000000'),
+                ('64991.0', '1.00000000'),
+            ]
+            snapshot_asks = [
+                ('65005.0', '2.00000000'),
+                ('65006.0', '1.00000000'),
+                ('65007.0', '1.00000000'),
+                ('65008.0', '1.00000000'),
+                ('65009.0', '1.00000000'),
+                ('65010.0', '1.00000000'),
+                ('65011.0', '1.00000000'),
+                ('65012.0', '1.00000000'),
+                ('65013.0', '1.00000000'),
+                ('65014.0', '1.00000000'),
+            ]
+
+            # Compute checksum for this snapshot
+            bid_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_bids]]
+            ask_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_asks]]
+            initial_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+            # Apply snapshot to initialize the book
+            self._local_book.apply_snapshot(
+                [(Decimal(p), Decimal(s)) for p, s in snapshot_bids],
+                [(Decimal(p), Decimal(s)) for p, s in snapshot_asks],
+                sequence=1,
+                checksum=initial_checksum
+            )
+
+            for i in range(10):
+                # LAYER 1: Count raw message at feed boundary
+                self._raw_received += 1
+
+                # LAYER 2: Check pause state
+                if self._local_book.is_paused:
+                    await asyncio.sleep(0.01)
+                    continue
+
+                # LAYER 3: Create QuoteUpdate and process through parse path
+                quote_update = QuoteUpdate(
+                    bid_price=Decimal("65000.00"),
+                    bid_size=Decimal("1.5"),
+                    ask_price=Decimal("65005.00"),
+                    ask_size=Decimal("2.0"),
+                    checksum=initial_checksum,  # Use same checksum (simulating no change)
+                    sequence=2 + i,
+                    timestamp=datetime.now(UTC),
+                )
+                market_state = await self._process_quote_update(quote_update)
+
+                # LAYER 4: Yield only when parsing succeeded
+                if market_state is not None:
+                    self._market_states_emitted += 1
+                    yield market_state
+
+                await asyncio.sleep(0.1)
+
+    def pause(self) -> None:
+        """Pause the adapter (book unavailable)."""
+        self._local_book.pause()
+
+    def resume(self) -> None:
+        """Resume the adapter (book recovered)."""
+        self._local_book.resume()
+
+    @property
+    def is_paused(self) -> bool:
+        """Check if adapter is paused."""
+        return self._local_book.is_paused
+
+    @property
+    def venue_name(self) -> str:
+        """Return venue name."""
+        return "kraken_v2"
+
+    def get_diagnostic_counters(self) -> dict:
+        """
+        Get diagnostic counters for throughput measurement (WO-008a-R2 §2.4).
+
+        Returns:
+            Dict with raw_messages_received, market_states_emitted, elapsed_seconds,
+            and rate reporting (refuses to extrapolate for sub-60s windows)
+
+        Constitutional requirements:
+            - §2.4: Separate counters for raw received vs emitted
+            - WO-008a-R2: Rate reporting MUST refuse to extrapolate for sub-60s windows
+        """
+        import time
+
+        raw_received = getattr(self, '_raw_received', 0)
+        market_states_emitted = getattr(self, '_market_states_emitted', 0)
+
+        # Calculate elapsed time
+        start_time = getattr(self, '_start_time', None)
+        if start_time is None:
+            elapsed_seconds = 0
+        else:
+            elapsed_seconds = time.time() - start_time
+
+        result = {
+            "raw_messages_received": raw_received,
+            "market_states_emitted": market_states_emitted,
+            "elapsed_seconds": elapsed_seconds,
+        }
+
+        # Rate reporting: WO-008a-R2 requires refusal to extrapolate for sub-60s windows
+        if elapsed_seconds >= 60:
+            # Only report rates for measurement windows >= 60 seconds
+            raw_rate = (raw_received / elapsed_seconds) * 60 if elapsed_seconds > 0 else 0
+            emitted_rate = (market_states_emitted / elapsed_seconds) * 60 if elapsed_seconds > 0 else 0
+            result["raw_rate_per_minute"] = raw_rate
+            result["emitted_rate_per_minute"] = emitted_rate
+            result["rate_reported"] = True
+        else:
+            # Refuse to report rate for sub-60s windows (WO-008a-R2 requirement)
+            result["raw_rate_per_minute"] = None
+            result["emitted_rate_per_minute"] = None
+            result["rate_reported"] = False
+            result["rate_refusal_reason"] = (
+                f"RATE NOT REPORTED — measurement window {elapsed_seconds:.2f}s "
+                f"< 60s (insufficient for threshold evaluation)"
+            )
+
+        return result
+
+    async def _trigger_pause_for_test(self) -> None:
+        """
+        Trigger pause for testing purposes (T033).
+
+        This method simulates book unavailability for testing pause behavior.
+        """
+        self.pause()
+        # In production, this would be triggered by WebSocket disconnection

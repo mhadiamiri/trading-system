@@ -1,0 +1,38 @@
+warning: in the working copy of 'config/settings.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/config/settings.py b/config/settings.py
+index bc4772b..88dfa6c 100644
+--- a/config/settings.py
++++ b/config/settings.py
+@@ -28,8 +28,8 @@ class Settings:
+     """
+ 
+     # Data source: selects market data feed (independent of execution)
+-    # Options: simulated, kraken_public
+-    DATA_SOURCE: Literal["simulated", "kraken_public"] = os.getenv(
++    # Options: simulated, kraken_public, kraken_v2 (Sprint 2: T004 prepared, raises NotImplementedError until T009-T019)
++    DATA_SOURCE: Literal["simulated", "kraken_public", "kraken_v2"] = os.getenv(
+         "DATA_SOURCE", "simulated"
+     )
+ 
+@@ -58,10 +58,10 @@ class Settings:
+         - TRADING_ENV=paper is default (safe), mainnet requires explicit override
+         - No credentials are required for public data feeds
+         """
+-        if cls.DATA_SOURCE not in ("simulated", "kraken_public"):
++        if cls.DATA_SOURCE not in ("simulated", "kraken_public", "kraken_v2"):
+             raise ValueError(
+                 f"Invalid DATA_SOURCE: {cls.DATA_SOURCE}. "
+-                f"Must be 'simulated' or 'kraken_public'."
++                f"Must be 'simulated', 'kraken_public', or 'kraken_v2'."
+             )
+ 
+         if cls.TRADING_ENV not in ("paper", "mainnet", "test"):
+@@ -90,7 +90,7 @@ class Settings:
+     @classmethod
+     def using_live_feed(cls) -> bool:
+         """Check if using live feed (vs simulated)."""
+-        return cls.DATA_SOURCE == "kraken_public"
++        return cls.DATA_SOURCE in ("kraken_public", "kraken_v2")
+ 
+     @classmethod
+     def is_paper_trading(cls) -> bool:

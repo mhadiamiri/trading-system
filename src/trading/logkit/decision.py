@@ -6,6 +6,13 @@ Records every decision with reason codes for audit trail.
 Constitutional Principles:
 - VIII. Total Observability & Provenance: Every decision logged
 - IX. Secrets and Safety Rails: No secrets in logs
+
+Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
+- Data layer: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+- Cost model: ABNORMAL_SPREAD_REJECT
+- Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
+- Strategy layer: NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL
+- Execution layer: ORDER_FILLED, ORDER_REJECTED
 """
 
 from datetime import datetime, UTC
@@ -21,6 +28,34 @@ class Layer(Enum):
     RISK = "RISK"
     EXECUTION = "EXECUTION"
     BACKTEST = "BACKTEST"
+
+
+# Valid reason codes per layer (documented for reference)
+VALID_REASON_CODES = {
+    "DATA": [
+        "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
+        "SEQUENCE_GAP_RESNAPSHOT",  # T018: Sequence gap detected, requesting fresh snapshot
+        "PAUSE_ON_BOOK_UNAVAILABLE",  # T017: Book channel disconnected, paused
+    ],
+    "COST_MODEL": [
+        "ABNORMAL_SPREAD_REJECT",  # T029: Spread >5% of price, trade rejected
+    ],
+    "RISK": [
+        "PASS",  # Risk check passed
+        "CLAMP",  # Position size reduced toward zero
+        "VETO",  # Trade rejected by risk limits
+        "KILL_SWITCH_ENGAGED",  # Kill switch activated
+    ],
+    "STRATEGY": [
+        "NO_SIGNAL",  # No trading signal
+        "LONG_SIGNAL",  # Long position signal
+        "SHORT_SIGNAL",  # Short position signal
+    ],
+    "EXECUTION": [
+        "ORDER_FILLED",  # Order successfully filled
+        "ORDER_REJECTED",  # Order rejected by exchange
+    ],
+}
 
 
 class DecisionLogger:

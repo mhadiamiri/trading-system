@@ -1,0 +1,44 @@
+ITEM 4.1: End-to-End Cycle Analysis (WO-008a-R2)
+
+REQUIRED OUTPUT (per instructions.md):
+- MarketState with real bid/ask values (correct characters, no corruption) ✅
+- the Strategy emitting a DesiredPosition ❌ NOT OBSERVED
+- the RISK layer acting (clamp/approve decision, with values) ❌ NOT OBSERVED  
+- the Execution result with cost breakdown (fee, observed spread, slippage, total) ✅ PARTIAL
+
+CURRENT TEST BEHAVIOR:
+The test_observed_spread_used_in_cost_calculation test verifies:
+1. MarketState creation with correct bid/ask values ✅
+2. Spread calculation ✅
+3. Cost breakdown calculation (fees + spread + slippage) ✅
+
+WHAT IS NOT SHOWN:
+1. Actual Data→Strategy→Risk→Execution flow through the live loop
+2. Strategy.decide() emitting DesiredPosition
+3. Risk.check() making clamp/approve decisions with values
+4. Execution.place_order() being called
+
+FINDING:
+The current tests verify component-level correctness (MarketState structure, cost calculation formulas) 
+but do NOT demonstrate the full end-to-end live trading loop with observable intermediate values.
+
+Most end-to-end live loop tests are XFAILED with reason: "Consumer update scheduled T036: 
+strategy uses volume_24h" - indicating the full integration is scheduled for later work.
+
+WHAT THIS MEANS FOR WO-008a-R2:
+- Component-level integration (MarketState, cost model) is VERIFIED ✅
+- Full live loop integration with observable intermediate values is NOT YET TESTED ❌
+- This is expected per the xfail markers - T036 work is scheduled
+
+EVIDENCE OF COMPONENT VERIFICATION:
+- MarketState with best_bid=65000.00, best_ask=65005.00 (no corruption, correct decimals)
+- Spread calculation: 5.00 (correct: 65005.00 - 65000.00)
+- Cost breakdown: fees + spread_cost + slippage_cost = total_cost
+- All tests passing: 51 passed, 19 xfailed, 1 xpassed
+
+CONCLUSION:
+Item 4.1 requirement for "full cycle with RISK layer acting" cannot be satisfied 
+because the RISK layer is not actually invoked in the current test setup. 
+The tests verify component correctness but not end-to-end flow observability.
+
+This is a FINDING, not a failure - the xfail markers indicate this work is scheduled for T036.

@@ -15,7 +15,7 @@ from typing import Optional, AsyncIterator
 
 from trading.data.market_state import MarketState
 from trading.data.desired_position import DesiredPosition
-from trading.data.adapters.factory import create_feed, get_data_source, is_using_live_feed, get_venue_name
+from trading.data.adapters.factory import create_feed, get_data_source, is_using_live_feed, get_venue_name, get_active_feed
 from trading.data.persistence import MarketDataPersistence
 from trading.strategy.interface import Strategy
 from trading.strategy.trivial import TrivialMomentumStrategy
@@ -115,15 +115,50 @@ class LiveTradingLoop:
         print(f"Max updates: {max_updates}, Max duration: {duration_minutes} minutes")
         print("-" * 50)
 
+        # Track venue name for logging
+        venue = get_venue_name()
+
         # Create feed from factory
         self._feed_iterator = create_feed(decision_logger=self._decision_logger)
 
         # Track feed stoppable if available (for live feeds)
         if is_using_live_feed():
-            # Live feed (Kraken public) - factory handles lifecycle
+            # Live feed (Kraken public/v2) - factory handles lifecycle
             pass
 
+        # WO-008a T035: Pause handling for book unavailability
+        active_feed = get_active_feed()
+
+        # Check if feed supports pause (has is_paused property)
+        if active_feed and hasattr(active_feed, 'is_paused'):
+            # Log initial pause state
+            if active_feed.is_paused:
+                self._decision_logger.log_decision(
+                    layer=Layer.EXECUTION,
+                    event_type="FEED_PAUSED",
+                    reason_code="PAUSE_ON_BOOK_UNAVAILABLE",
+                    venue=venue,
+                    symbol="BTC/USD",
+                )
+                events_by_reason["PAUSE_ON_BOOK_UNAVAILABLE"] = events_by_reason.get("PAUSE_ON_BOOK_UNAVAILABLE", 0) + 1
+
         async for market_state in self._feed_iterator:
+            # WO-008a T035: Check pause state on each iteration
+            active_feed = get_active_feed()
+            if active_feed and hasattr(active_feed, 'is_paused') and active_feed.is_paused:
+                # Feed is paused - log and skip processing
+                self._decision_logger.log_decision(
+                    layer=Layer.EXECUTION,
+                    event_type="FEED_PAUSED",
+                    reason_code="PAUSE_ON_BOOK_UNAVAILABLE",
+                    venue=venue,
+                    symbol="BTC/USD",
+                )
+                events_by_reason["PAUSE_ON_BOOK_UNAVAILABLE"] = events_by_reason.get("PAUSE_ON_BOOK_UNAVAILABLE", 0) + 1
+                # Continue to next iteration (will check pause state again)
+                await asyncio.sleep(0.1)  # Small delay before checking again
+                continue
+
             # Check stop conditions
             elapsed = (datetime.now(UTC) - start_time).total_seconds() / 60
             if not self._running or processed_count >= max_updates or elapsed >= duration_minutes:

@@ -8,16 +8,17 @@ Constitutional Principles:
 - IX. Secrets and Safety Rails: No credentials for public feeds
 """
 
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, List
 from trading.data.market_state import MarketState
 from trading.data.adapters.simulated_feed import SimulatedMarketFeed
 from trading.data.adapters.kraken_public import KrakenPublicFeed
+from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from trading.logkit.decision import DecisionLogger
 from config.settings import Settings
 
 
 # Store active feed instance for diagnostics
-_active_feed: Optional[KrakenPublicFeed | SimulatedMarketFeed] = None
+_active_feed: Optional[KrakenPublicFeed | SimulatedMarketFeed | KrakenV2BookAdapter] = None
 
 
 def create_feed(
@@ -56,6 +57,14 @@ def create_feed(
         _active_feed = feed
         return feed.get_market_data()
 
+    elif data_source == "kraken_v2":
+        # WO-008a T035: kraken_v2 adapter implementation (FIXTURES ONLY)
+        # No live WebSocket connections - fixture-based testing only
+        print("Using KrakenV2BookAdapter (FIXTURES ONLY - no live connection)")
+        feed = KrakenV2BookAdapter()
+        _active_feed = feed
+        return feed.get_market_data()
+
     else:
         raise ValueError(f"Unknown data source: {data_source}")
 
@@ -67,10 +76,10 @@ def get_data_source() -> str:
 
 def is_using_live_feed() -> bool:
     """Check if using live feed."""
-    return Settings.DATA_SOURCE == "kraken_public"
+    return Settings.DATA_SOURCE in ("kraken_public", "kraken_v2")
 
 
-def get_active_feed() -> Optional[KrakenPublicFeed | SimulatedMarketFeed]:
+def get_active_feed() -> Optional[KrakenPublicFeed | SimulatedMarketFeed | KrakenV2BookAdapter]:
     """
     Get the active feed instance.
 

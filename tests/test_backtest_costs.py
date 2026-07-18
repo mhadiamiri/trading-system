@@ -225,6 +225,10 @@ class TestCostModel:
         )
         assert sell_fill_price < mid_price, "Sell fill price should be below mid (bid)"
 
+
+class TestCostBreakdownValidation:
+    """Test CostBreakdown validation (moved from TestCostModel - not deprecated)."""
+
     def test_cost_breakdown_validation(self):
         """
         Test CostBreakdown validates components.

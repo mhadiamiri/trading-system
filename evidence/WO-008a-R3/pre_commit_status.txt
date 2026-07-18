@@ -1,0 +1,24 @@
+ M config/settings.py
+ M instructions.md
+ M progress.md
+ M src/trading/backtest/runner.py
+ M src/trading/data/adapters/factory.py
+ M src/trading/data/adapters/kraken_v2_book.py
+ M src/trading/data/persistence.py
+ M src/trading/logkit/decision.py
+ M src/trading/loop/live.py
+ M src/trading/strategy/trivial.py
+ M tests/integration/test_backtest.py
+ M tests/integration/test_live_loop.py
+ M tests/test_backtest_costs.py
+ M tests/test_data_adapters.py
+?? .coverage
+?? WO-008a-FINAL-REPORT.md
+?? WO-008a-R-FINAL-REPORT.md
+?? WO-008a-R2-FINAL-REPORT.md
+?? coverage.xml
+?? evidence/
+?? test_crc_debug.py
+?? test_kraken_algorithm.py
+?? test_kraken_discrepancy.py
+?? test_kraken_format.py
