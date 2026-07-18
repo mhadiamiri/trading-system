@@ -206,6 +206,7 @@ class BacktestRunner:
                 size=float(approved_order.size),
                 price=float(market_state.last_price),  # Use market price
                 kill_switch_engaged=False,
+                spread_cost=float(costs.spread_cost),
             )
 
             # Add to P&L report

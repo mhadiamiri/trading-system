@@ -22,7 +22,6 @@ class TestBacktestIntegration:
     """Integration test suite for backtesting."""
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_backtest_completes_successfully(self):
         """
         Test backtest completes successfully.
@@ -47,7 +46,6 @@ class TestBacktestIntegration:
         assert "data_window" in result
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_data_window_reported(self):
         """
         Test data window is included in results.
@@ -69,7 +67,6 @@ class TestBacktestIntegration:
         assert start_dt <= end_dt
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_cost_inclusive_pnl_report(self):
         """
         Test P&L report shows cost breakdown.
@@ -102,7 +99,6 @@ class TestBacktestIntegration:
             "Net P&L must equal gross P&L minus costs"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_determinism_verified(self):
         """
         Test determinism: same input produces identical output.
@@ -136,7 +132,6 @@ class TestBacktestIntegration:
         assert pnl1["net_pnl"] == pnl2["net_pnl"]
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_negative_pnl_acceptable(self):
         """
         Test negative P&L is acceptable outcome.
@@ -157,7 +152,6 @@ class TestBacktestIntegration:
             assert True, "Negative P&L is acceptable (Truth Before Profit)"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_trade_list_included(self):
         """
         Test trade list is included in report.

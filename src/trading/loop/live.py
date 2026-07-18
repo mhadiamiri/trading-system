@@ -25,6 +25,7 @@ from trading.risk.position_state import PositionState
 from trading.execution.interface import ExchangeClient, KillSwitchEngagedError
 from trading.execution.paper import PaperExecutionClient
 from trading.logkit.decision import DecisionLogger, Layer, get_logger
+from trading.backtest.costs import CostModel
 
 
 class LiveTradingLoop:
@@ -66,6 +67,7 @@ class LiveTradingLoop:
         self._execution_client = execution_client or PaperExecutionClient()
         self._decision_logger = decision_logger or get_logger()
         self._persistence = persistence or MarketDataPersistence()
+        self._cost_model = CostModel()  # For calculating observed spread costs
 
         # Portfolio state
         self._position_state = PositionState(
@@ -249,12 +251,21 @@ class LiveTradingLoop:
             # Execute order
             try:
                 kill_switch_engaged = self._risk_engine.get_kill_switch_state()
+
+                # Calculate costs using observed spread from market_state (T028: no synthetic spread)
+                costs = self._cost_model.calculate_costs_from_market_state(
+                    side=approved_order.side,
+                    size=approved_order.size,
+                    market_state=market_state,
+                )
+
                 fill = await self._execution_client.place_order(
                     symbol=approved_order.symbol,
                     side=approved_order.side,
                     size=float(approved_order.size),
                     price=float(approved_order.price),
                     kill_switch_engaged=kill_switch_engaged,
+                    spread_cost=float(costs.spread_cost),
                 )
 
                 # Log execution
@@ -331,12 +342,16 @@ class LiveTradingLoop:
         total_cost = Decimal(str(fill["total_cost"]))
 
         if side == "BUY":
-            self._position_state.current_quantity += size
+            new_quantity = self._position_state.current_quantity + size
         else:
-            self._position_state.current_quantity -= size
+            new_quantity = self._position_state.current_quantity - size
 
         # Update realized P&L (simplified)
-        self._position_state.realized_pnl -= total_cost
+        new_pnl = self._position_state.realized_pnl - total_cost
+
+        # Use object.__setattr__ to bypass frozen dataclass restriction
+        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
+        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)
 
     def stop(self) -> None:
         """Stop the trading loop."""

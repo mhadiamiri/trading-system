@@ -24,7 +24,6 @@ class TestLiveLoopIntegration:
     """Integration test suite for live trading loop."""
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_end_to_end_loop_completes(self):
         """
         Test end-to-end loop completes successfully.
@@ -62,7 +61,6 @@ class TestLiveLoopIntegration:
             importlib.reload(config.settings)
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_every_decision_logged(self):
         """
         Test every decision produces a log entry with reason code.
@@ -118,7 +116,6 @@ class TestLiveLoopIntegration:
             importlib.reload(config.settings)
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_simulated_fills_recorded(self):
         """
         Test simulated fills are recorded with all cost components.
@@ -154,7 +151,6 @@ class TestLiveLoopIntegration:
             importlib.reload(config.settings)
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_kill_switch_blocks_orders(self):
         """
         Test kill switch blocks new orders.
@@ -192,7 +188,6 @@ class TestLiveLoopIntegration:
             importlib.reload(config.settings)
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Consumer update scheduled T036: strategy uses volume_24h", strict=True)
     async def test_clamp_fires_during_loop(self):
         """
         Test clamp actually fires during loop execution.

@@ -58,8 +58,7 @@ class TrivialMomentumStrategy(Strategy):
             DesiredPosition if signal exists, None for "no signal"
         """
         # Update average volume (simple moving average)
-        # TODO(T036): Update to new MarketState schema (volume_24h → total_volume)
-        self._update_average_volume(market_state.volume_24h)
+        self._update_average_volume(market_state.total_volume)
 
         # Check for signals
         side = self._evaluate_signal(market_state)
@@ -100,8 +99,7 @@ class TrivialMomentumStrategy(Strategy):
         # Check volume spike
         volume_spike = False
         if self._average_volume and self._average_volume > 0:
-            # TODO(T036): Update to new MarketState schema (volume_24h → total_volume)
-            volume_ratio = market_state.volume_24h / self._average_volume
+            volume_ratio = market_state.total_volume / self._average_volume
             volume_spike = volume_ratio >= self.VOLUME_MULTIPLE
 
         # Update last price

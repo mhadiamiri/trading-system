@@ -39,6 +39,7 @@ class ExchangeClient(ABC):
         size: float,
         price: float,
         kill_switch_engaged: bool,
+        spread_cost: float = None,
     ) -> dict:
         """
         Place order and return fill result.
@@ -49,6 +50,7 @@ class ExchangeClient(ABC):
             size: Order size in base currency
             price: Limit price (or market approximation)
             kill_switch_engaged: If True, raise KillSwitchEngagedError
+            spread_cost: Observed spread cost from market (T028: no synthetic spread)
 
         Returns:
             Fill dict with keys: timestamp, symbol, side, size, fill_price,
@@ -57,6 +59,7 @@ class ExchangeClient(ABC):
         Constitutional requirements:
             - Raises KillSwitchEngagedError when kill_switch_engaged=True
             - Kill switch blocks new orders (Principle VI)
+            - No synthetic spread (T028): spread_cost must be calculated from market state
         """
         pass
 

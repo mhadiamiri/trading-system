@@ -85,6 +85,7 @@ class PaperExecutionClient(ExchangeClient):
         size: float,
         price: float,
         kill_switch_engaged: bool,
+        spread_cost: float = None,
     ) -> dict:
         """
         Place simulated order and return fill result.
@@ -95,6 +96,7 @@ class PaperExecutionClient(ExchangeClient):
             size: Order size
             price: Limit price
             kill_switch_engaged: If True, raise KillSwitchEngagedError
+            spread_cost: Observed spread cost from market (T028: no synthetic spread)
 
         Returns:
             Fill dict with all cost components
@@ -104,12 +106,13 @@ class PaperExecutionClient(ExchangeClient):
 
         Constitutional requirements:
             - Raises KillSwitchEngagedError when kill switch engaged (Principle VI)
+            - No synthetic spread (T028): spread_cost calculated from market state
         """
         if kill_switch_engaged:
             raise KillSwitchEngagedError()
 
         # Simulate fill with realistic costs
-        fill = self._simulate_fill(symbol, side, size, price)
+        fill = self._simulate_fill(symbol, side, size, price, spread_cost)
         return {
             "timestamp": fill.timestamp.isoformat(),
             "symbol": fill.symbol,
