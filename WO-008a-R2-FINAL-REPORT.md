@@ -1,3 +1,41 @@
+> ═══════════════════════════════════════════════════════════════════════════
+> ⚠ DATED CORRECTION — 2026-07-19 (WO-010 §7)
+>
+> THE "4/4 CONTRACTS KEPT" CLAIM IN THIS DOCUMENT IS FALSE.
+>
+> It was produced by an import-linter run that analysed a STALE COPY of the
+> repository at C:\Users\mhadi\AppData\Local\Temp\ci-sim2, pinned at commit
+> 400a28b — not the tree this report describes. The stale clone was created by
+> a WO-008a-R3 Ops instruction that ran `pip install -e .` inside a temp clone,
+> rebinding the environment.
+>
+> TRUE CONTRACT STATE, measured against the real tree with the SAME four-contract
+> set (WO-010 §6, git worktree per commit):
+>
+>     COMMIT    KEPT  BROKEN  WHICH CONTRACT              DEPS
+>     400a28b   4     0       (none — control)            171
+>     af27491   3     1       Forbidden v2-book-checksum  174
+>     90882d0   3     1       Forbidden v2-book-checksum  175
+>     8e8a891   3     1       Forbidden v2-book-checksum  176
+>     43ca600   3     1       Forbidden v2-book-checksum  176
+>
+> The break entered at af27491 via factory.py:15
+> (`from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter`),
+> creating trading.loop.live -> factory -> kraken_v2_book. Constitution
+> Principles IV and VII were violated in the shipped tree from af27491 onward.
+>
+> Forensic confirmation: the stale evidence reads "54 files, 171 dependencies,
+> 4 kept" — 171 is the exact dependency fingerprint of 400a28b, not of the
+> commit the report claims to describe.
+>
+> Fixed in WO-010 §5 by an adapter registry; contracts now 5 kept, 1 broken,
+> the single remaining break being the intentional new "No test doubles in
+> production code" rule (expected RED until WO-008b-A removes the committed Mock).
+>
+> THE ORIGINAL TEXT BELOW IS PRESERVED UNCHANGED AND DELIBERATELY NOT REWRITTEN.
+> The record of a false claim is itself evidence. See evidence/WO-010/.
+> ═══════════════════════════════════════════════════════════════════════════
+
 # WO-008a-R2 FINAL REPORT: Close Remaining Proof Gaps
 
 **Status**: COMPLETE  

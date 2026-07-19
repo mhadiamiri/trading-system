@@ -1,0 +1,65 @@
+WO-008b-DIAG — CHECKSUM VALIDATED PRE-UPDATE INSTEAD OF POST-UPDATE
+Generated: 2026-07-19T03:34:56Z
+Tree SHA: 43ca600dc96d5a2c33c3e6972a69e616efc65d19   (working tree DIRTY at capture time)
+All content below is captured command output.
+
+=== COMMAND: sed -n '872,906p' src/trading/data/adapters/kraken_v2_book.py ===
+        # Validate checksum using the FULL ladder (top 10 levels per side)
+        # This is critical: Kraken's checksum is over 10 levels, not 1
+        top_10_bids = self._local_book.bids[:10]
+        top_10_asks = self._local_book.asks[:10]
+
+        # Convert Decimal to string for checksum computation
+        bid_levels = [(str(price), str(size)) for price, size in top_10_bids]
+        ask_levels = [(str(price), str(size)) for price, size in top_10_asks]
+
+        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+        if computed_checksum != quote_update.checksum:
+            # Checksum validation failed (FR-017)
+            self._checksum_failures += 1
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: seq={quote_update.sequence}, "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+
+            # Check if we've reached the failure threshold (FR-018)
+            if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+                await self._reconnect()
+                await self._request_snapshot()
+
+            # Return None to indicate rejection
+            return None
+
+        # Checksum validated - apply incremental update to the ladder
+        self._local_book.apply_incremental_update(
+            bid_levels=[(quote_update.bid_price, quote_update.bid_size)],
+            ask_levels=[(quote_update.ask_price, quote_update.ask_size)],
+            sequence=quote_update.sequence,
+            checksum=quote_update.checksum,
+        )
+
+=== COMMAND: grep -n 'apply_incremental_update\|compute_checksum(' src/trading/data/adapters/kraken_v2_book.py ===
+173:    def apply_incremental_update(self, bid_levels: List[tuple], ask_levels: List[tuple],
+709:    def compute_checksum(bids: List[tuple], asks: List[tuple]) -> int:
+835:        computed = KrakenV2BookAdapter.compute_checksum(bids, asks)
+881:        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+901:        self._local_book.apply_incremental_update(
+
+=== ANALYSIS (labelled: not command output) ===
+The ladder read at lines 874-875 is the PRE-update book. compute_checksum()
+runs at 881 and is compared at 883. apply_incremental_update() does not run
+until line 901 — only AFTER validation passes.
+
+Kraken defines the CRC32 over the book AFTER the update is applied.
+Source: https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/
+  'Concatenate asks + bids strings, then pass the result to a CRC32
+   function' — over the top 10 levels of the resulting book.
+
+CONSEQUENCE: against a real feed every incremental checksum mismatches,
+consecutive_failures reaches CHECKSUM_FAILURE_THRESHOLD=5, and the adapter
+enters a reconnect loop emitting zero MarketStates.
+
+This defect is INDEPENDENT of the sequence-number issue and survives any
+FR-018a ruling. It must be fixed for checksum-only integrity to be viable.

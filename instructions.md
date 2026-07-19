@@ -1,350 +1,243 @@
-# WORK ORDER — WO-008a: Sprint 2 Phase 8, Integration & Loop Updates (FIXTURES ONLY)
+# WORK ORDER — WO-010: Tooling Remediation (CI Capture → Preflight Assertion → Registry Fix → Retroactive Audit)
 
-**Status:** ACTIVE. Supersedes all previous instructions.
-**Authority:** `.specify/memory/constitution.md` governs. If any instruction
-conflicts with it, the constitution wins — STOP and escalate.
-**Feature:** `specs/002-quote-level-data/` — Phases 1–7 (T001–T032) complete.
-**Scope of THIS work order:** Phase 8 ONLY — tasks **T033–T036**
-(integration & loop updates), wired and proven **on deterministic fixtures
-and stored Parquet ONLY**.
-
-## EXPLICITLY OUT OF SCOPE — DO NOT TOUCH
-
-- **ANY LIVE NETWORK CONNECTION. THIS IS THE HARD LINE OF THIS WORK ORDER.**
-  No Kraken WebSocket connection, no socket opened to any venue, not "just to
-  check it connects," not for one second, not commented-out-and-run-once.
-  The live run is WO-008b, a separately gated work order authorized by the
-  project lead. If a task in T033–T036 appears to require a live connection
-  to complete, that is a CORRECT finding — STOP, report it as BLOCKED with
-  the task ID, and say what it needs. Reporting that blocker is a SUCCESS,
-  not a failure. Working around it by opening a connection is a
-  constitutional violation of this work order.
-- Phase 9 (T037–T039) regression & validation — later WO, and gated behind
-  a CI-green precondition.
-- Phase 10 (T040–T041) docs & cleanup — later WO.
-- CI / GitHub Actions debugging. CI is currently red (known, tracked
-  separately). Do NOT attempt to fix it here. Do NOT modify
-  `.github/workflows/`, `.gitignore`, `pytest.ini`, or `pyproject.toml`
-  packaging config in this work order.
-- `/speckit-implement` for the whole task list. T033–T036 only, then STOP.
-
-## 0. RULES OF ENGAGEMENT
-
-- **0.1 No discretion.** If unspecified, STOP and ask. No scope changes
-  absorbed silently into code.
-- **0.2 Blockers escalate, never work around.** Report which task, what
-  blocks it, what you'd need. Reporting a blocker is a success.
-- **0.3 Stay in scope.** T033–T036 only. No live run. No Phase 9–10 work.
-- **0.4 Never weaken a guard or honesty property to simplify.** Any
-  relaxation — of a guard, an invariant, a test's assertion, or a
-  threshold — is a STOP-and-ask. This includes "temporarily."
-- **0.5 Secrets:** never print/echo `.env` or any credential. Kraken public
-  data requires NO API key. If any task appears to need a credential, STOP —
-  that is a signal something is wrong.
-- **0.6 Evidence, not assertion.** Paste command output and file content.
-  "Verified" / "confirmed" / "works as expected" without pasted output is
-  not evidence and will be rejected at review.
-- **0.7 Negative proof is mandatory** where §2 states it: break it, run it,
-  SHOW it fail, restore, SHOW it pass. Both directions pasted.
-- **0.8 Do not tune to green.** A failing test is a BLOCKED report, not
-  something to massage. Never adjust an assertion to match observed
-  behavior — that inverts the purpose of the test.
-- **0.9 Report per task ID:** DONE / BLOCKED / NOT DONE with evidence.
-
-## 1. CONTEXT — WHY THIS WORK ORDER IS FIXTURES-ONLY
-
-Phases 1–7 built and proved the pieces: the Kraken v2 L2 book adapter
-(checksum reproducing Kraken's published 3310070434, sequence-gap detection,
-5-failure recovery), quote processing, trades enrichment, the
-observed-spread cost model with no synthetic fallback anywhere, and a
-backtest that replays stored quotes and reconstructs spread from raw
-bid/ask.
-
-Phase 8 wires those pieces into the live trading loop. The project lead has
-ruled that this integration is proven on fixtures FIRST, with a human gate,
-and the actual mainnet contact happens separately in WO-008b. The reason is
-specific and on the record: the one prior venue-contact run produced a
-credential leak, a silently removed `TRADING_ENV=mainnet` guard, and a test
-that asserted the wrong invariant. The review gate must be narrowest exactly
-where we have already been burned. Bundling first-mainnet-contact into an
-integration run widens that gate. Hence: your job is to make the loop
-correct and provably safe while it is still impossible for it to touch a
-venue.
-
-## 2. THE NON-NEGOTIABLES THIS RUN MUST PROVE
-
-### 2.1 The loop runs end-to-end on fixtures — Data → Strategy → Risk → Execution
-
-Drive the integrated loop from a deterministic fixture/replay source and show
-a complete pass through all four layers: MarketState produced from quote
-data → strategy emits DesiredPosition → risk clamps/approves → paper
-execution records the result with full costs (fee + observed spread +
-slippage). Paste the run output showing at least one full cycle, including
-the cost breakdown.
-
-### 2.2 No order-capable path is reachable in paper mode — PROVEN, NOT ASSERTED
-
-With `TRADING_ENV=paper`, the process must refuse to construct any
-order-capable client. Prove it with a **negative test that attempts the
-construction and asserts the failure**. Paste the test and its passing
-output. Then prove the test bites: temporarily weaken the guard so
-construction succeeds → run the test → **SHOW IT FAIL** → restore →
-**SHOW IT PASS**. Paste both directions.
-
-This is the direct mitigation for a known prior failure. Do not skip it, and
-do not substitute a manual inspection for the negative test.
-
-### 2.3 The mainnet guard in `Settings.validate()` is INTACT
-
-Show the current source of the `TRADING_ENV` mainnet block in
-`Settings.validate()`. Confirm it is present and unmodified. Then show
-`git diff` for `settings.py` across this work order — if it is non-empty,
-justify every line. **If you find the guard is already missing or weakened
-from prior work, STOP and report it immediately as a finding.** Do not
-silently restore it and do not silently proceed.
-
-### 2.4 The instrumentation for WO-008b's threshold exists and is correct
-
-WO-008b must measure throughput against a ruled threshold of **sustained
-≥60 MarketStates/min**, and the project lead requires two counters recorded
-**separately**:
-  - **raw book updates RECEIVED** from the feed
-  - **MarketStates EMITTED** by the pipeline
-
-The reason they must be separate is diagnostic: if raw is high but emitted is
-low, the constraint is our own pipeline (coalescing/throttling), not the
-venue — and those two have opposite remedies. Conflating them is what made
-the Bybit diagnosis slow.
-
-In THIS work order, build and prove that instrumentation on fixtures:
-  - Both counters exist, are incremented at the correct points, and are
-    reported as rates per minute alongside absolute counts.
-  - Prove correctness with a fixture of KNOWN size: feed N known raw updates,
-    show received == N, and show emitted matches the pipeline's expected
-    output count. Paste input count and reported output.
-  - The counters must be reportable at the end of a run without requiring a
-    live connection.
-
-Do NOT hardcode, assume, or simulate a throughput number anywhere. The
-threshold is evaluated in WO-008b against real measured data.
-
-## 3. CONSUMERS & BOUNDARY
-
-- **xfail cleanup.** Any consumer updated in this phase must have its
-  `xfail` marker REMOVED and the test PASS for real — not deleted, not left
-  xfail'd. Report which xfails now pass and which remain, with the phase
-  that will clear each.
-- **Boundary intact.** After all changes, run import-linter. Confirm all 4
-  contracts still active and green, and paste the output. The deep order
-  book must not leak above the adapter.
-- **Strategy interface unchanged** — `decide(market_state) -> DesiredPosition`.
-  No strategy-logic changes in this work order.
-- **Risk layer contains no AI/ML** — unchanged and verified by the existing
-  contract.
-
-## 4. TASKS
-
-Execute **T033–T036** in the order given in
-`specs/002-quote-level-data/tasks.md`. Honor §2 and §3 throughout. Commit at
-sensible points with clear messages. No live connection. Do not proceed
-past T036.
-
-## 5. FINAL REPORT — then STOP
-
-Report per task (T033–T036): DONE / BLOCKED / NOT DONE with evidence. Then
-answer these directly:
-
-1. **§2.1** — Paste a full Data→Strategy→Risk→Execution cycle on fixtures,
-   with the cost breakdown (fee + observed spread + slippage).
-2. **§2.2** — Paste the negative test for order-capable construction under
-   `TRADING_ENV=paper`, and BOTH directions of the bite proof (weakened →
-   FAIL, restored → PASS).
-3. **§2.3** — Paste the current `Settings.validate()` mainnet guard source
-   and the `git diff` for `settings.py`. Is the guard intact?
-4. **§2.4** — Paste proof that raw-received and emitted counters are separate
-   and correct against a known-size fixture. Show the per-minute rate
-   reporting format WO-008b will use.
-5. **§3** — Which xfails now pass for real, which remain? Paste import-linter
-   output — is it 4/4 green?
-6. **Did you open ANY network connection to any venue during this work
-   order?** Answer yes or no explicitly.
-7. **What, if anything, did you have to decide that wasn't specified?**
-   List it and ask.
-8. **What did you change that you were not asked to change?** List every
-   file touched outside the scope of T033–T036, with justification, or
-   state "none."
-
-Do NOT run Phase 9–10. Do NOT open a live connection. Do NOT touch CI
-config. STOP for human review before WO-008b.
-------------------------------------------------------------
-
-fixes:
-
-# WORK ORDER — WO-008a-R3: Complete Phase 8 Integration + Commit/Push Everything
-
-**Status:** ACTIVE. Blocks WO-008b until closed.
+**Status:** ACTIVE. Front of queue. WO-009 (spec amendment) and WO-008b-A remain HELD.
 **Authority:** `.specify/memory/constitution.md` governs. Conflict → STOP and escalate.
 
-## WHY THIS EXISTS
-
-WO-008a-R2 was an honest report and closed BLOCKER 1, BLOCKER 3, and ITEM 4.2.
-Its Item 4.1 finding revealed something larger:
-
-- WO-008a reported "§2.1 PROVEN — Complete Data → Strategy → Risk → Execution
-  cycle on fixtures" and marked T033–T036 DONE. Item 4.1 shows the Strategy and
-  RISK steps were NEVER OBSERVED, and end-to-end tests are XFAILED with
-  "Consumer update scheduled T036" — i.e. T036 is not actually complete.
-- Phase 8 IS the integration phase. Its integration is undemonstrated.
-- All WO-008a / R / R2 work is UNCOMMITTED. `git log -15` shows WO-007 as latest.
-
-This WO does two things: (1) actually complete and demonstrate Phase 8
-integration on fixtures, (2) get everything committed and pushed.
-
-**Reporting a task incomplete is a SUCCESS. Reporting it DONE when its tests are
-xfailed pending that same task is the failure mode we are eliminating.**
-
-## OUT OF SCOPE
-- **ANY LIVE NETWORK CONNECTION.** Unchanged hard line. That is WO-008b. If an
-  item appears to require it, STOP and report BLOCKED — that is a success.
-- Phase 9 (T037–T039), Phase 10 (T040–T041).
-- New features beyond completing T033–T036 as specified in tasks.md.
-- Do not modify `.github/workflows/`, `pytest.ini`, or `pyproject.toml`.
-  (`.gitignore` may be inspected but not changed without reporting first.)
-
-## 0. RULES OF ENGAGEMENT
+═══════════════════════════════════════════════════════════════
+STANDING RULES — permanent on every work order
+═══════════════════════════════════════════════════════════════
 - **0.1** Unspecified → STOP and ask.
+- **0.1a** Any change to a public interface signature, any use of
+  `object.__setattr__`, `# type: ignore`, monkey-patching, or any mechanism whose
+  purpose is to bypass a declared constraint is a STOP-and-ask event.
+- **0.1b** No test in a constitutional enforcement class may be marked `xfail`,
+  `skip`, or conditionally excluded without escalation.
+- **0.1c** No `Mock`, stub, fake, or test double may exist in production code
+  paths; presence outside test directories is a defect regardless of intent.
+- **0.1d** An enforcement test whose trigger condition cannot occur in production
+  is a false guarantee and must be treated as a defect — worse than xfail,
+  because it reports green. A bite proof must INTERACT with the mechanism it
+  certifies; asserting substrings of its own string literal does not.
 - **0.2** Blockers escalate, never work around.
 - **0.4** Never weaken a guard, invariant, assertion, or threshold.
 - **0.5** Never print `.env` or any credential.
-- **0.6** EVIDENCE = redirected output committed under `evidence/WO-008a-R3/`,
-  then `cat` and pasted. No prose standing in for output.
-- **0.8** DO NOT TUNE TO GREEN. Specifically: do NOT clear an xfail by deleting
-  the test, by weakening its assertions, or by marking it skip. An xfail is
-  cleared ONLY by making the real behavior work.
-- **0.9** "I could not complete X" is a successful outcome. A false DONE is not.
+- **0.6a** All evidence generated by output redirection (`| tee` / `>`), never
+  typed or reconstructed. Prose may ANNOTATE evidence, never CONSTITUTE it.
+- **0.6b** Every bite proof includes the unedited pytest/tool summary line WITH
+  DURATION. A 0.00s run proves nothing executed.
+- **0.6c** Every preflight begins with `git status --porcelain` pasted EMPTY, the
+  test-count baseline stated against its SHA, and the resolved package path
+  proven inside the repo tree.
+- **0.6d** Any evidence later found fabricated invalidates the ENTIRE work
+  order's report. The run is redone from scratch; false evidence is preserved.
+- **0.7** Bite proofs EXECUTED: PASS, ACTUAL FAIL with real assertion text, PASS
+  after restore, empty `git diff`, durations pasted.
+- **0.8** Do not tune to green.
+- **0.9** "I could not complete X" is a successful outcome.
+═══════════════════════════════════════════════════════════════
 
-## 1. STEP ONE — COMMIT AND PUSH EVERYTHING (do this FIRST)
+## WHY THIS EXISTS
 
-All prior work is uncommitted. Do this before any new code so the baseline is
-recoverable and CI can be evaluated against reality.
+`factory.py:15` carries a module-level import of `kraken_v2_book`, committed in
+`af27491`. Chain: `trading.loop.live → data.adapters.factory →
+data.adapters.kraken_v2_book`. import-linter at HEAD: **3 kept, 1 BROKEN**.
+Principles IV and VII are violated in the shipped tree.
 
-    mkdir -p evidence/WO-008a-R3
-    git status --short              > evidence/WO-008a-R3/pre_commit_status.txt 2>&1
-    git log --oneline -15           > evidence/WO-008a-R3/pre_commit_log.txt 2>&1
-    cat evidence/WO-008a-R3/pre_commit_status.txt
-    cat evidence/WO-008a-R3/pre_commit_log.txt
+It read green for six work orders because import-linter was analysing a stale
+`%TEMP%\ci-sim2` tree pinned at `400a28b`, where `factory.py` had no `kraken_v2`
+handling. Corroborated by dependency counts: stale = 171 dependencies → 4 kept;
+real = 176 → 3 kept, 1 broken. Same files, five more edges.
 
-Then, BEFORE committing, verify no secrets are staged:
-    git add -A
-    git diff --cached --name-only > evidence/WO-008a-R3/staged_files.txt 2>&1
-    git diff --cached --name-only | grep -Ei '\.env|secret|credential|\.key|\.pem|apikey|api_key' \
-        > evidence/WO-008a-R3/secret_scan.txt 2>&1 || echo "clean — no secrets staged" \
-        > evidence/WO-008a-R3/secret_scan.txt
-    cat evidence/WO-008a-R3/staged_files.txt
-    cat evidence/WO-008a-R3/secret_scan.txt
+This is the fourth costume of one recurring trap: **prove you are running the
+code you think you are.** Stale module invocation, CI building an unknown commit,
+the editable-install rebind, and now the linter analysing a different repository.
+Ruling 4 kills the class regardless of costume.
 
-If ANY secret-looking file is staged, STOP and report immediately. Do not commit.
+**Everything downstream is held because it would be manufacturing evidence on a
+broken instrument.**
 
-Then commit and push:
-    git commit -m "WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts"
-    git push
-    git log --oneline -5            > evidence/WO-008a-R3/post_push_log.txt 2>&1
-    git status -sb                  > evidence/WO-008a-R3/post_push_status.txt 2>&1
-    echo "local  HEAD: $(git rev-parse HEAD)"   >> evidence/WO-008a-R3/post_push_status.txt
-    echo "remote HEAD: $(git ls-remote origin -h refs/heads/$(git branch --show-current) | awk '{print $1}')" \
-        >> evidence/WO-008a-R3/post_push_status.txt
-    cat evidence/WO-008a-R3/post_push_status.txt
+## OUT OF SCOPE
+- No WebSocket implementation, no spec amendment, no `Mock()` removal
+  (WO-008b-A), no cost-unification.
+- No live network connection.
+- Do NOT fix CI. Capture only (§1).
 
-**The local and remote HEAD hashes MUST match.** If they differ, the push did
-not land — paste the full push output and STOP. This is likely the root cause of
-the persistent CI failure, so this evidence matters.
+## 1. CAPTURE THE CI ERROR — FIRST ACTION, BEFORE ANY FIX
 
-Report the CI run result triggered by this push. Do NOT attempt to fix CI in
-this work order — just report what it now says.
+**Fixing first destroys the diagnostic.** Do this before touching anything.
 
-## 2. STEP TWO — COMPLETE T036 FOR REAL
+Capture verbatim for the most recent GitHub Actions run on `43ca600`:
+- The failing step name and its FULL error output
+- The commit SHA the run actually checked out, versus `43ca600`
+- `actions/checkout` and `actions/setup-python` versions from the workflow
+- Whether the import-linter step passed or failed, and whether pytest ran
 
-Per `specs/002-quote-level-data/tasks.md`, T036 updates consumers for the new
-quote-centric MarketState schema. Tests are currently xfailed with
-"Consumer update scheduled T036."
+If the Actions API is unreachable from your environment, say so plainly and state
+what you'd need — Hadi will capture from the browser. Do NOT theorize about the
+cause. Capture only.
+Evidence → `evidence/WO-010/ci_error_capture.txt`
 
-Required:
-- Update every consumer that the xfail markers point at so it works against the
-  new schema (the noted case is strategy using `volume_24h`; find and handle ALL
-  of them).
-- Remove those xfail markers and make the tests PASS for real. Not deleted, not
-  skipped, not weakened.
-- The strategy interface stays `decide(market_state) -> DesiredPosition`.
-- The risk layer contains no ML — unchanged.
+**Then state, from captured evidence only:** does CI fail at the import-linter
+step, at pytest collection, or elsewhere? If pytest collection, we have TWO
+independent problems and must say so rather than assume one explains the other.
 
-Evidence:
-    pytest tests/ -v -rxX > evidence/WO-008a-R3/t036_tests.txt 2>&1
-    cat evidence/WO-008a-R3/t036_tests.txt
+## 2. BUILD THE PREFLIGHT PATH ASSERTION — before anything else is trusted
 
-Report: which xfails were cleared (by name), which remain, and for each
-remaining one the specific task/phase that will clear it. If a marker cannot be
-cleared, say so and explain why — do not remove it to make the count look good.
+This is the guard beneath the guards. Nothing else in this WO is bankable until
+it exists and passes.
 
-## 3. STEP THREE — DEMONSTRATE THE FULL LOOP (this is the deliverable)
+### 2.1 Requirement
+A check that **hard-fails** if the resolved `trading` package path is not inside
+the repository working tree. It must run before contracts and before tests.
+- Implement as a conftest-level or session-level assertion so it cannot be
+  skipped, plus a standalone invocable form for CI.
+- On failure, the error must name the resolved path and the expected repo root.
 
-Produce an observable, end-to-end run on fixtures showing ALL FOUR layers acting
-on the same tick. This is what WO-008a claimed and never delivered.
+### 2.2 Bite proof — EXECUTED
+Prove it fires: point the resolution at a path outside the tree (e.g. temporarily
+prepend a decoy on `sys.path`, or simulate the stale-install condition), run,
+**PASTE THE ACTUAL FAILING OUTPUT** with real assertion text and duration.
+Restore, paste PASS, paste empty `git diff`.
+Evidence → `evidence/WO-010/preflight_path_assertion_bite_proof.txt`
 
-Run with `-v -s` so program output is captured:
-    pytest tests/integration/test_live_loop.py -v -s \
-        > evidence/WO-008a-R3/end_to_end_full_cycle.txt 2>&1
-    cat evidence/WO-008a-R3/end_to_end_full_cycle.txt
+## 3. PROVE THE ENVIRONMENT — single install, normal shell
 
-The output must show, AS THE PROGRAM PRINTED IT, for at least one complete cycle:
-1. **DATA** — MarketState with best_bid, best_ask, spread, mid_price (real values,
-   no corrupted characters).
-2. **STRATEGY** — the DesiredPosition emitted, with its side and size.
-3. **RISK** — the risk decision ACTUALLY INVOKED: input size, output size, and
-   whether it clamped, approved, or vetoed, with the reason. This is the step
-   that has never been observed. "Through existing integration" is not evidence.
-4. **EXECUTION** — the paper fill with the full cost breakdown: fee, observed
-   spread cost, slippage, total.
+Hadi removed the stale `.pth` and temp trees in an **elevated Administrator
+shell**. You run in a normal shell. Re-verify there; an elevated-shell result
+does not transfer.
 
-If the loop needs print/logging to make this observable, add it to the TEST or
-use existing structured logging — do NOT add debug prints to production code
-paths. State exactly what you added.
+    python -c "import trading; print(trading.__file__)"
+    python -c "import sys; [print(i,p) for i,p in enumerate(sys.path)]"
+    pip list | findstr /I trading
+    pip show trading-system
 
-**Also prove the clamp-only-shrinks invariant holds in this cycle** (Principle
-VII): the risk layer's output size must be between zero and the requested size,
-same sign, never flipped. Show the numbers.
+Required end state, all pasted:
+- `trading.__file__` resolves inside `C:\Projects\bot\trading-system\src`
+- NO `%TEMP%` entry anywhere on `sys.path`
+- **EXACTLY ONE** install of `trading-system`. If two remain, report it — do NOT
+  run `pip uninstall`; it removed the correct install first during earlier
+  cleanup and regressed resolution to the stale tree. Report and STOP if a second
+  install is present.
+- The §2 preflight assertion PASSES
+Evidence → `evidence/WO-010/environment_proof.txt`
 
-If the full cycle STILL cannot be demonstrated after completing T036, STOP and
-report precisely which layer cannot be exercised and why. That is a legitimate
-outcome and goes to the project lead — it means Phase 8 has an unmet dependency.
+## 4. MOCK-IMPORT LINT CONTRACT (build-enforced, per D9)
 
-## 4. STEP FOUR — RE-VERIFY AND COMMIT
+Add a contract/rule: `unittest.mock` (or equivalent test doubles) must NOT be
+importable from production modules under `src/`. Test directories exempt.
+- **Bite proof:** the rule must FAIL against the current tree, because
+  `kraken_v2_book.py:22` has `from unittest.mock import Mock` committed at
+  `43ca600`. Paste that failure — it is expected and correct.
+- Do NOT fix the Mock here (ruled into WO-008b-A). The rule lands red, with the
+  violation documented as a known live defect this rule now catches.
+- State plainly: the rule is expected to be RED until WO-008b-A removes the Mock.
+Evidence → `evidence/WO-010/mock_lint_contract.txt`
 
-    import-linter lint    > evidence/WO-008a-R3/import_linter.txt 2>&1
-    pytest tests/ -rX     > evidence/WO-008a-R3/final_tests.txt 2>&1
-    cat evidence/WO-008a-R3/import_linter.txt
-    cat evidence/WO-008a-R3/final_tests.txt
+## 5. THE REGISTRY FIX (ruled: option b — dict + decorator, ~20 lines)
 
-Requirements: 4/4 contracts kept, 0 xpassed, no test weakened to achieve it.
+### 5.1 Ruled design and scope discipline
+Lazy import is REJECTED: it hides the dependency from static analysis, which is
+the exact defect shape this episode is about. We do not fix a masked violation
+with a sanctioned mask.
 
-Then commit and push all of Step 2–4, and again show matching local/remote HEAD.
+Required: adapters **self-register**; the factory resolves by name from
+`DATA_SOURCE`.
+- A name→constructor dict and a registration decorator. **On the order of twenty
+  lines.**
+- **NO plugin framework, NO entry-points machinery, NO dynamic discovery, NO
+  auto-scanning.** If your design exceeds ~30 lines or introduces a new
+  abstraction beyond dict + decorator, STOP AND ASK — over-engineering the
+  factory is a known failure mode of this project's history.
+- Adapters register at their own import. Config names the adapter by string.
+- This is also Sprint 3's venue-swap mechanism: add one adapter module, it
+  registers itself, config names it, nothing else moves.
 
-## 5. FINAL REPORT — then STOP
+### 5.2 Contract update
+Encode the clean truth: **nothing outside `data.adapters` imports adapter
+modules; the registry is the sole resolution path.**
 
-For each item: DONE / BLOCKED / NOT DONE, with evidence filename and pasted
-contents.
+### 5.3 Bite proof — fail-then-pass, EXECUTED
+- Run the contract against the real tree at current state → **PASTE THE ACTUAL
+  FAILURE** (3 kept, 1 broken), with duration.
+- Apply the registry fix.
+- Re-run → paste PASS (4/4, or whatever the corrected count is), with duration.
+- Paste the diff of what changed.
+Evidence → `evidence/WO-010/registry_bite_proof.txt`
 
-1. **Commit/push:** paste pre-status, post-push log, and the local vs remote HEAD
-   hashes. Do they match? What does CI now report?
-2. **T036:** which xfails cleared by name, which remain and why. Paste test output.
-3. **Full loop:** paste the four-layer cycle output. Was the RISK layer actually
-   invoked — YES or NO? Paste the clamp-only-shrinks numbers.
-4. **Was WO-008a's original claim that T036 was DONE accurate?** Answer plainly.
-   This is not a trap — an accurate "no, it was reported complete prematurely" is
-   the correct answer and closes the loop honestly.
-5. Paste import-linter (4/4?) and final pytest summary (0 xpassed?).
-6. **Did you open ANY network connection to any venue?** YES/NO explicitly.
-7. **What did you change that you were not asked to change?** Every file, with
-   justification, or "none."
-8. **What could not be proven or completed, and why?** Be specific.
+## 6. RETROACTIVE FOUR-COMMIT AUDIT
 
-Do NOT proceed to WO-008b. STOP for human review.
+Run contracts against the REAL tree at `af27491`, `90882d0`, `8e8a891`,
+`43ca600`.
+
+**CRITICAL METHODOLOGY:** use the contract set **as it existed at `43ca600`** —
+NOT the post-registry contracts from §5. Post-registry contracts would fail on
+old commits merely for lacking a registry, which answers nothing. The question is
+*when the break entered and what else was masked*, so the contracts must be the
+ones those commits were claimed to satisfy. State explicitly which contract set
+you used.
+
+Use `git worktree add` for each checkout so the main working tree and evidence
+files are not disturbed. Do NOT check out over the current tree.
+
+Produce a dated table: commit | contracts kept | contracts broken | which
+contract | what entered when.
+
+Then answer: **was the `factory.py` edge the ONLY violation the stale analysis
+concealed, or were there others?** This is the question the audit exists for.
+Evidence → `evidence/WO-010/retroactive_audit.txt`
+
+## 7. ANNOTATE THE RECORD — do not rewrite it
+
+Every "4/4 contracts kept" claim from `af27491` onward is false: WO-008a through
+R6 reports, and `progress.md`.
+- **ANNOTATE** each with a dated correction noting the claim was produced by a
+  stale-tree analysis and stating the true contract state from §6.
+- **DO NOT rewrite or delete** the original text. Same doctrine as the quarantined
+  evidence: the record of a false claim is itself evidence, and history is not
+  laundered.
+
+## 8. DECISION LOG ENTRIES (dated)
+1. **Boundary break at HEAD.** `factory.py:15` module-level adapter import
+   committed `af27491`; Principles IV and VII violated in the shipped tree;
+   detected only after the environment was corrected.
+2. **The instrument was pointed at the wrong tree.** import-linter analysed
+   `%TEMP%\ci-sim2` pinned at `400a28b` for six work orders, caused by a
+   WO-008a-R3 Ops instruction that ran `pip install -e .` inside a temp clone.
+   Fourth instance of "prove you are running the code you think you are."
+   Remedy: build-enforced preflight path assertion (§2).
+3. **Registry pattern adopted** for adapter resolution — the fix and Sprint 3's
+   venue-swap mechanism, built early by necessity.
+
+## 9. VERIFY, COMMIT, PUSH
+    git status --porcelain > evidence/WO-010/pre_status.txt 2>&1
+    pytest tests/ -rX      > evidence/WO-010/tests.txt 2>&1
+    import-linter lint     > evidence/WO-010/linter_final.txt 2>&1
+Baseline: 81 collected, 73 passed, 8 xfailed, 0 failed, 0 xpassed at `43ca600`.
+Report the count against that baseline and its SHA. The mock-lint contract is
+EXPECTED RED (§4) — state that explicitly so it is not mistaken for a regression.
+
+Secret scan before commit, then push, paste local vs remote HEAD (must match).
+
+## 10. FINAL REPORT — then STOP
+
+1. **CI capture** — paste verbatim. Does CI fail at import-linter, pytest
+   collection, or elsewhere? One problem or two?
+2. **Preflight assertion** — paste the bite proof, four artifacts with durations.
+3. **Environment** — paste `trading.__file__`, full `sys.path`, install count.
+   Exactly ONE install? Any `%TEMP%` on the path? Verified in a NORMAL shell?
+4. **Mock-lint contract** — paste it firing red against the committed `Mock`.
+5. **Registry fix** — paste the fail-then-pass bite proof with durations. How many
+   lines is the registry? Did you introduce any abstraction beyond dict +
+   decorator?
+6. **Retroactive audit** — paste the four-commit table. State which contract set
+   you used. **Was `factory.py` the only concealed violation?**
+7. **Annotations** — paste one example. Confirm no original text was rewritten.
+8. **Decision log** — paste all three entries.
+9. Paste §9 verification: empty pre-status, test count vs baseline SHA,
+   import-linter, local/remote HEAD.
+10. **Is any file in `evidence/WO-010/` prose standing in for output?** YES/NO.
+    (Rule 0.6d: fabrication invalidates this entire work order.)
+11. **What did you change that you were not asked to change?** Every file, or "none."
+12. **What could not be completed, and why?**
+
+STOP for human review. Do NOT proceed to WO-009 or WO-008b-A.

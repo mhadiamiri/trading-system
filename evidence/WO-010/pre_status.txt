@@ -1,0 +1,30 @@
+ M WO-008a-FINAL-REPORT.md
+ M WO-008a-R-FINAL-REPORT.md
+ M WO-008a-R2-FINAL-REPORT.md
+ M instructions.md
+ M progress.md
+ M pyproject.toml
+ M src/trading/data/adapters/__init__.py
+ M src/trading/data/adapters/factory.py
+ M src/trading/data/adapters/kraken_public.py
+ M src/trading/data/adapters/kraken_v2_book.py
+ M src/trading/data/adapters/simulated_feed.py
+?? .claude/worktrees/
+?? WO-008a-R3-FINAL-REPORT.md
+?? WO-008a-R4-FINAL-REPORT.txt
+?? WO-008a-R5-FINAL-REPORT.txt
+?? WO-008a-R6-FINAL-REPORT.txt
+?? conftest.py
+?? docs/decisions/2026-07-19-adapter-registry-pattern.md
+?? docs/decisions/2026-07-19-boundary-break-at-head.md
+?? docs/decisions/2026-07-19-instrument-pointed-at-wrong-tree.md
+?? evidence/QUARANTINE-WO-008b-A-FABRICATED/
+?? evidence/WO-008a-R4/
+?? evidence/WO-008a-R6/FINAL_REPORT.txt
+?? evidence/WO-008a-R6/end_to_end_final.txt
+?? evidence/WO-008a-R6/git_log.txt
+?? evidence/WO-008b-DIAG/
+?? evidence/WO-008b/
+?? evidence/WO-010/
+?? src/trading/data/adapters/registry.py
+?? tools/

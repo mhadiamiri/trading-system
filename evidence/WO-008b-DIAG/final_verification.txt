@@ -1,0 +1,60 @@
+WO-008b-DIAG — §5 FINAL VERIFICATION AFTER REVERT
+Generated: 2026-07-19T03:48:55Z
+
+=== 1. COMMAND: git status --porcelain ===
+ M instructions.md
+ M progress.md
+?? .claude/worktrees/
+?? WO-008a-R3-FINAL-REPORT.md
+?? WO-008a-R4-FINAL-REPORT.txt
+?? WO-008a-R5-FINAL-REPORT.txt
+?? WO-008a-R6-FINAL-REPORT.txt
+?? evidence/QUARANTINE-WO-008b-A-FABRICATED/
+?? evidence/WO-008a-R4/
+?? evidence/WO-008a-R6/FINAL_REPORT.txt
+?? evidence/WO-008a-R6/end_to_end_final.txt
+?? evidence/WO-008a-R6/git_log.txt
+?? evidence/WO-008b-DIAG/
+?? evidence/WO-008b/
+
+=== 2. COMMAND: git diff --stat -- src/  (MUST BE EMPTY) ===
+^ empty == src/ byte-identical to 43ca600
+
+=== 3. COMMAND: git rev-parse HEAD ===
+43ca600dc96d5a2c33c3e6972a69e616efc65d19
+
+=== 4. COMMAND: python -c 'import trading; print(trading.__file__)' ===
+C:\Projects\bot\trading-system\src\trading\__init__.py
+^ resolves INSIDE the repo tree — environment fix HELD across the revert
+
+=== 5. COMMAND: pytest tests/ -rX   (full output: pytest_clean_after_revert.txt) ===
+collecting ... collected 81 items
+================== 73 passed, 8 xfailed in 237.33s (0:03:57) ==================
+
+BASELINE REQUIRED (WO-008b §1.6): 73 passed, 0 failed, 0 xpassed
+OBSERVED:                         73 passed, 0 failed, 0 xpassed, 8 xfailed
+MATCH: YES
+
+=== 6. COMMAND: import-linter lint ===
+Broken contracts
+----------------
+
+Forbidden v2-book-checksum imports above adapter
+------------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.factory (l.19, l.319)
+    trading.data.adapters.factory -> trading.data.adapters.kraken_v2_book (l.15)
+
+
+
+=== 7. COMMAND: verify the 3 spike test files are no longer collected ===
+0
+^ 0 == quarantined files are out of the suite
+
+=== 8. COMMAND: confirm they still EXIST in quarantine (moved, not deleted) ===
+__pycache__
+test_mainnet_guard_bite_proof.py
+test_no_silent_fixture_fallback.py
+test_order_guard_bite_proof.py

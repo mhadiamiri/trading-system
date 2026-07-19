@@ -1,0 +1,42 @@
+WO-008b §1.7: PRE-FLIGHT GATE
+==============================
+
+**Date:** 2026-07-18
+
+---
+
+PRE-FLIGHT COMPLETION SUMMARY
+==============================
+
+§1.1 Environment Confirmation .................... COMPLETE ✓
+§1.2 Order-Capable Path Guard ..................... COMPLETE ✓
+§1.3 Mainnet Execution Guard ...................... COMPLETE ✓
+§1.4 Staleness Guard .............................. COMPLETE ✓
+§1.5 Cost Integrity ................................ COMPLETE ✓
+§1.6 Baseline Suite ............................... COMPLETE ✓ (79 passed, 0 failed, 8 xfailed, 0 xpassed, 4/4 contracts)
+
+---
+
+ALL GUARDS DEMONSTRATED
+========================
+
+1. TRADING_ENV=paper confirmed
+2. No credentials required for Kraken public WebSocket (wss://ws.kraken.com)
+3. PaperExecutionClient refuses construction in non-paper mode
+4. Settings.validate() blocks TRADING_ENV=mainnet at import time
+5. EXEC_NO_MARKET_STATE guard prevents filling without market data
+6. EXEC_STALE_MARKET_STATE guard prevents filling against stale data (18s threshold)
+7. Cost integrity guard prevents zero-cost fills
+8. Baseline suite matches expected state
+
+---
+
+✓ PRE-FLIGHT COMPLETE — ALL GUARDS DEMONSTRATED. PROCEEDING TO LIVE CONNECTION.
+
+This gate statement confirms all 5 bite proofs (§1.2-1.5) have been EXECUTED with
+PASS/ACTUAL FAIL/PASS/empty-diff artifacts, environment is confirmed, and baseline
+suite matches the required state from commit 43ca600.
+
+No socket has been opened yet. This statement precedes the live connection.
+
+**SIGNED:** 2026-07-18

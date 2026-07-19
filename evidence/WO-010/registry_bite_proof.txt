@@ -1,0 +1,402 @@
+WO-010 §5.3 — REGISTRY FIX: FAIL-THEN-PASS BITE PROOF (EXECUTED)
+Generated: 2026-07-19T04:43:20Z
+Ruled design: option b — name->constructor dict + registration decorator.
+Lazy import REJECTED by ruling (hides the dependency from static analysis).
+
+################ BEFORE — THE ACTUAL FAILURE ################
+=== COMMAND: git diff --stat -- src/  (tree state: clean vs 43ca600) ===
+^ empty == src/ is byte-identical to 43ca600 at the time of this capture
+
+=== COMMAND: grep -n 'import' src/trading/data/adapters/factory.py | head -8 ===
+11:from typing import AsyncIterator, Optional, List
+12:from trading.data.market_state import MarketState
+13:from trading.data.adapters.simulated_feed import SimulatedMarketFeed
+14:from trading.data.adapters.kraken_public import KrakenPublicFeed
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+16:from trading.logkit.decision import DecisionLogger
+17:from config.settings import Settings
+
+=== COMMAND: time import-linter lint ===
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 54 files, 176 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+No test doubles in production code BROKEN
+
+Contracts: 3 kept, 2 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+Forbidden v2-book-checksum imports above adapter
+------------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.factory (l.19, l.319)
+    trading.data.adapters.factory -> trading.data.adapters.kraken_v2_book (l.15)
+
+
+No test doubles in production code
+----------------------------------
+
+trading is not allowed to import unittest:
+
+-   trading.data.adapters.kraken_v2_book -> unittest (l.22)
+
+
+
+real	0m0.191s
+user	0m0.000s
+sys	0m0.000s
+
+################ AFTER — THE FIX ################
+=== COMMAND: cat src/trading/data/adapters/registry.py ===
+"""
+Adapter registry (WO-010 §5).
+
+Adapters self-register under a config name; the factory resolves by name.
+
+This exists so that no module outside `trading.data.adapters` needs to import a
+concrete adapter module. A lazy/function-local import was explicitly rejected:
+it would hide the dependency from static analysis, which is the exact defect
+shape this remediation is about.
+
+This is also Sprint 3's venue-swap mechanism: add one adapter module, it
+registers itself, config names it, nothing else moves.
+"""
+
+from __future__ import annotations
+
+from typing import Callable, Dict
+
+_REGISTRY: Dict[str, Callable] = {}
+
+
+def register(name: str) -> Callable:
+    """Decorator registering a builder callable under a config name."""
+
+    def _decorator(builder: Callable) -> Callable:
+        if name in _REGISTRY:
+            raise ValueError(f"Adapter name already registered: {name!r}")
+        _REGISTRY[name] = builder
+        return builder
+
+    return _decorator
+
+
+def create(name: str, **kwargs):
+    """Resolve and construct an adapter by its registered config name."""
+    if name not in _REGISTRY:
+        raise ValueError(
+            f"Unknown data source: {name!r}. Registered: {registered_names()}"
+        )
+    return _REGISTRY[name](**kwargs)
+
+
+def registered_names() -> list[str]:
+    """Sorted list of registered config names."""
+    return sorted(_REGISTRY)
+
+=== COMMAND: registry line count (code only, excluding docstring/blank) ===
+  total lines           : 45
+  module docstring lines: 13
+  blank lines           : 14
+  comment lines         : 0
+  EXECUTABLE CODE LINES : 18
+
+=== COMMAND: factory.py imports AFTER (no concrete adapter module) ===
+11:import any concrete adapter module. Adapters self-register when
+15:from typing import Any, AsyncIterator, Optional
+17:from trading.data.market_state import MarketState
+18:from trading.data.adapters import registry
+19:from trading.logkit.decision import DecisionLogger
+20:from config.settings import Settings
+
+=== COMMAND: runtime — registration actually happens ===
+registered names: ['kraken_public', 'kraken_v2', 'simulated']
+
+=== COMMAND: time import-linter lint ===
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 56 files, 181 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code BROKEN
+
+Contracts: 5 kept, 1 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+No test doubles in production code
+----------------------------------
+
+trading is not allowed to import unittest:
+
+-   trading.data.adapters.kraken_v2_book -> unittest (l.22)
+
+
+
+real	0m0.194s
+user	0m0.015s
+sys	0m0.015s
+
+################ THE DIFF — WHAT CHANGED ################
+=== COMMAND: git status --porcelain -- src/ pyproject.toml ===
+ M pyproject.toml
+ M src/trading/data/adapters/__init__.py
+ M src/trading/data/adapters/factory.py
+ M src/trading/data/adapters/kraken_public.py
+ M src/trading/data/adapters/kraken_v2_book.py
+ M src/trading/data/adapters/simulated_feed.py
+?? src/trading/data/adapters/registry.py
+
+=== COMMAND: git diff --stat -- src/ pyproject.toml ===
+warning: in the working copy of 'pyproject.toml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/__init__.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/factory.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/kraken_public.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/kraken_v2_book.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/simulated_feed.py', LF will be replaced by CRLF the next time Git touches it
+ pyproject.toml                              | 15 +++++++++-
+ src/trading/data/adapters/__init__.py       | 14 +++++----
+ src/trading/data/adapters/factory.py        | 45 +++++++++--------------------
+ src/trading/data/adapters/kraken_public.py  | 14 +++++++++
+ src/trading/data/adapters/kraken_v2_book.py | 13 +++++++++
+ src/trading/data/adapters/simulated_feed.py | 10 +++++++
+ 6 files changed, 73 insertions(+), 38 deletions(-)
+
+=== COMMAND: git diff -- src/trading/data/adapters/factory.py ===
+warning: in the working copy of 'src/trading/data/adapters/factory.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/trading/data/adapters/factory.py b/src/trading/data/adapters/factory.py
+index 50113d8..5a61211 100644
+--- a/src/trading/data/adapters/factory.py
++++ b/src/trading/data/adapters/factory.py
+@@ -6,19 +6,22 @@ Creates feed instances based on configuration.
+ Constitutional Principles:
+ - VII. Venue Independence: Abstraction behind factory
+ - IX. Secrets and Safety Rails: No credentials for public feeds
++
++WO-010 §5: this module resolves adapters BY NAME through `registry`. It does not
++import any concrete adapter module. Adapters self-register when
++`trading.data.adapters` is imported; config names the adapter by string.
+ """
+ 
+-from typing import AsyncIterator, Optional, List
++from typing import Any, AsyncIterator, Optional
++
+ from trading.data.market_state import MarketState
+-from trading.data.adapters.simulated_feed import SimulatedMarketFeed
+-from trading.data.adapters.kraken_public import KrakenPublicFeed
+-from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
++from trading.data.adapters import registry
+ from trading.logkit.decision import DecisionLogger
+ from config.settings import Settings
+ 
+ 
+ # Store active feed instance for diagnostics
+-_active_feed: Optional[KrakenPublicFeed | SimulatedMarketFeed | KrakenV2BookAdapter] = None
++_active_feed: Optional[Any] = None
+ 
+ 
+ def create_feed(
+@@ -41,32 +44,10 @@ def create_feed(
+     global _active_feed
+     data_source = Settings.DATA_SOURCE
+ 
+-    if data_source == "simulated":
+-        print("Using SimulatedMarketFeed")
+-        feed = SimulatedMarketFeed(update_interval_ms=1000)
+-        _active_feed = feed
+-        return feed.get_market_data()
+-
+-    elif data_source == "kraken_public":
+-        print("Using KrakenPublicFeed (live mainnet public data)")
+-        feed = KrakenPublicFeed(
+-            decision_logger=decision_logger,
+-            reconnect_base_delay=1.0,
+-            reconnect_max_delay=60.0,
+-        )
+-        _active_feed = feed
+-        return feed.get_market_data()
+-
+-    elif data_source == "kraken_v2":
+-        # WO-008a T035: kraken_v2 adapter implementation (FIXTURES ONLY)
+-        # No live WebSocket connections - fixture-based testing only
+-        print("Using KrakenV2BookAdapter (FIXTURES ONLY - no live connection)")
+-        feed = KrakenV2BookAdapter()
+-        _active_feed = feed
+-        return feed.get_market_data()
+-
+-    else:
+-        raise ValueError(f"Unknown data source: {data_source}")
++    feed = registry.create(data_source, decision_logger=decision_logger)
++    print(f"Using adapter registered as {data_source!r}: {type(feed).__name__}")
++    _active_feed = feed
++    return feed.get_market_data()
+ 
+ 
+ def get_data_source() -> str:
+@@ -79,7 +60,7 @@ def is_using_live_feed() -> bool:
+     return Settings.DATA_SOURCE in ("kraken_public", "kraken_v2")
+ 
+ 
+-def get_active_feed() -> Optional[KrakenPublicFeed | SimulatedMarketFeed | KrakenV2BookAdapter]:
++def get_active_feed() -> Optional[Any]:
+     """
+     Get the active feed instance.
+ 
+
+=== COMMAND: git diff -- src/trading/data/adapters/__init__.py ===
+warning: in the working copy of 'src/trading/data/adapters/__init__.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/trading/data/adapters/__init__.py b/src/trading/data/adapters/__init__.py
+index ca7e2df..190bd24 100644
+--- a/src/trading/data/adapters/__init__.py
++++ b/src/trading/data/adapters/__init__.py
+@@ -3,12 +3,16 @@ Data Adapters - Market Data Feed Adapters
+ 
+ Constitutional Principles:
+ - VII. Venue Independence: Strict abstraction over venue
++
++WO-010 §5: importing this package imports every adapter module, which is what
++triggers their self-registration in `registry`. These imports are deliberately
++module-level and deliberately live HERE, inside `trading.data.adapters` — the
++one place permitted to know concrete adapter modules. Nothing outside this
++package imports an adapter module; the registry is the sole resolution path.
+ """
+ 
++from trading.data.adapters.kraken_public import KrakenPublicFeed
++from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+ from trading.data.adapters.simulated_feed import SimulatedMarketFeed
+ 
+-# Placeholder for Sprint 2: Kraken v2 book adapter (T009-T019)
+-# Will be implemented in Phase 3
+-# from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+-
+-__all__ = ["SimulatedMarketFeed"]  # Add "KrakenV2BookAdapter" in Phase 3
++__all__ = ["SimulatedMarketFeed", "KrakenPublicFeed", "KrakenV2BookAdapter"]
+
+=== COMMAND: git diff -- pyproject.toml ===
+warning: in the working copy of 'pyproject.toml', LF will be replaced by CRLF the next time Git touches it
+diff --git a/pyproject.toml b/pyproject.toml
+index 835ae78..339f332 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -47,5 +47,18 @@ contracts = [
+     { type = "forbidden", name = "Forbidden ML in Risk Layer", source_modules = ["trading.risk"], forbidden_modules = ["torch", "tensorflow", "sklearn", "transformers"] },
+     { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.execution.adapters"] },
+     { type = "forbidden", name = "Forbidden v2-book-checksum imports above adapter", source_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_v2_book"] },
+-    { type = "forbidden", name = "Forbid loop from importing adapters directly", ignore_imports = ["trading.loop.live -> trading.data.adapters.factory"], source_modules = ["trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] }
++    # WO-010 §5.2: the ignore_imports exemption for
++    # "trading.loop.live -> trading.data.adapters.factory" was REMOVED. It was
++    # needed only because factory.py imported adapter modules directly. The
++    # registry removes that edge, so the exemption is no longer required and
++    # keeping it would preserve a mask we no longer need.
++    { type = "forbidden", name = "Forbid loop from importing adapters directly", source_modules = ["trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] },
++    # WO-010 §5.2: the registry is the SOLE adapter resolution path. No module
++    # outside trading.data.adapters may import a concrete adapter module.
++    { type = "forbidden", name = "Registry is the sole adapter resolution path", source_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] },
++    # WO-010 §4 (rule 0.1c): no test doubles in production code.
++    # `tests/` is outside the `trading` root package, so test directories are
++    # exempt automatically. EXPECTED RED until WO-008b-A removes the committed
++    # `from unittest.mock import Mock` at kraken_v2_book.py:22.
++    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest"] }
+ ]
+
+=== COMMAND: git diff -- src/trading/data/adapters/simulated_feed.py src/trading/data/adapters/kraken_public.py src/trading/data/adapters/kraken_v2_book.py ===
+warning: in the working copy of 'src/trading/data/adapters/kraken_public.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/kraken_v2_book.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/simulated_feed.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/trading/data/adapters/kraken_public.py b/src/trading/data/adapters/kraken_public.py
+index 06c48b6..efd39e6 100644
+--- a/src/trading/data/adapters/kraken_public.py
++++ b/src/trading/data/adapters/kraken_public.py
+@@ -329,3 +329,17 @@ class KrakenPublicFeed:
+         self._parse_errors = 0
+         self._filtered_messages = 0
+         self._heartbeat_messages = 0
++
++
++# --- WO-010 §5: self-registration ---------------------------------------
++from trading.data.adapters.registry import register  # noqa: E402
++
++
++@register("kraken_public")
++def _build_kraken_public(decision_logger=None) -> "KrakenPublicFeed":
++    """Builder invoked by the registry when DATA_SOURCE=kraken_public."""
++    return KrakenPublicFeed(
++        decision_logger=decision_logger,
++        reconnect_base_delay=1.0,
++        reconnect_max_delay=60.0,
++    )
+diff --git a/src/trading/data/adapters/kraken_v2_book.py b/src/trading/data/adapters/kraken_v2_book.py
+index df2b947..2474b38 100644
+--- a/src/trading/data/adapters/kraken_v2_book.py
++++ b/src/trading/data/adapters/kraken_v2_book.py
+@@ -922,3 +922,16 @@ class KrakenV2BookAdapter:
+         """
+         self.pause()
+         # In production, this would be triggered by WebSocket disconnection
++
++
++# --- WO-010 §5: self-registration ---------------------------------------
++from trading.data.adapters.registry import register  # noqa: E402
++
++
++@register("kraken_v2")
++def _build_kraken_v2(decision_logger=None) -> "KrakenV2BookAdapter":
++    """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
++
++    FIXTURES ONLY — live WebSocket transport is held under WO-008b-A.
++    """
++    return KrakenV2BookAdapter()
+diff --git a/src/trading/data/adapters/simulated_feed.py b/src/trading/data/adapters/simulated_feed.py
+index aeb2b2d..daa8d60 100644
+--- a/src/trading/data/adapters/simulated_feed.py
++++ b/src/trading/data/adapters/simulated_feed.py
+@@ -101,3 +101,13 @@ class SimulatedMarketFeed:
+     def venue_name(self) -> str:
+         """Return the venue name for this feed adapter."""
+         return "simulated"
++
++
++# --- WO-010 §5: self-registration ---------------------------------------
++from trading.data.adapters.registry import register  # noqa: E402
++
++
++@register("simulated")
++def _build_simulated(decision_logger=None) -> "SimulatedMarketFeed":
++    """Builder invoked by the registry when DATA_SOURCE=simulated."""
++    return SimulatedMarketFeed(update_interval_ms=1000)
+
+=== NEW UNTRACKED FILE: registry.py (shown in full above) ===
+?? src/trading/data/adapters/registry.py

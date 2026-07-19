@@ -1,0 +1,66 @@
+WO-008b-DIAG — DUPLICATE METHOD DEFINITIONS (later definition silently wins)
+Generated: 2026-07-19T03:36:10Z
+
+=== COMMAND: grep -n 'def venue_name\|def get_diagnostic_counters\|^class ' ...kraken_v2_book.py ===
+37:class LocalBookState(enum.Enum):
+56:class LocalBookData:
+260:class TradeEvent:
+283:class RollingTradeStats:
+361:class QuoteUpdate:
+422:class KrakenV2BookAdapter:
+511:    def venue_name(self) -> str:
+515:    def get_diagnostic_counters(self) -> dict:
+1207:    def venue_name(self) -> str:
+1211:    def get_diagnostic_counters(self) -> dict:
+(Single class KrakenV2BookAdapter — both pairs are on the SAME class.)
+
+--- FIRST (dead) venue_name at 510-513 ---
+    @property
+    def venue_name(self) -> str:
+        """Return venue name for diagnostics."""
+        return "kraken_mainnet" if self._live_mode else "kraken_fixture"
+
+--- SECOND (wins) venue_name at 1206-1209 ---
+    @property
+    def venue_name(self) -> str:
+        """Return venue name."""
+        return "kraken_v2"
+
+
+--- FIRST (dead) get_diagnostic_counters at 515 ---
+    def get_diagnostic_counters(self) -> dict:
+        """
+        Get diagnostic counters (WO-008b-A §3.2).
+
+        Returns:
+            Dict with diagnostic metrics
+--- SECOND (wins) get_diagnostic_counters at 1211 ---
+    def get_diagnostic_counters(self) -> dict:
+        """
+        Get diagnostic counters for throughput measurement (WO-008a-R2 §2.4).
+
+        Returns:
+            Dict with raw_messages_received, market_states_emitted, elapsed_seconds,
+            and rate reporting (refuses to extrapolate for sub-60s windows)
+
+=== RUNTIME PROOF (real tree via PYTHONPATH=src) ===
+live_mode=True  -> venue_name = 'kraken_v2'
+live_mode=False -> venue_name = 'kraken_v2'
+INDISTINGUISHABLE: True
+
+surviving get_diagnostic_counters keys:
+['elapsed_seconds', 'emitted_rate_per_minute', 'market_states_emitted', 'rate_refusal_reason', 'rate_reported', 'raw_messages_received', 'raw_rate_per_minute']
+
+=== ANALYSIS (labelled: not command output) ===
+venue_name feeds provenance into every decision-log record via
+factory.get_venue_name() (factory.py:114 -> loop/live.py:120,178).
+Because the later definition returns a constant 'kraken_v2', a LIVE MAINNET
+run and a FIXTURE REPLAY are INDISTINGUISHABLE in the audit log.
+For a work order whose entire purpose is proving real venue data flowed,
+the audit trail cannot record that fact. Principle VIII (Provenance).
+
+The surviving get_diagnostic_counters() also DROPS every live-health
+counter the spike added (connection_errors, reconnect_count,
+sequence_gaps_detected, checksum_failures, staleness_guard_firings,
+live_mode, venue) — they are computed but never reported.
+Note: _staleness_guard_firings is initialised and NEVER incremented.

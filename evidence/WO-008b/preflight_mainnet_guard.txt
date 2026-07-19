@@ -1,0 +1,92 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard_bite_proof.py::test_settings_validate_accepts_paper 
+[MAINNET GUARD - PASS]
+  Settings.validate() succeeded with TRADING_ENV=paper
+  Phase-1 scope guard satisfied
+PASSED
+
+============================== 1 passed in 0.02s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard_bite_proof.py::test_settings_validate_blocks_mainnet FAILED
+
+================================== FAILURES ===================================
+____________________ test_settings_validate_blocks_mainnet ____________________
+tests\integration\test_mainnet_guard_bite_proof.py:59: in test_settings_validate_blocks_mainnet
+    import config.settings
+config\settings.py:107: in <module>
+    Settings.validate()
+config\settings.py:79: in validate
+    raise ValueError(
+E   ValueError: TRADING_ENV=mainnet is BLOCKED by constitutional guard. Phase 1 scope permits paper trading only. No code path can place real-money orders in Phase 1. To proceed with real-money execution, a constitutional amendment or explicit Strategy & Roadmap decision for Phase 3 is required. See .specify/memory/constitution.md Principle IX and Phase-1 Scope.
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard_bite_proof.py::test_settings_validate_blocks_mainnet - ValueError: TRADING_ENV=mainnet is BLOCKED by constitutional guard. Phase 1 scope permits paper trading only. No code path can place real-money orders in Phase 1. To proceed with real-money execution, a constitutional amendment or explicit Strategy & Roadmap decision for Phase 3 is required. See .specify/memory/constitution.md Principle IX and Phase-1 Scope.
+============================== 1 failed in 0.07s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard_bite_proof.py::test_settings_validate_blocks_mainnet 
+[MAINNET GUARD - BITE]
+  Expected error (captured in test output above):
+  TRADING_ENV=mainnet is BLOCKED by constitutional guard. Phase 1 scope permits paper trading only. No code path can place real-money orders in Phase 1. To proceed with real-money execution, a constitutional amendment or explicit Strategy & Roadmap decision for Phase 3 is required. See .specify/memory/constitution.md Principle IX and Phase-1 Scope.
+PASSED
+
+============================== 1 passed in 0.02s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard_bite_proof.py::test_mainnet_guard_code_verification 
+[MAINNET GUARD - CODE VERIFIED]
+  Guard code is byte-unchanged
+PASSED
+
+============================== 1 passed in 0.02s ==============================
+
+---
+ARTIFACT 4 - Empty git diff
+===========================
+(no changes to settings.py)
+
+✓ No temporary bug code remains
+
+---
+CONCLUSION
+==========
+
+All 4 artifacts EXECUTED for mainnet execution guard:
+1. PASS: Settings.validate() accepts TRADING_ENV=paper
+2. ACTUAL FAIL (working): Guard blocks TRADING_ENV=mainnet at import time
+3. PASS: Guard code verified byte-unchanged
+4. Empty git diff
+
+ACTUAL ASSERTION TEXT:
+"TRADING_ENV=mainnet is BLOCKED by constitutional guard. Phase 1 scope permits paper trading only. No code path can place real-money orders in Phase 1. To proceed with real-money execution, a constitutional amendment or explicit Strategy & Roadmap decision for Phase 3 is required. See .specify/memory/constitution.md Principle IX and Phase-1 Scope."
+
+✓ PRE-FLIGHT §1.3 COMPLETE

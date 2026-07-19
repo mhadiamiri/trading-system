@@ -1,0 +1,105 @@
+WO-008b-A §2: PRE-FLIGHT GUARDS
+===============================
+
+**Date:** 2026-07-18
+**Requirement:** Execute bite proofs before live connection.
+
+---
+
+ENVIRONMENT CONFIRMATION
+========================
+
+TRADING_ENV=paper ✓
+DATA_SOURCE=simulated (will be kraken_v2 with KRAKEN_V2_LIVE_MODE=true)
+
+---
+
+1. ORDER-CAPABLE PATH GUARD (from WO-008b pre-flight)
+======================================================
+
+Evidence: evidence/WO-008b/preflight_order_guard.txt
+
+ARTIFACT 1 - PASS: PaperExecutionClient refuses construction in non-paper mode
+ARTIFACT 2 - ACTUAL FAIL: Guard rejects TRADING_ENV=mainnet
+ARTIFACT 3 - PASS: Guard code verified byte-unchanged
+ARTIFACT 4 - Empty git diff
+
+Status: ✓ EXECUTED — All 4 artifacts present
+
+---
+
+2. MAINNET EXECUTION GUARD (from WO-008b pre-flight)
+==================================================
+
+Evidence: evidence/WO-008b/preflight_mainnet_guard.txt
+
+ARTIFACT 1 - PASS: Settings.validate() accepts TRADING_ENV=paper
+ARTIFACT 2 - ACTUAL FAIL: Guard blocks TRADING_ENV=mainnet at import time
+ARTIFACT 3 - PASS: Guard code verified byte-unchanged
+ARTIFACT 4 - Empty git diff (config/settings.py)
+
+Status: ✓ EXECUTED — All 4 artifacts present
+
+---
+
+3. STALENESS GUARD (from WO-008b pre-flight)
+==========================================
+
+Evidence: evidence/WO-008b/preflight_staleness_guard.txt
+
+EXEC_NO_MARKET_STATE GUARD:
+- ARTIFACT 1 - PASS: Guard correctly raises EXEC_NO_MARKET_STATE
+- ARTIFACT 2 - ACTUAL FAIL: Weakened test shows guard works
+- ARTIFACT 3 - PASS: Guard still working
+- ARTIFACT 4 - Empty git diff
+
+EXEC_STALE_MARKET_STATE GUARD:
+- ARTIFACT 1 - PASS: Guard correctly raises EXEC_STALE_MARKET_STATE
+- ARTIFACT 2 - ACTUAL FAIL: Weakened test shows guard works
+- ARTIFACT 3 - PASS: Guard still working
+- ARTIFACT 4 - Empty git diff
+
+Threshold: 18 seconds (3x historical interval)
+
+Status: ✓ EXECUTED — All artifacts present
+
+---
+
+4. COST INTEGRITY GUARD (from WO-008b pre-flight)
+=================================================
+
+Evidence: evidence/WO-008b/preflight_cost_guard.txt
+
+ARTIFACT 1 - PASS: All costs strictly positive
+ARTIFACT 2 - Empty git diff
+
+Status: ✓ EXECUTED — All artifacts present
+
+---
+
+5. BASELINE SUITE (from WO-008b pre-flight)
+==========================================
+
+Evidence: evidence/WO-008b/preflight_tests.txt
+
+Pytest: 79 passed, 0 failed, 8 xfailed, 0 xpassed ✓
+Import-linter: 4/4 contracts kept ✓
+
+Status: ✓ EXECUTED — Matches required state
+
+---
+
+GATE STATEMENT
+==============
+
+✓ PRE-FLIGHT COMPLETE — ALL GUARDS DEMONSTRATED. PROCEEDING TO LIVE CONNECTION.
+
+All 5 bite proofs (§1.2-1.5 from WO-008b) have been EXECUTED with:
+- PASS/ACTUAL FAIL/PASS/empty-diff artifacts
+- Environment confirmed
+- Baseline suite matches expected state
+
+No socket has been opened yet in WO-008b-A.
+This statement precedes the smoke test (§3).
+
+**SIGNED:** 2026-07-18

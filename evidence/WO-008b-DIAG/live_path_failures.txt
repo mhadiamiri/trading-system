@@ -1,0 +1,85 @@
+WO-008b-DIAG — LIVE PATH HARD FAILURES (finding C)
+Generated: 2026-07-19T03:35:33Z
+NOTE: PYTHONPATH=src forced, because the editable install resolves to a
+      stale %TEMP% tree (see environment_fix.txt). Without it these
+      commands would inspect the WRONG code.
+
+--- C1: ENDPOINT IS THE v1 URL, NOT v2 ---
+=== COMMAND: grep -n 'WS_URL\|BOOK_DEPTH\|BOOK_SYMBOL' ...kraken_v2_book.py ===
+454:    WS_URL = "wss://ws.kraken.com"
+457:    BOOK_DEPTH = 1  # Top of book only
+458:    BOOK_SYMBOL = "XBT/USD"  # Kraken symbol for BTC/USD
+=== COMMAND: grep -c '/v2' src/trading/data/adapters/kraken_v2_book.py ===
+0
+(Kraken v2 book requires wss://ws.kraken.com/v2 — the string /v2 is absent.)
+
+--- C2: SUBSCRIBE PAYLOAD IS v1-SHAPED, DEPTH IS INVALID ---
+=== COMMAND: sed -n '586,597p' src/trading/data/adapters/kraken_v2_book.py ===
+        """
+        subscribe_msg = {
+            "event": "subscribe",
+            "pair": [self.BOOK_SYMBOL],
+            "subscription": {
+                "name": "book",
+                "depth": self.BOOK_DEPTH
+            }
+        }
+
+        logger.info(f"[WO-008b-A] Subscribing to book channel: {self.BOOK_SYMBOL}")
+        await websocket.send(json.dumps(subscribe_msg))
+Kraken accepts depth in {10,25,100,500,1000} on BOTH v1 and v2. depth=1 is rejected.
+v2 requires {"method":"subscribe","params":{"channel":"book",...}}, not event/subscription.
+
+--- C3: Decimal.InvalidOperation DOES NOT EXIST (runtime proof) ---
+=== COMMAND: python -c "from decimal import Decimal; Decimal.InvalidOperation" ===
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from decimal import Decimal; Decimal.InvalidOperation
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'decimal.Decimal' has no attribute 'InvalidOperation'
+(exit: 1)
+=== COMMAND: sed -n '671,673p' ...kraken_v2_book.py ===
+            except (ValueError, IndexError, Decimal.InvalidOperation) as e:
+                logger.error(f"[WO-008b-A] Failed to parse book message: {e}, message: {raw_message}")
+                self._connection_errors += 1
+
+--- C4: AsyncIterator USED BUT NEVER IMPORTED (runtime proof) ---
+=== COMMAND: sed -n '20p' ...kraken_v2_book.py ===
+from typing import Optional, List, Dict
+=== COMMAND: grep -n 'AsyncIterator' ...kraken_v2_book.py ===
+1010:    async def get_market_data(self, fixture_data: List = None) -> AsyncIterator[MarketState]:
+1082:    async def _get_market_data_live(self) -> AsyncIterator[MarketState]:
+=== COMMAND: python -c (resolve annotations via typing.get_type_hints) ===
+NameError: name 'AsyncIterator' is not defined
+Python: 3.14.6
+(Masked on 3.14 by PEP 649 lazy annotations; hard ImportError on <=3.13.)
+
+--- C5: ORPHANED DEAD CODE INSIDE finally: (undefined names + yield) ---
+=== COMMAND: sed -n '1168,1191p' ...kraken_v2_book.py ===
+        finally:
+            self._running = False
+            if self._websocket:
+                await self._websocket.close()
+                logger.info("[WO-008b-A] WebSocket connection closed")
+
+                # LAYER 3: Create QuoteUpdate and process through parse path
+                quote_update = QuoteUpdate(
+                    bid_price=Decimal("65000.00"),
+                    bid_size=Decimal("1.5"),
+                    ask_price=Decimal("65005.00"),
+                    ask_size=Decimal("2.0"),
+                    checksum=initial_checksum,  # Use same checksum (simulating no change)
+                    sequence=2 + i,
+                    timestamp=datetime.now(UTC),
+                )
+                market_state = await self._process_quote_update(quote_update)
+
+                # LAYER 4: Yield only when parsing succeeded
+                if market_state is not None:
+                    self._market_states_emitted += 1
+                    yield market_state
+
+                await asyncio.sleep(0.1)
+initial_checksum and i are UNDEFINED in this scope; the loop defining them was deleted.
+This runs on EVERY disconnect, raising NameError from finally and masking the real error.
+A yield inside finally in an async generator is illegal during finalization.

@@ -1,0 +1,68 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_order_guard_bite_proof.py::test_paper_client_requires_paper_env 
+[ORDER GUARD - PASS]
+  PaperExecutionClient constructed successfully
+  TRADING_ENV=paper guard satisfied
+PASSED
+
+============================== 1 passed in 0.03s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_order_guard_bite_proof.py::test_paper_client_rejects_mainnet_env 
+[ORDER GUARD - BITE]
+  Error: PaperExecutionClient CANNOT be used when TRADING_ENV=mainnet. PaperExecutionClient is for paper trading only (TRADING_ENV=paper). This is a constitutional guard preventing accidental real-money order placement. See .specify/memory/constitution.md Principle IX.
+PASSED
+
+============================== 1 passed in 0.02s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_order_guard_bite_proof.py::test_guard_is_byte_unchanged 
+[ORDER GUARD - CODE VERIFIED]
+  Guard code is byte-unchanged
+PASSED
+
+============================== 1 passed in 0.02s ==============================
+
+---
+ARTIFACT 4 - Empty git diff
+===========================
+(no changes to paper.py)
+
+✓ No temporary bug code remains
+
+---
+CONCLUSION
+==========
+
+All 4 artifacts EXECUTED for order-capable path guard:
+1. PASS: PaperExecutionClient works with TRADING_ENV=paper
+2. ACTUAL FAIL (working): Guard rejects TRADING_ENV=mainnet with ValueError
+3. PASS: Guard code verified byte-unchanged
+4. Empty git diff
+
+ACTUAL ASSERTION TEXT:
+"PaperExecutionClient CANNOT be used when TRADING_ENV=mainnet. PaperExecutionClient is for paper trading only (TRADING_ENV=paper). This is a constitutional guard preventing accidental real-money order placement. See .specify/memory/constitution.md Principle IX."
+
+✓ PRE-FLIGHT §1.2 COMPLETE

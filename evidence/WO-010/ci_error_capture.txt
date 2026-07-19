@@ -1,0 +1,100 @@
+WO-010 §1 — CI ERROR CAPTURE (capture only; no theorising, no fixing)
+Generated: 2026-07-19T04:38:39Z
+Method: GitHub REST API v3, unauthenticated (repo is publicly readable).
+
+################ 1. RUNS — MOST RECENT FIVE ################
+=== COMMAND: GET /repos/mhadiamiri/trading-system/actions/runs?per_page=5 ===
+total_count: 21
+
+ run head_sha                                   conclusion created
+  20 43ca600dc96d5a2c33c3e6972a69e616efc65d19   failure    2026-07-19T01:48:41Z
+  19 8e8a891d337da61aab4ec37c53b9983cfe6e633f   failure    2026-07-19T01:16:52Z
+  18 f5c8939406ca7a2279fed1f5ac97ca385b921476   failure    2026-07-19T01:05:19Z
+  17 90882d04ce2a19482a2a2c2f68e48a132ae04731   failure    2026-07-18T14:49:35Z
+  16 af27491f0a29f4bafda288217ea8957e6df54a7c   failure    2026-07-18T14:24:49Z
+
+################ 2. THE RUN ON 43ca600 ################
+run_number 20, run id 29669175412
+=== COMMAND: GET /actions/runs/29669175412/jobs ===
+JOB      : test (3.11)
+conclusion: failure
+head_sha : 43ca600dc96d5a2c33c3e6972a69e616efc65d19
+job id   : 88145004289
+
+  #  step                                                 status      conclusion
+  1. Set up job                                           completed   success
+  2. Run actions/checkout@v3                              completed   success
+  3. Set up Python 3.11                                   completed   success
+  4. Install dependencies                                 completed   success
+  5. Run import-linter (Constitutional Requirement IV)    completed   success
+  6. Run pytest (Constitutional Requirements verification) completed   failure
+  7. Upload coverage                                      completed   skipped
+ 13. Post Set up Python 3.11                              completed   skipped
+ 14. Post Run actions/checkout@v3                         completed   success
+ 15. Complete job                                         completed   success
+
+################ 3. SHA THE RUN CHECKED OUT vs 43ca600 ################
+run head_sha : 43ca600dc96d5a2c33c3e6972a69e616efc65d19
+target       : 43ca600dc96d5a2c33c3e6972a69e616efc65d19
+MATCH        : YES — CI built the intended commit. No SHA drift on this run.
+
+################ 4. ACTION VERSIONS (from .github/workflows/ci.yml) ################
+=== COMMAND: grep -nE 'uses:|python-version' .github/workflows/ci.yml ===
+14:        python-version: ["3.11"]
+17:    - uses: actions/checkout@v3
+19:    - name: Set up Python ${{ matrix.python-version }}
+20:      uses: actions/setup-python@v3
+22:        python-version: ${{ matrix.python-version }}
+38:      uses: codecov/codecov-action@v3
+
+actions/checkout    : v3
+actions/setup-python: v3
+python-version      : 3.11   <-- NOTE: CI runs 3.11; local dev is 3.14.6
+
+=== the two steps in question, verbatim from the workflow ===
+    - name: Run import-linter (Constitutional Requirement IV)
+      run: import-linter
+
+    - name: Run pytest (Constitutional Requirements verification)
+      run: pytest --cov=src/trading --cov-report=xml --cov-report=term
+
+
+################ 5. THE ANSWER §1 ASKS FOR ################
+Q: does CI fail at the import-linter step, at pytest collection, or elsewhere?
+
+FROM CAPTURED STEP OUTCOMES ONLY:
+  Step 5  Run import-linter (Constitutional Requirement IV) ... success
+  Step 6  Run pytest (Constitutional Requirements verification) ... FAILURE
+
+=> CI FAILS AT THE PYTEST STEP. THE IMPORT-LINTER STEP PASSES IN CI.
+
+=> THEREFORE: TWO INDEPENDENT PROBLEMS, per the §1 instruction to say so
+   rather than assume one explains the other.
+     PROBLEM 1: import-linter contract broken on the real tree LOCALLY
+                (3 kept, 1 broken) — yet GREEN in CI.
+     PROBLEM 2: pytest fails in CI — and passes locally (73 passed).
+   Each is a green-here/red-there inversion of the other. They are not the
+   same fault and must not be merged into one narrative.
+
+################ 6. WHAT COULD NOT BE CAPTURED ################
+=== COMMAND: GET /actions/jobs/88145004289/logs ===
+  "message": "Must have admin rights to Repository.",
+  "documentation_url": "https://docs.github.com/rest/actions/workflow-jobs#download-job-logs-for-a-workflow-run",
+  "status": "403"
+}
+HTTP 403
+
+THE FULL ERROR TEXT OF THE FAILING STEP COULD NOT BE RETRIEVED.
+Run/job/step metadata is publicly readable; LOG BODIES require repo admin
+credentials. No credential is present in this environment and none was
+sought (rule 0.5).
+
+WHAT IS NEEDED FROM HADI — browser capture:
+  https://github.com/mhadiamiri/trading-system/actions/runs/29669175412
+  Open job 'test (3.11)' -> step 6 'Run pytest (Constitutional
+  Requirements verification)' -> copy the FULL step output, especially:
+    - whether it is a COLLECTION error or test failures
+    - the first traceback in full
+    - the pytest summary line with duration (rule 0.6b)
+Until that text exists, the CAUSE of the pytest failure is UNKNOWN and is
+deliberately not theorised about here, per the §1 instruction.

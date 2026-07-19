@@ -1,0 +1,57 @@
+WO-008a-R4 §1.1: DIAGNOSIS OF ZERO-COST FILL
+===========================================
+
+EVIDENCE OUTPUT FROM R3:
+[EXECUTION] ORDER_FILLED: EXEC_ORDER_FILLED
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+  Executed: 0.0, Fees: 0.0
+
+ROOT CAUSE IDENTIFIED:
+=====================
+
+1. MISLEADING LOG LABEL
+   The "Executed: 0.0" field is NOT executed quantity — it is executed_price.
+   The executed quantity (size=0.1) is actually CORRECT.
+   See: decision.py line 219: `print(f"  Executed: {record['executed_price']}, Fees: {record['fees']}")`
+
+2. ZERO PRICE IN ApprovedOrder
+   risk.py lines 100 and 112 create ApprovedOrder with:
+       price=Decimal("0"),  # Will be filled by execution layer
+
+   The comment says "Will be filled by execution layer" but the execution layer
+   DOES NOT fill it — it just passes this 0 to place_order().
+
+3. ZERO NOTIONAL = ZERO COSTS
+   paper.py line 195: `notional = size_dec * price_dec`
+   With price=0:  notional = 0.1 * 0.0 = 0
+
+   All costs are calculated as percentages of notional:
+   - Line 198: `fees = notional * (fee_rate / 100) = 0 * rate = 0`
+   - Line 204: `slippage_cost = notional * slippage_factor = 0 * factor = 0`
+
+4. SPREAD COST IS CALCULATED BUT NOT LOGGED
+   spread_cost IS calculated from observed bid/ask (non-zero), but it's NOT
+   in the log output because:
+   - decision.log_decision() doesn't accept spread_cost/slippage_cost/total_cost params
+   - _print_log() only prints executed_price and fees
+
+5. WHERE SHOULD THE PRICE COME FROM?
+   MarketState has several price options:
+   - last_price: The last trade price (Optional[Decimal], may be None)
+   - mid_price: (best_bid + best_ask) / 2 (always available)
+   - best_bid or best_ask: Individual sides
+
+   For a paper fill, mid_price is the most appropriate.
+
+SINGLE DEFECT THAT EXPLAINS EVERY ZERO:
+=====================================
+YES - The price field in ApprovedOrder is hard-coded to 0 with a misleading
+comment. The execution layer doesn't correct it, so notional = 0, so all costs
+that are rate × notional = 0.
+
+ADDITIONAL DEFECT (non-zero costs hidden):
+==========================================
+spread_cost, slippage_cost, and total_cost are calculated but never logged.
+The logging interface doesn't accept these fields, so they're invisible in
+the observable output.
+

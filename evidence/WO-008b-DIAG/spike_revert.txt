@@ -1,0 +1,104 @@
+WO-008b-DIAG — PART 4: FULL SPIKE REVERT
+Generated: 2026-07-19T03:44:16Z
+Authority: project lead RULING 'Option 1 — revert the FULL spike' + quarantine amendment
+
+################ BEFORE ################
+=== COMMAND: git status --short ===
+ M instructions.md
+ M progress.md
+ M src/trading/data/adapters/factory.py
+ M src/trading/data/adapters/kraken_v2_book.py
+?? .claude/worktrees/
+?? WO-008a-R3-FINAL-REPORT.md
+?? WO-008a-R4-FINAL-REPORT.txt
+?? WO-008a-R5-FINAL-REPORT.txt
+?? WO-008a-R6-FINAL-REPORT.txt
+?? evidence/QUARANTINE-WO-008b-A-FABRICATED/
+?? evidence/WO-008a-R4/
+?? evidence/WO-008a-R6/FINAL_REPORT.txt
+?? evidence/WO-008a-R6/end_to_end_final.txt
+?? evidence/WO-008a-R6/git_log.txt
+?? evidence/WO-008b-DIAG/
+?? evidence/WO-008b/
+?? tests/integration/test_mainnet_guard_bite_proof.py
+?? tests/integration/test_no_silent_fixture_fallback.py
+?? tests/integration/test_order_guard_bite_proof.py
+
+=== COMMAND: git diff --stat ===
+warning: in the working copy of 'instructions.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'progress.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/factory.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/trading/data/adapters/kraken_v2_book.py', LF will be replaced by CRLF the next time Git touches it
+ instructions.md                             | 760 ++++++++++++++++------------
+ progress.md                                 | 511 +++++++++++++------
+ src/trading/data/adapters/factory.py        |  10 +-
+ src/trading/data/adapters/kraken_v2_book.py | 524 +++++++++++++++----
+ 4 files changed, 1224 insertions(+), 581 deletions(-)
+
+=== COMMAND: git rev-parse HEAD ===
+43ca600dc96d5a2c33c3e6972a69e616efc65d19
+
+################ REVERT ACTIONS ################
+=== COMMAND: git checkout -- src/trading/data/adapters/kraken_v2_book.py ===
+OK
+=== COMMAND: git checkout -- src/trading/data/adapters/factory.py ===
+OK
+
+=== quarantine the three spike test files (MOVED, not deleted) ===
+renamed 'tests/integration/test_no_silent_fixture_fallback.py' -> 'evidence/QUARANTINE-WO-008b-A-FABRICATED/tests/test_no_silent_fixture_fallback.py'
+renamed 'tests/integration/test_order_guard_bite_proof.py' -> 'evidence/QUARANTINE-WO-008b-A-FABRICATED/tests/test_order_guard_bite_proof.py'
+renamed 'tests/integration/test_mainnet_guard_bite_proof.py' -> 'evidence/QUARANTINE-WO-008b-A-FABRICATED/tests/test_mainnet_guard_bite_proof.py'
+
+################ AFTER ################
+=== COMMAND: git status --short ===
+ M instructions.md
+ M progress.md
+?? .claude/worktrees/
+?? WO-008a-R3-FINAL-REPORT.md
+?? WO-008a-R4-FINAL-REPORT.txt
+?? WO-008a-R5-FINAL-REPORT.txt
+?? WO-008a-R6-FINAL-REPORT.txt
+?? evidence/QUARANTINE-WO-008b-A-FABRICATED/
+?? evidence/WO-008a-R4/
+?? evidence/WO-008a-R6/FINAL_REPORT.txt
+?? evidence/WO-008a-R6/end_to_end_final.txt
+?? evidence/WO-008a-R6/git_log.txt
+?? evidence/WO-008b-DIAG/
+?? evidence/WO-008b/
+
+=== COMMAND: git diff --stat  (source files must be ABSENT) ===
+warning: in the working copy of 'instructions.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'progress.md', LF will be replaced by CRLF the next time Git touches it
+ instructions.md | 760 ++++++++++++++++++++++++++++++++------------------------
+ progress.md     | 511 +++++++++++++++++++++++++------------
+ 2 files changed, 784 insertions(+), 487 deletions(-)
+
+=== COMMAND: git diff --stat -- src/  (MUST BE EMPTY) ===
+(empty above == src/ is byte-identical to 43ca600)
+
+=== COMMAND: ls evidence/QUARANTINE-WO-008b-A-FABRICATED/tests/ ===
+total 24
+drwxr-xr-x 1 mhadi 197609    0 Jul 18 23:44 .
+drwxr-xr-x 1 mhadi 197609    0 Jul 18 23:44 ..
+-rw-r--r-- 1 mhadi 197609 3586 Jul 18 22:05 test_mainnet_guard_bite_proof.py
+-rw-r--r-- 1 mhadi 197609 5565 Jul 18 22:54 test_no_silent_fixture_fallback.py
+-rw-r--r-- 1 mhadi 197609 3447 Jul 18 22:03 test_order_guard_bite_proof.py
+
+################ PART 4 EXCEPTION: Mock() STATUS AFTER REVERT ################
+=== COMMAND: git show 43ca600:src/trading/data/adapters/kraken_v2_book.py | grep -n "Mock" ===
+22:from unittest.mock import Mock
+458:        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+
+=== COMMAND: grep -n "Mock" src/trading/data/adapters/kraken_v2_book.py  (post-revert working tree) ===
+22:from unittest.mock import Mock
+458:        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+
+VERDICT: PRESENT IN THE COMMITTED TREE. It is a LIVE DEFECT in the shipped
+system, not a spike artifact. The revert PRESERVED it, as the PART 4
+exception requires. It has NOT been reverted away silently and has NOT
+been fixed here — its removal is ruled into WO-008b-A.
+Full analysis: evidence/WO-008b-DIAG/mock_in_production.txt
+
+=== COMMAND: git log --oneline -S 'self._log_error = Mock()' -- <adapter> ===
+71eb901 fix(ci): track data-layer modules excluded by unanchored .gitignore data/ pattern
+(introduced in 71eb901 — a CI-fix commit, not a feature commit)

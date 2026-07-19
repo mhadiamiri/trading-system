@@ -329,3 +329,17 @@ class KrakenPublicFeed:
         self._parse_errors = 0
         self._filtered_messages = 0
         self._heartbeat_messages = 0
+
+
+# --- WO-010 §5: self-registration ---------------------------------------
+from trading.data.adapters.registry import register  # noqa: E402
+
+
+@register("kraken_public")
+def _build_kraken_public(decision_logger=None) -> "KrakenPublicFeed":
+    """Builder invoked by the registry when DATA_SOURCE=kraken_public."""
+    return KrakenPublicFeed(
+        decision_logger=decision_logger,
+        reconnect_base_delay=1.0,
+        reconnect_max_delay=60.0,
+    )

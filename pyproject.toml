@@ -47,5 +47,18 @@ contracts = [
     { type = "forbidden", name = "Forbidden ML in Risk Layer", source_modules = ["trading.risk"], forbidden_modules = ["torch", "tensorflow", "sklearn", "transformers"] },
     { type = "forbidden", name = "Forbidden Execution Adapters Imports", source_modules = ["trading.strategy", "trading.risk", "trading.data", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.execution.adapters"] },
     { type = "forbidden", name = "Forbidden v2-book-checksum imports above adapter", source_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_v2_book"] },
-    { type = "forbidden", name = "Forbid loop from importing adapters directly", ignore_imports = ["trading.loop.live -> trading.data.adapters.factory"], source_modules = ["trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] }
+    # WO-010 §5.2: the ignore_imports exemption for
+    # "trading.loop.live -> trading.data.adapters.factory" was REMOVED. It was
+    # needed only because factory.py imported adapter modules directly. The
+    # registry removes that edge, so the exemption is no longer required and
+    # keeping it would preserve a mask we no longer need.
+    { type = "forbidden", name = "Forbid loop from importing adapters directly", source_modules = ["trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] },
+    # WO-010 §5.2: the registry is the SOLE adapter resolution path. No module
+    # outside trading.data.adapters may import a concrete adapter module.
+    { type = "forbidden", name = "Registry is the sole adapter resolution path", source_modules = ["trading.strategy", "trading.risk", "trading.execution", "trading.backtest", "trading.loop"], forbidden_modules = ["trading.data.adapters.kraken_public", "trading.data.adapters.kraken_v2_book", "trading.data.adapters.simulated_feed"] },
+    # WO-010 §4 (rule 0.1c): no test doubles in production code.
+    # `tests/` is outside the `trading` root package, so test directories are
+    # exempt automatically. EXPECTED RED until WO-008b-A removes the committed
+    # `from unittest.mock import Mock` at kraken_v2_book.py:22.
+    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest"] }
 ]

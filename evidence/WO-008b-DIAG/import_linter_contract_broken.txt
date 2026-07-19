@@ -1,0 +1,82 @@
+WO-008b-DIAG — ⚠ CONSTITUTIONAL BOUNDARY BROKEN AT HEAD (43ca600)
+Generated: 2026-07-19T03:49:51Z
+
+DISCOVERED WHILE VERIFYING THE ENVIRONMENT FIX. This was NOT part of the
+diagnosis mandate. It is reported, NOT fixed.
+
+################ THE BREAK ################
+=== COMMAND: import-linter lint  (clean tree, src byte-identical to 43ca600) ===
+
+----------------
+Broken contracts
+----------------
+
+Forbidden v2-book-checksum imports above adapter
+------------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.factory (l.19, l.319)
+    trading.data.adapters.factory -> trading.data.adapters.kraken_v2_book (l.15)
+
+
+
+################ THE OFFENDING IMPORT (COMMITTED) ################
+=== COMMAND: git show 43ca600:src/trading/data/adapters/factory.py | grep -n kraken_v2_book ===
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+Chain: trading.loop.live -> trading.data.adapters.factory (l.19, l.319)
+                          -> trading.data.adapters.kraken_v2_book (l.15)
+
+=== COMMAND: when was it introduced? ===
+af27491 WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts
+
+################ WHY IT WAS PREVIOUSLY REPORTED GREEN ################
+Every prior run of import-linter analysed the STALE %TEMP%\ci-sim2 TREE,
+not this repo — the same root cause as the editable-install fault.
+
+=== COMMAND: git show 400a28b:...factory.py | grep -n kraken_v2_book ===
+(400a28b == the commit the stale ci-sim2 clone was pinned to)
+  ^ NO MATCH (grep exit 1): at 400a28b, factory.py did NOT import
+    kraken_v2_book at module level. The contract genuinely held THERE.
+
+The import was added in af27491, which is NEWER than 400a28b. So the stale
+clone never contained the violation, and import-linter never saw it.
+
+=== CORROBORATION: dependency counts differ between the two trees ===
+  evidence/WO-008b/preflight_linter.txt : 'Analyzed 54 files, 171 dependencies' -> 4 kept, 0 broken
+  this run (real tree)                 : Analyzed 54 files, 176 dependencies.
+Contracts: 3 kept, 1 broken.
+  Same file count, FIVE more dependencies == demonstrably different code.
+
+################ IMPACT ################
+1. Constitution Principle IV (Layered Architecture, Enforced Boundaries) and
+   Principle VII (Venue Independence) are VIOLATED at HEAD. Venue-specific
+   v2/book/checksum detail is reachable from trading.loop.
+2. The contract has been broken since af27491 — spanning WO-008a, R, R2, R3,
+   R4, R5, R6. Every '4/4 contracts kept' claim in that range is FALSE; each
+   was produced against the stale tree.
+3. progress.md and WO-008a-R6-FINAL-REPORT assert '4/4 contracts kept' and
+   'CI GREEN achieved'. Both are contradicted by this run.
+4. LIKELY EXPLAINS THE CI FAILURE the project lead asked to capture in
+   WO-008b §4: GitHub Actions runs in a clean environment with no stale
+   %TEMP% tree, so CI would have seen the real dependency graph and failed
+   this contract. Local green vs CI red is exactly this fault's signature.
+
+################ NOT FIXED ################
+No remediation attempted. Fixing this means changing how factory.py reaches the
+adapter (a deferred/function-local import is the usual remedy), which is a code
+change outside the diagnosis mandate and touches the boundary architecture.
+Escalated for a project-lead ruling.
+
+CORRECTION TO AN EARLIER DRAFT OF THIS FILE: an earlier version of this
+paragraph said the pre-af27491 code used a deferred import. That was an
+OVERCLAIM and is retracted. Verified:
+
+    $ git show 400a28b:src/trading/data/adapters/factory.py | grep -n "kraken_v2\|KrakenV2"
+    (no match, exit 1)
+
+At 400a28b the factory had NO kraken_v2 handling of any kind — the adapter was
+not wired into the factory yet. The contract therefore held TRIVIALLY at that
+commit, not by any import technique. Recorded here rather than silently edited,
+because unbacked claims are the exact failure this work order exists to correct.

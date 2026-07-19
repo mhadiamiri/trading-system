@@ -1,0 +1,51 @@
+WO-008b-DIAG — SEQUENCE NUMBER USAGE AUDIT
+Generated: 2026-07-19T03:35:12Z
+Question: Kraken v2 public book sends NO sequence field. Where does ours come from?
+
+=== COMMAND: sed -n '627,632p' src/trading/data/adapters/kraken_v2_book.py ===
+        if isinstance(raw_message, list) and len(raw_message) >= 4:
+            try:
+                sequence = int(raw_message[0])
+
+                # Parse bids and asks
+                # Format: [["price", "size"], ...] or ["price", "size", ...]
+
+=== COMMAND: grep -rn 'sequence=' src/ tests/ | wc -l  (total construction sites) ===
+30
+
+=== COMMAND: grep -rn 'sequence=' src/  (PRODUCTION sites only) ===
+src/trading/data/adapters/kraken_v2_book.py:667:                    sequence=sequence,
+src/trading/data/adapters/kraken_v2_book.py:904:            sequence=quote_update.sequence,
+src/trading/data/adapters/kraken_v2_book.py:1181:                    sequence=2 + i,
+
+=== COMMAND: grep -rn 'sequence=' tests/ | wc -l  (TEST/FIXTURE sites) ===
+27
+
+=== COMMAND: grep -rn 'validate_basic' src/ tests/   (is it ever called?) ===
+src/trading/data/adapters/kraken_v2_book.py:393:    def validate_basic(self) -> bool:
+Binary file src/trading/data/adapters/__pycache__/kraken_v2_book.cpython-314.pyc matches
+
+=== COMMAND: grep -rn 'def test_.*sequence\|def test_.*gap' tests/ ===
+tests/test_data_adapters.py:205:    async def test_sequence_gap_triggers_resnapshot(self):
+
+=== COMMAND: grep -rn 'record_failure()' src/ tests/   (what drives 5-failure recovery) ===
+src/trading/data/adapters/kraken_v2_book.py:886:            self._local_book.record_failure()
+
+=== ANALYSIS (labelled: not command output) ===
+1. ONE production population site: line 629, sequence = int(raw_message[0]).
+   Slot 0 of a LIST-shaped message. Kraken v2 sends a DICT envelope, so this
+   line is UNREACHABLE against real v2. Against v1, slot 0 is the channelID,
+   which is CONSTANT per subscription -> every message after the first would
+   register as a gap.
+2. Lines 904 and 1181 are re-emissions of an already-populated value, not
+   sources. Line 1181 is orphaned dead code (see live_path_failures.txt).
+3. All remaining sites are tests/fixtures constructing synthetic monotonic
+   sequences. Fixtures hand-build QuoteUpdate OBJECTS and never call
+   _parse_book_message, so no test exercises sequence extraction.
+4. validate_basic() enforces sequence > 0 but has ZERO call sites: already
+   dead code today.
+5. record_failure() has ONE call site (line 886, checksum branch). The
+   5-consecutive-failure recovery is CHECKSUM-driven and does NOT depend on
+   sequence. Removing sequence tracking does not weaken it.
+6. Exactly ONE test dies if sequence tracking is removed:
+   tests/test_data_adapters.py::test_sequence_gap_triggers_resnapshot

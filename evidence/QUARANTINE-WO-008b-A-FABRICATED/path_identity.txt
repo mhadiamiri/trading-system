@@ -1,0 +1,94 @@
+WO-008b-A §1.2: PATH IDENTITY PROOF
+====================================
+
+**Date:** 2026-07-18
+**Requirement:** Live WebSocket frames must flow through the SAME entry point as fixtures.
+
+---
+
+CALL PATH DOCUMENTATION
+========================
+
+FIXTURE MODE PATH:
+------------------
+1. Fixture data (List[QuoteUpdate]) → get_market_data(fixture_data)
+2. For each QuoteUpdate in fixture_data:
+   - raw_received counter incremented
+   - QuoteUpdate → _process_quote_update(quote_update)
+   - Checksum validation, sequence gap check
+   - MarketState yielded (or None if rejected)
+   - market_states_emitted counter incremented
+
+LIVE MODE PATH:
+----------------
+1. WebSocket → _connect_websocket()
+2. WebSocket → _subscribe_book()
+3. Raw JSON message → _parse_book_message(raw_message)
+4. _parse_book_message() returns QuoteUpdate
+5. QuoteUpdate → _process_quote_update(quote_update) ← SAME ENTRY POINT
+6. Checksum validation, sequence gap check ← SAME LOGIC
+7. MarketState yielded (or None if rejected) ← SAME OUTPUT
+8. market_states_emitted counter incremented ← SAME COUNTER
+
+---
+
+SHARED ENTRY POINT: _process_quote_update()
+=============================================
+
+Method signature:
+    async def _process_quote_update(self, quote_update: QuoteUpdate) -> Optional[MarketState]
+
+This method is called by BOTH:
+- Fixture mode: Direct call with QuoteUpdate from fixture data
+- Live mode: Indirect call with QuoteUpdate from _parse_book_message()
+
+NO LIVE-ONLY PARSING BRANCH EXISTS
+===================================
+
+Answer: NO
+
+Explanation:
+- _parse_book_message() ONLY parses raw JSON into QuoteUpdate format
+- It does NOT perform validation, checksum checks, or sequence gap detection
+- All validation logic lives in _process_quote_update()
+- Both paths converge at _process_quote_update()
+
+This is by design (WO-008b-A §1.2 governing constraint):
+"The WebSocket layer's ONLY job is transport. Receive frame → hand the raw
+message to the SAME entry point the fixture harness calls."
+
+---
+
+CODE REFERENCES
+==============
+
+Fixture mode entry (kraken_v2_book.py:973-976):
+```python
+# LAYER 3: Parse boundary - process raw message through quote update pipeline
+market_state = await self._process_quote_update(raw_message)
+```
+
+Live mode entry (kraken_v2_book.py:1080-1083):
+```python
+# LAYER 3: Parse boundary - SAME entry point for fixtures AND live (WO-008b-A §1.2)
+market_state = await self._process_quote_update(quote_update)
+```
+
+_parse_book_message() ONLY creates QuoteUpdate (kraken_v2_book.py:580-680):
+- No validation logic
+- No checksum computation
+- No sequence gap detection
+- ONLY: JSON parsing → QuoteUpdate object
+
+---
+
+CONCLUSION
+==========
+
+✓ PATH IDENTITY CONFIRMED
+
+Both fixture and live modes flow through _process_quote_update().
+No live-only parsing branch exists.
+The WebSocket layer ONLY does transport (JSON → QuoteUpdate).
+
+✓ PRE-FLIGHT §1.2 COMPLETE

@@ -1,0 +1,55 @@
+WO-008b-DIAG — RECONCILING THE TEST COUNT (79 vs 73, two files vs three)
+Generated: 2026-07-19T03:46:01Z
+
+CHALLENGE (project lead): 'Your finding B attributed the 79-vs-73 gap to TWO
+uncommitted test files, but the revert touches THREE. Account for the
+difference. If the arithmetic doesn't close, say so.'
+
+ANSWER: THE ARITHMETIC CLOSES EXACTLY. Both statements are true because they
+describe DIFFERENT POINTS IN TIME. The third file did not exist when the
+pre-flight suite was run.
+
+################ THE THREE FILES, MEASURED ################
+=== COMMAND: pytest <file> --collect-only -q  (each of the three) ===
+test_mainnet_guard_bite_proof.py         3 tests collected
+test_order_guard_bite_proof.py           3 tests collected
+test_no_silent_fixture_fallback.py       4 tests collected
+
+################ WAS THE THIRD FILE PRESENT AT PRE-FLIGHT TIME? ################
+=== COMMAND: grep -c 'no_silent_fixture_fallback' evidence/WO-008b/preflight_tests.txt ===
+0
+0 => ABSENT from that run. It was authored later, during WO-008b-A.
+
+=== COMMAND: which spike test files DO appear in preflight_tests.txt ===
+test_mainnet_guard_bite_proof
+test_order_guard_bite_proof
+(only TWO of the three)
+
+=== COMMAND: preflight_tests.txt collection + summary lines ===
+collecting ... collected 87 items
+================== 79 passed, 8 xfailed in 237.51s (0:03:57) ==================
+
+################ THE ARITHMETIC ################
+Baseline at 43ca600 (per WO-008b §1.6 and progress.md):
+    73 passed + 8 xfailed                    =  81 collected
+
+At preflight_tests.txt (TWO spike files existed):
+    81 + mainnet_guard(3) + order_guard(3)   =  87 collected   <- file says 87 ✓
+    73 +                3 +             3    =  79 passed      <- file says 79 ✓
+
+At the start of THIS session (all THREE spike files existed):
+    87 + no_silent_fixture_fallback(4)       =  91 collected   <- measured 91 ✓
+
+After the full spike revert (all three quarantined):
+    91 - 10                                  =  81 collected
+    expected: 73 passed, 8 xfailed
+
+################ CONCLUSION ################
+No unexplained tests. Finding B's 'two files' was correct FOR THE PRE-FLIGHT
+RUN it was analysing; the revert touches three because a third file was
+written after that run. Every one of the 10 quarantined tests is accounted
+for: 3 + 3 + 4.
+
+The substantive point in finding B is UNCHANGED: the pre-flight gate required
+73 and observed 79. The stop condition was met and not honoured. The baseline
+certified a tree containing the very uncommitted tests it was meant to gate.

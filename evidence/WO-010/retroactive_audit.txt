@@ -1,0 +1,208 @@
+WO-010 §6 — RETROACTIVE FOUR-COMMIT AUDIT
+Generated: 2026-07-19T04:46:35Z
+
+################ METHODOLOGY — STATED EXPLICITLY ################
+CONTRACT SET USED: the set as it existed at 43ca600 (FOUR contracts).
+NOT the post-registry contracts from §5. Post-registry contracts would fail
+old commits merely for lacking a registry, which answers nothing.
+
+PROOF that each worktree's own pyproject.toml IS the 43ca600 contract set —
+the [tool.importlinter] block is BYTE-IDENTICAL across all four commits:
+    af27491  sha256[0:32]=031100abaa4469165f3e222378386ca6
+    90882d0  sha256[0:32]=031100abaa4469165f3e222378386ca6
+    8e8a891  sha256[0:32]=031100abaa4469165f3e222378386ca6
+    43ca600  sha256[0:32]=031100abaa4469165f3e222378386ca6
+  => running each worktree with its own config == running the 43ca600 set.
+  => no config was copied or overridden; nothing was doctored.
+
+ISOLATION: 'git worktree add --detach' per commit, outside the repo.
+The main working tree and evidence files were never checked out over.
+
+TREE-IDENTITY DISCIPLINE (the lesson of this whole episode): for EVERY run
+below, the resolved trading package path is printed and asserted to be
+INSIDE that worktree. A result is only trustworthy if we prove which tree
+produced it.
+
+═══════════════════════════════════════════════════════════════
+COMMIT af27491
+═══════════════════════════════════════════════════════════════
+--- subject ---
+af27491 2026-07-18 WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts
+
+--- TREE IDENTITY: which trading package will be analysed? ---
+  resolved : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\af27491\src\trading\__init__.py
+  expected : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\af27491\src
+  INSIDE WORKTREE: True
+
+--- does factory.py import kraken_v2_book at module level? ---
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+--- does production code import unittest.mock? ---
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+
+--- import-linter (4-contract set as at 43ca600) ---
+Analyzed 54 files, 174 dependencies.
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+Contracts: 3 kept, 1 broken.
+
+═══════════════════════════════════════════════════════════════
+COMMIT 90882d0
+═══════════════════════════════════════════════════════════════
+--- subject ---
+90882d0 2026-07-18 WO-008a-R3: Complete T036, demonstrate full 4-layer loop, fix cost path
+
+--- TREE IDENTITY: which trading package will be analysed? ---
+  resolved : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\90882d0\src\trading\__init__.py
+  expected : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\90882d0\src
+  INSIDE WORKTREE: True
+
+--- does factory.py import kraken_v2_book at module level? ---
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+--- does production code import unittest.mock? ---
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+
+--- import-linter (4-contract set as at 43ca600) ---
+Analyzed 54 files, 175 dependencies.
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+Contracts: 3 kept, 1 broken.
+
+═══════════════════════════════════════════════════════════════
+COMMIT 8e8a891
+═══════════════════════════════════════════════════════════════
+--- subject ---
+8e8a891 2026-07-18 fix(test): Update cost_bite_proof for R6 total_cost formula
+
+--- TREE IDENTITY: which trading package will be analysed? ---
+  resolved : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\8e8a891\src\trading\__init__.py
+  expected : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\8e8a891\src
+  INSIDE WORKTREE: True
+
+--- does factory.py import kraken_v2_book at module level? ---
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+--- does production code import unittest.mock? ---
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+
+--- import-linter (4-contract set as at 43ca600) ---
+Analyzed 54 files, 176 dependencies.
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+Contracts: 3 kept, 1 broken.
+
+═══════════════════════════════════════════════════════════════
+COMMIT 43ca600
+═══════════════════════════════════════════════════════════════
+--- subject ---
+43ca600 2026-07-18 cleanup(tests): Remove transient weakened bite-proof variants
+
+--- TREE IDENTITY: which trading package will be analysed? ---
+  resolved : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\43ca600\src\trading\__init__.py
+  expected : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\43ca600\src
+  INSIDE WORKTREE: True
+
+--- does factory.py import kraken_v2_book at module level? ---
+15:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+--- does production code import unittest.mock? ---
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+
+--- import-linter (4-contract set as at 43ca600) ---
+Analyzed 54 files, 176 dependencies.
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+Contracts: 3 kept, 1 broken.
+
+
+═══════════════════════════════════════════════════════════════
+CONTROL COMMIT 400a28b  (the parent of af27491 — pins when the break entered)
+═══════════════════════════════════════════════════════════════
+400a28b 2026-07-17 fix(ci): track all src/trading/data modules previously excluded by unanchored data/ ignore rule
+
+--- TREE IDENTITY ---
+  resolved : C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\8e29df47-31d6-4801-b652-e8b6921da882\scratchpad\wt\400a28b\src\trading\__init__.py
+  INSIDE WORKTREE: True
+
+--- does factory.py import kraken_v2_book at module level? ---
+  (NO kraken_v2 handling at all in factory.py)
+
+--- does production code import unittest.mock? ---
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+
+--- import-linter (4-contract set as at 43ca600) ---
+Analyzed 54 files, 171 dependencies.
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Contracts: 4 kept, 0 broken.
+
+═══════════════════════════════════════════════════════════════
+                       AUDIT TABLE
+═══════════════════════════════════════════════════════════════
+Contract set: the FOUR contracts as at 43ca600 (byte-identical at every
+commit below — proven by sha256 at the head of this file).
+
+COMMIT    DATE        KEPT  BROKEN  WHICH CONTRACT BROKE                                 DEPS
+--------- ----------- ----- ------- ---------------------------------------------------- ----
+400a28b   2026-07-17  4     0       (none — control, parent of af27491)                171
+af27491   2026-07-18  3     1       Forbidden v2-book-checksum imports above adapter     174
+90882d0   2026-07-18  3     1       Forbidden v2-book-checksum imports above adapter     175
+8e8a891   2026-07-18  3     1       Forbidden v2-book-checksum imports above adapter     176
+43ca600   2026-07-18  3     1       Forbidden v2-book-checksum imports above adapter     176
+
+WHAT ENTERED WHEN:
+  400a28b : factory.py has NO kraken_v2 handling. Contract holds TRIVIALLY.
+  af27491 : factory.py:15 gains 'from ...kraken_v2_book import
+            KrakenV2BookAdapter'. THE BREAK ENTERS HERE and never leaves.
+  90882d0 / 8e8a891 / 43ca600 : same single edge, unchanged.
+
+################ ⭐ THE SMOKING GUN ################
+The control commit reproduces the stale evidence EXACTLY:
+  400a28b (this audit)                  : 54 files, 171 dependencies, 4 kept, 0 broken
+  evidence/WO-008b/preflight_linter.txt : 54 files, 171 dependencies, 4 kept, 0 broken
+  43ca600 (this audit)                  : 54 files, 176 dependencies, 3 kept, 1 broken
+
+The dependency count is a fingerprint. 171 is 400a28b's fingerprint, and it
+is the number sitting in the preflight evidence that was labelled 43ca600.
+This is direct confirmation — not inference — that the linter was analysing
+the stale ci-sim2 clone pinned at 400a28b.
+
+═══════════════════════════════════════════════════════════════
+  THE QUESTION §6 EXISTS TO ANSWER
+═══════════════════════════════════════════════════════════════
+Q: was the factory.py edge the ONLY violation the stale analysis concealed,
+   or were there others?
+
+A: WITHIN THE 43ca600 CONTRACT SET — YES, IT WAS THE ONLY ONE.
+   At all four commits exactly one contract breaks, with exactly one edge:
+   trading.loop.live -> factory -> kraken_v2_book. The other three contracts
+   are genuinely KEPT at every commit. Those results were true; they were
+   just true of the wrong tree, and happened to coincide.
+
+   BUT THAT ANSWER IS BOUNDED BY WHAT THOSE FOUR CONTRACTS COULD SEE, AND
+   THE AUDIT SURFACED A SECOND DEFECT THEY COULD NOT:
+
+   'from unittest.mock import Mock' is present in production code at ALL
+   FIVE commits audited, INCLUDING the clean control 400a28b. No contract
+   in the 43ca600 set could detect it, so it was never concealed by the
+   stale tree — it was invisible to the instrument entirely. It is caught
+   only by the new §4 contract, which is why that contract lands red.
+
+   PRECISE ANSWER: the stale analysis concealed exactly one CONTRACT
+   VIOLATION (factory.py). It did not conceal the Mock — nothing was
+   watching for the Mock at all. Two different failure modes:
+     - factory.py : a rule existed and the instrument was pointed away.
+     - Mock       : the instrument had no such rule to begin with.
+   Only the first is a stale-tree problem. The second is a coverage gap,
+   and it would have survived a perfectly-aimed linter.

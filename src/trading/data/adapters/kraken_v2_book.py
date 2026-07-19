@@ -922,3 +922,16 @@ class KrakenV2BookAdapter:
         """
         self.pause()
         # In production, this would be triggered by WebSocket disconnection
+
+
+# --- WO-010 §5: self-registration ---------------------------------------
+from trading.data.adapters.registry import register  # noqa: E402
+
+
+@register("kraken_v2")
+def _build_kraken_v2(decision_logger=None) -> "KrakenV2BookAdapter":
+    """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
+
+    FIXTURES ONLY — live WebSocket transport is held under WO-008b-A.
+    """
+    return KrakenV2BookAdapter()

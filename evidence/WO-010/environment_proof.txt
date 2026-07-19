@@ -1,0 +1,80 @@
+WO-010 §3 — ENVIRONMENT PROOF (NORMAL, NON-ELEVATED SHELL)
+Generated: 2026-07-19T04:41:08Z
+Hadi removed the stale .pth and temp trees in an ELEVATED shell.
+This is an independent re-verification from a NORMAL shell, per §3.
+
+=== COMMAND: python -c "import trading; print(trading.__file__)" ===
+C:\Projects\bot\trading-system\src\trading\__init__.py
+
+=== COMMAND: python -c "import sys; [print(i,p) for i,p in enumerate(sys.path)]" ===
+0 
+1 C:\Python314\python314.zip
+2 C:\Python314\DLLs
+3 C:\Python314\Lib
+4 C:\Python314
+5 C:\Users\mhadi\AppData\Roaming\Python\Python314\site-packages
+6 C:\Projects\bot\trading-system\src
+7 C:\Python314\Lib\site-packages
+
+=== COMMAND: any %TEMP% / ci-sim entry anywhere on sys.path? ===
+TEMP-or-ci-sim entries on sys.path: NONE
+RESULT: PASS � no temp entry on sys.path
+
+=== COMMAND: do the stale temp trees still exist on disk? ===
+  absent: C:\Users\mhadi\AppData\Local\Temp/ci-sim
+  absent: C:\Users\mhadi\AppData\Local\Temp/ci-sim2
+  absent: /c/Users/mhadi/AppData/Local/Temp/ci-sim
+  absent: /c/Users/mhadi/AppData/Local/Temp/ci-sim2
+
+=== COMMAND: pip list | grep -i trading ===
+trading-system    0.1.0       C:\Projects\bot\trading-system
+
+=== COMMAND: pip show trading-system ===
+Name: trading-system
+Version: 0.1.0
+Summary: Systematic Crypto Trading System - Walking Skeleton
+Home-page: 
+Author: 
+Author-email: 
+License: 
+Location: C:\Users\mhadi\AppData\Roaming\Python\Python314\site-packages
+Editable project location: C:\Projects\bot\trading-system
+Requires: httpx, pyarrow, pydantic, python-dotenv, pyyaml
+Required-by: 
+
+=== COMMAND: count installs — every __editable__*trading*.pth on the system ===
+  C:\Python314\Lib\site-packages\trading_system-0.1.0.dist-info
+  C:\Users\mhadi\AppData\Roaming\Python\Python314\site-packages\__editable__.trading_system-0.1.0.pth
+      -> C:\Projects\bot\trading-system\src
+  C:\Users\mhadi\AppData\Roaming\Python\Python314\site-packages\trading_system-0.1.0.dist-info
+
+EDITABLE .pth COUNT: 1
+RESULT: PASS � exactly one install
+
+=== COMMAND: python tools/preflight_path_check.py   (§2 assertion) ===
+PASS: trading package resolves inside the repo tree
+  C:\Projects\bot\trading-system\src\trading\__init__.py
+EXIT CODE: 0
+
+################ §3 VERDICT ################
+  trading.__file__ inside repo src ......... PASS
+  NO %TEMP% entry on sys.path .............. PASS
+  stale temp trees removed from disk ....... PASS (Hadi, elevated shell)
+  EXACTLY ONE editable install ............. PASS (1 .pth -> repo src)
+  §2 preflight assertion passes ............ PASS (exit 0)
+  Verified in a NORMAL (non-elevated) shell. No pip uninstall was run.
+
+################ ⚠ RESIDUE — REPORTED, NOT TOUCHED ################
+One ORPHANED dist-info remains in the SYSTEM site-packages:
+  C:\Python314\Lib\site-packages\trading_system-0.1.0.dist-info
+Its companion __editable__*.pth is GONE (Hadi removed it), so it puts
+NOTHING on sys.path and cannot redirect imports. It is inert metadata.
+
+Evidence it is inert: the sys.path dump above contains no system-site
+entry for the project, and 'pip show' reports Location as the USER
+site-packages with 'Editable project location: C:\Projects\bot\trading-system'.
+
+NOT REMOVED because (a) it needs elevation, and (b) §3 forbids running
+'pip uninstall'. Flagged so it is not mistaken later for a second install.
+Optional cleanup, ELEVATED shell:
+  Remove-Item -Recurse 'C:\Python314\Lib\site-packages\trading_system-0.1.0.dist-info'

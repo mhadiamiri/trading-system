@@ -1,0 +1,71 @@
+WO-008b §1.1: ENVIRONMENT CONFIRMATION
+========================================
+
+**Date:** 2026-07-18
+**Work Order:** WO-008b - First Live Kraken Mainnet Capture (60-Minute Throughput Proof)
+
+---
+
+ENVIRONMENT VARIABLES
+=====================
+
+TRADING_ENV=paper ✓
+- Correct: Paper execution throughout the live run
+- No order placement capability at any venue
+
+DATA_SOURCE=simulated
+- NOTE: Currently set to "simulated"
+- Will need to be changed to Kraken v2 book adapter for live run
+- This is expected and will be configured properly before live connection
+
+---
+
+CREDENTIAL CHECK
+================
+
+API Key: NOT SET ✓
+Secret: NOT SET ✓
+Credential: NOT SET ✓
+
+Kraken public WebSocket requires NO authentication.
+
+---
+
+WEBSOCKET ENDPOINT
+==================
+
+Source: src/trading/data/adapters/kraken_v2_book.py line 446
+
+WS_URL = "wss://ws.kraken.com"
+
+- Public unauthenticated endpoint ✓
+- No API key required ✓
+- No subscription to private channels ✓
+
+---
+
+GREP VERIFICATION
+================
+
+No credential-related patterns found in kraken_v2_book.py:
+- api_key: NOT FOUND
+- API_KEY: NOT FOUND
+- secret: NOT FOUND
+- SECRET: NOT FOUND
+- credential: NOT FOUND
+- CREDENTIAL: NOT FOUND
+- auth: NOT FOUND
+- AUTH: NOT FOUND
+
+✓ No credential leakage path identified in Kraken v2 book adapter
+
+---
+
+CONCLUSION
+==========
+
+Environment is configured correctly for paper execution with Kraken mainnet.
+DATA_SOURCE will be set to Kraken v2 book adapter before live connection.
+No credentials are used or required for this run.
+
+✓ PRE-FLIGHT §1.1 COMPLETE

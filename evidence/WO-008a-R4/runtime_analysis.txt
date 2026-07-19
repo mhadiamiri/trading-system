@@ -1,0 +1,42 @@
+WO-008a-R4 §2: RUNTIME INCREASE ANALYSIS
+========================================
+
+QUESTION: Why did runtime increase from 3.28s (R2) to 235.72s (R3)?
+
+ANSWER: The slowest tests are dominated by SLEEP in SimulatedMarketFeed.
+
+SLOWEST 15 DURATIONS:
+=====================
+101.16s call     tests/integration/test_live_loop.py::TestLiveLoopIntegration::test_end_to_end_loop_completes
+60.73s call     tests/integration/test_cost_visibility.py::test_show_full_cycle_with_costs
+50.62s call     tests/integration/test_live_loop.py::TestLiveLoopIntegration::test_simulated_fills_recorded
+50.56s call     tests/integration/test_live_loop.py::TestLiveLoopIntegration::test_clamp_fires_during_loop
+20.20s call     tests/integration/test_live_loop.py::TestLiveLoopIntegration::test_kill_switch_blocks_orders
+10.12s call     tests/integration/test_live_loop.py::TestLiveLoopIntegration::test_every_decision_logged
+
+ROOT CAUSE:
+===========
+SimulatedMarketFeed.update_interval_ms = 1000 (1 second per update)
+Line 94: await asyncio.sleep(self._update_interval_ms / 1000)
+
+These tests run:
+- test_end_to_end_loop_completes: max_updates=100, duration_minutes=10 → 100 seconds
+- test_show_full_cycle_with_costs: max_updates=100, duration_minutes=1 → 60 seconds (stopped by duration)
+- test_simulated_fills_recorded: max_updates=50 → 50 seconds
+- test_clamp_fires_during_loop: max_updates=50 → 50 seconds
+
+This is a LEGITIMATE sleep in the loop for realistic timing simulation.
+
+IS THIS A PROBLEM?
+==================
+Option: Reduce coverage by deleting tests → REJECTED (instructions say do NOT fix by reducing coverage)
+Option: Remove sleep for faster tests → Would break realistic timing simulation
+Option: Accept ~4 minute runtime → This is the current approach
+
+The 4-minute runtime will slow CI but is necessary for integration testing with realistic timing.
+
+RECOMMENDATION:
+===============
+Keep the current approach. The runtime is dominated by legitimate sleeps, not retry/backoff/polling.
+Before WO-008b (which will run 60-minute live capture), this 4-minute runtime is acceptable.
+

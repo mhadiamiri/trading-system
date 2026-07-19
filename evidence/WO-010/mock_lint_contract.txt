@@ -1,0 +1,123 @@
+WO-010 §4 — MOCK-IMPORT LINT CONTRACT (build-enforced, per D9 / rule 0.1c)
+Generated: 2026-07-19T04:41:55Z
+
+################ THE RULE AS ADDED ################
+=== COMMAND: grep -A5 'No test doubles' pyproject.toml ===
+    # WO-010 §4 (rule 0.1c): no test doubles in production code.
+    # `tests/` is outside the `trading` root package, so test directories are
+    # exempt automatically. EXPECTED RED until WO-008b-A removes the committed
+    # `from unittest.mock import Mock` at kraken_v2_book.py:22.
+    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest.mock"] }
+]
+
+Test directories are exempt AUTOMATICALLY: root_package is 'trading', and
+tests/ lives outside that package, so it is never in the analysed graph.
+
+################ THE RULE FIRING RED — AS EXPECTED AND CORRECT ################
+=== COMMAND: time import-linter lint ===
+=============
+Import Linter
+=============
+
+
+Invalid forbidden module unittest.mock: subpackages of external packages are 
+not valid.
+
+real	0m0.964s
+user	0m0.015s
+sys	0m0.000s
+
+################ THE VIOLATION IT CATCHES (COMMITTED AT 43ca600) ################
+=== COMMAND: git show 43ca600:src/trading/data/adapters/kraken_v2_book.py | grep -n 'unittest.mock' ===
+22:from unittest.mock import Mock
+
+=== COMMAND: grep -n 'unittest.mock' on the working tree ===
+src/trading/data/adapters/kraken_v2_book.py:22:from unittest.mock import Mock
+Binary file src/trading/data/adapters/__pycache__/kraken_v2_book.cpython-314.pyc matches
+
+################ STATEMENT REQUIRED BY §4 ################
+THE 'No test doubles in production code' CONTRACT IS EXPECTED TO BE RED
+UNTIL WO-008b-A REMOVES THE Mock.
+
+This is NOT a regression and must not be read as one. The rule lands red on
+purpose: it is a build-enforced detector for a defect that ALREADY EXISTS in
+the shipped tree and was previously invisible.
+
+The Mock was NOT fixed here — §4 and the OUT OF SCOPE section both forbid it;
+removal is ruled into WO-008b-A. Consequence of the live defect, unchanged:
+self._log_error = Mock() at line 458 (committed) shadows the real method, so
+every checksum-failure log is discarded and FR-017 is unfulfilled.
+Full analysis: evidence/WO-008b-DIAG/mock_in_production.txt
+
+################ ⚠ FIRST ATTEMPT WAS AN INVALID CONTRACT — RECORDED, NOT HIDDEN ################
+The first definition used forbidden_modules = ["unittest.mock"].
+import-linter rejected it (captured verbatim above):
+    Invalid forbidden module unittest.mock: subpackages of external
+    packages are not valid.
+
+CRITICAL PROPERTY OF THAT FAILURE: the invalid contract aborted the ENTIRE
+lint run. NO contracts were evaluated — not the four pre-existing ones
+either. The tool exited without reporting 'N kept, M broken' at all.
+
+That is the same failure class this work order exists to kill: a broken
+instrument that produces a NON-ANSWER which a careless reader scores as
+'no violations reported'. Had this been committed unread, all five contracts
+would have been silently disabled while appearing configured.
+Recorded here rather than quietly corrected (rules 0.6a / 0.6d).
+
+CORRECTED DEFINITION: forbidden_modules = ["unittest"] — the top-level
+package, which is valid and strictly broader. Production code under src/
+has no legitimate reason to import ANY part of unittest, so the wider rule
+is also the more correct one.
+
+################ CORRECTED RULE — NOW FIRING RED AS INTENDED ################
+=== COMMAND: grep -n 'No test doubles' pyproject.toml ===
+55:    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest"] }
+
+=== COMMAND: time import-linter lint ===
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 54 files, 176 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly KEPT
+No test doubles in production code BROKEN
+
+Contracts: 3 kept, 2 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+Forbidden v2-book-checksum imports above adapter
+------------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.factory (l.19, l.319)
+    trading.data.adapters.factory -> trading.data.adapters.kraken_v2_book (l.15)
+
+
+No test doubles in production code
+----------------------------------
+
+trading is not allowed to import unittest:
+
+-   trading.data.adapters.kraken_v2_book -> unittest (l.22)
+
+
+
+real	0m0.191s
+user	0m0.015s
+sys	0m0.015s

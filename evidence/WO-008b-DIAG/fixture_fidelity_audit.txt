@@ -1,0 +1,58 @@
+WO-008b-DIAG — FIXTURE FIDELITY AUDIT vs KRAKEN v2 BOOK SCHEMA
+Generated: 2026-07-19T03:36:35Z
+Kraken v2 reference: https://docs.kraken.com/api/docs/websocket-v2/book/
+
+--- A1: THE GENUINE GROUND-TRUTH PROOF (this one STANDS) ---
+=== COMMAND: grep -n '3310070434' tests/test_data_adapters.py ===
+80:        expected_checksum = 3310070434
+Kraken's PUBLISHED 10-level checksum. This snapshot proof is real and survives.
+
+--- A2: THE INCREMENTAL CHECKSUM FIXTURES ARE CIRCULAR ---
+=== COMMAND: grep -n '388076886' tests/test_data_adapters.py ===
+122:        # Valid checksum for bid=65000, ask=65005 is 388076886
+129:            checksum=388076886,  # Checksum for original data, NOT updated for new price
+171:                checksum=388076886,  # Wrong checksum (original data checksum)
+
+=== RUNTIME PROOF: is 388076886 a Kraken value or self-generated? ===
+our compute_checksum over the 1-LEVEL fixture book = 388076886
+value asserted in the fixture                      = 388076886
+IDENTICAL -> the fixture asserts our own output: True
+
+Kraken CRC32 is defined over TEN levels per side.
+A 1-level book cannot produce a Kraken-comparable checksum.
+
+--- A3: BOOK_DEPTH=1 IS NOT A LEGAL SUBSCRIPTION DEPTH ---
+=== COMMAND: grep -n 'BOOK_DEPTH =' src/trading/data/adapters/kraken_v2_book.py ===
+457:    BOOK_DEPTH = 1  # Top of book only
+Kraken accepts depth in {10,25,100,500,1000}. depth=1 is rejected by the venue,
+and a 1-deep ladder can never hold the 10 levels the checksum requires.
+
+--- A4: FIXTURES SUPPLY OBJECTS, NOT FRAMES ---
+=== COMMAND: grep -rn '_parse_book_message' src/ tests/ ===
+src/trading/data/adapters/kraken_v2_book.py:600:    def _parse_book_message(self, raw_message: dict) -> Optional[QuoteUpdate]:
+src/trading/data/adapters/kraken_v2_book.py:694:            quote_update = self._parse_book_message(snapshot_data)
+src/trading/data/adapters/kraken_v2_book.py:1033:            - Live mode: WebSocket frame → _parse_book_message() → QuoteUpdate → _process_quote_update() → MarketState
+src/trading/data/adapters/kraken_v2_book.py:1087:        - WebSocket frame → _parse_book_message() → QuoteUpdate → _process_quote_update() → MarketState
+src/trading/data/adapters/kraken_v2_book.py:1132:                    quote_update = self._parse_book_message(raw_message)
+ZERO test call sites: the parser has never been exercised by any test.
+
+=== FIELD-BY-FIELD AUDIT (labelled: analysis) ===
+FIELD               | OUR FIXTURES              | KRAKEN v2 BOOK        | STATUS
+--------------------+---------------------------+-----------------------+------------------
+sequence            | present, synth. monotonic | NOT SENT              | fixture invention
+checksum            | present                   | present (CRC32 top-10)| shape ok, see A2
+bid/ask price+size  | 4 flat scalars (L1 only)  | bids[]/asks[] of      | SHAPE MISMATCH
+                    |                           |   {price, qty}        |
+symbol              | absent                    | present per data elem | OMITTED
+type snapshot/update| absent                    | present               | OMITTED
+channel             | absent                    | present ('book')      | OMITTED
+timestamp           | client datetime.now(UTC)  | server-sent           | FABRICATED LOCALLY
+qty:0 deletion      | never exercised           | primary level-removal | UNTESTED
+envelope            | flat QuoteUpdate object   | dict{channel,type,    | NOT MODELLED
+                    |                           |   data:[...]}         |
+
+CONCLUSION:
+The fixtures were shaped to fit the IMPLEMENTATION, not the PROTOCOL.
+Every proof built on them certifies behaviour that cannot occur on a real
+feed. The single exception is the 10-level snapshot checksum (3310070434),
+which is genuine Kraken ground truth and remains valid.

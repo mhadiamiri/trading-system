@@ -1,0 +1,58 @@
+WO-008b-DIAG — Mock() SHIPPED IN PRODUCTION __init__ (finding D)
+Generated: 2026-07-19T03:35:54Z
+*** THIS IS A COMMITTED LIVE DEFECT, NOT A SPIKE ARTIFACT ***
+
+--- D1: PRESENT IN THE COMMITTED TREE AT 43ca600 ---
+=== COMMAND: git show 43ca600:src/trading/data/adapters/kraken_v2_book.py | grep -n 'Mock' ===
+22:from unittest.mock import Mock
+458:        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+
+--- D2: ALSO PRESENT IN THE DIRTY WORKING TREE ---
+=== COMMAND: grep -n 'Mock' src/trading/data/adapters/kraken_v2_book.py ===
+22:from unittest.mock import Mock
+484:        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+
+--- D3: WHEN WAS IT INTRODUCED ---
+=== COMMAND: git log --oneline -S 'self._log_error = Mock()' -- src/trading/data/adapters/kraken_v2_book.py ===
+71eb901 fix(ci): track data-layer modules excluded by unanchored .gitignore data/ pattern
+
+--- D4: IT SHADOWS THE REAL METHOD ---
+=== COMMAND: sed -n '983,988p' src/trading/data/adapters/kraken_v2_book.py ===
+    def _log_error(self, message: str) -> None:
+        """Log an error message."""
+        # For now, use print as placeholder
+        # In production, this would use the DecisionLogger
+        print(f"ERROR: {message}")
+
+
+--- D5: RUNTIME PROOF OF SHADOWING (real tree via PYTHONPATH=src) ===
+type(a._log_error) = <class 'unittest.mock.Mock'>
+is a Mock instance  = True
+call_count after logging a failure = 1
+anything printed to stdout by that call? NO � it went into the Mock.
+
+--- D6: THE LOG SITE THAT IS SILENCED ---
+=== COMMAND: sed -n '883,890p' src/trading/data/adapters/kraken_v2_book.py ===
+        if computed_checksum != quote_update.checksum:
+            # Checksum validation failed (FR-017)
+            self._checksum_failures += 1
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: seq={quote_update.sequence}, "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+
+=== ANALYSIS (labelled: not command output) ===
+FR-017 requires rejected/invalid-checksum updates to be LOGGED.
+Because __init__ assigns a Mock over _log_error, every checksum-failure
+log in BOTH fixture and live mode is captured by the Mock and discarded.
+FR-017 is therefore UNFULFILLED in the committed system today.
+
+This is the mechanism that would have concealed the checksum pre/post-update
+defect and the live-path failures during any real run: the one diagnostic
+that would have surfaced them writes to a test double.
+
+Per the project lead's PART 4 EXCEPTION: because this is in the COMMITTED
+tree, reverting kraken_v2_book.py to 43ca600 PRESERVES it. It is reported
+here as a separate live defect and has NOT been reverted away silently.
+It is NOT fixed in this work order — no code changes under HOLD.

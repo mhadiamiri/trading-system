@@ -1,0 +1,69 @@
+WO-008b-DIAG — PART 3: EDITABLE INSTALL FIX
+Generated: 2026-07-19T03:45:16Z
+
+ROOT CAUSE (per project lead): a WO-008a-R3 instruction cloned the repo to a
+temp dir and ran 'pip install -e .' inside the clone, rebinding the env.
+Consequence: 'python -m trading.loop.live' executed STALE code while pytest
+ran the real tree (pytest.ini sets pythonpath=src, which masked the fault).
+
+################ BEFORE ################
+Captured before any change (transcribed from the session, command shown):
+  $ python -c "import trading; print(trading.__file__)"
+  C:\Users\mhadi\AppData\Local\Temp\ci-sim2\src\trading\__init__.py
+  $ cat C:/Python314/Lib/site-packages/__editable__.trading_system-0.1.0.pth
+  C:\Users\mhadi\AppData\Local\Temp\ci-sim2\src
+
+################ ACTION TAKEN ################
+pip install -e .   (run from the REAL project root)
+This installed to USER site-packages, which PRECEDES system site-packages.
+
+################ AFTER — VERIFICATION ################
+=== COMMAND: python -c 'import trading; print(trading.__file__)' ===
+C:\Projects\bot\trading-system\src\trading\__init__.py
+
+=== COMMAND: sys.path entries deciding which tree wins ===
+  [6] C:\Projects\bot\trading-system\src
+  [8] C:\Users\mhadi\AppData\Local\Temp\ci-sim2\src
+
+=== COMMAND: user-site .pth (the one now winning) ===
+C:\Projects\bot\trading-system\src
+
+RESOLUTION IS CORRECT: the project tree resolves at a LOWER sys.path index
+than the stale temp tree, so imports bind to the real repo.
+
+################ ⚠ TWO ITEMS NOT COMPLETED — REPORTED, NOT WORKED AROUND ################
+
+(a) DELETING %TEMP%\ci-sim AND %TEMP%\ci-sim2 — BLOCKED
+    'rm -rf' on both trees was denied by the environment's safety classifier.
+    I did NOT attempt to route around the denial. The directories still exist.
+    Pre-deletion safety check WAS completed and is recorded here:
+      ci-sim  HEAD = 71eb90108ac9cbb27be31c2d63d73274b03741cc, 0 uncommitted changes, 2.4M
+      ci-sim2 HEAD = 400a28b1206840c9d7ec34c1cd21b47b2753c3b2, 0 uncommitted changes, 2.7M
+    Both SHAs are ancestors of 43ca600 and fully contained in the real repo's
+    history. Deleting them loses nothing. Requires the user to run:
+      Remove-Item -Recurse -Force $env:TEMP\ci-sim, $env:TEMP\ci-sim2
+
+(b) REMOVING THE STALE SYSTEM-SITE .pth — BLOCKED (needs elevation)
+    C:\Python314\Lib\site-packages\__editable__.trading_system-0.1.0.pth
+    still contains the ci-sim2 path. 'rm' returned 'Permission denied'.
+    Requires an ELEVATED shell:
+      Remove-Item 'C:\Python314\Lib\site-packages\__editable__.trading_system-0.1.0.pth'
+
+RESIDUAL RISK: the stale path remains on sys.path (index 8) and the stale
+tree remains on disk. Imports are correct TODAY only because of path
+ORDERING. If the user-site install is ever removed, resolution silently
+reverts to the stale tree. This is exactly how the original fault hid.
+
+################ ⚠ HAZARD DISCOVERED DURING THE FIX ################
+'pip uninstall trading-system -y' removed the GOOD user-site install and
+LEFT the stale system-site one. Resolution immediately regressed to
+%TEMP%\ci-sim2. This was caught and corrected by reinstalling. Anyone
+running that uninstall must know there are TWO installs and pip removes
+the wrong one first.
+
+################ UNRELATED PACKAGING DEFECT (reported, not fixed) ################
+=== COMMAND: grep -n 'websockets' requirements.txt pyproject.toml ===
+requirements.txt:7:websockets>=12.0
+'websockets' is declared in requirements.txt but NOT in pyproject.toml
+[project].dependencies. A clean 'pip install -e .' would not pull it, and
+kraken_v2_book.py imports it at module scope. Out of scope here; flagged.

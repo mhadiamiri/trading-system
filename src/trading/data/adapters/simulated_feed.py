@@ -101,3 +101,13 @@ class SimulatedMarketFeed:
     def venue_name(self) -> str:
         """Return the venue name for this feed adapter."""
         return "simulated"
+
+
+# --- WO-010 §5: self-registration ---------------------------------------
+from trading.data.adapters.registry import register  # noqa: E402
+
+
+@register("simulated")
+def _build_simulated(decision_logger=None) -> "SimulatedMarketFeed":
+    """Builder invoked by the registry when DATA_SOURCE=simulated."""
+    return SimulatedMarketFeed(update_interval_ms=1000)

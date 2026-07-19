@@ -1,0 +1,666 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 4 items
+
+tests/integration/test_no_silent_fixture_fallback.py::test_fixture_mode_works 
+[NO SILENT FALLBACK - PASS]
+  Fixture mode: Adapter initialized and QuoteUpdate processed
+  Result: MarketState(timestamp=datetime.datetime(2026, 7, 19, 2, 54, 56, 54289, tzinfo=datetime.timezone.utc), symbol='BTC/USD', best_bid=Decimal('65001.0'), best_ask=Decimal('65004.0'), best_bid_size=Decimal('1.6'), best_ask_size=Decimal('2.1'), mid_price=Decimal('65002.5'), spread=Decimal('3.0'), trade_count=0, total_volume=Decimal('0'), last_price=Decimal('65001.0'))
+  Live mode=False (fixture mode active)
+PASSED
+tests/integration/test_no_silent_fixture_fallback.py::test_live_mode_connection_failure_raises 
+[NO SILENT FALLBACK - BITE]
+  Error: WebSocket connection failed
+  Live mode connection failure RAISES error (no silent fallback)
+PASSED
+tests/integration/test_no_silent_fixture_fallback.py::test_no_fixture_data_no_live_mode_raises 
+[NO SILENT FALLBACK - EXPLICIT GUARD]
+  Error: Neither fixture_data nor live_mode specified. This adapter cannot produce market data. Use KrakenV2BookAdapter(live_mode=True) for live connection, or pass fixture_data for replay mode. This is a constitutional guard preventing silent fixture fallback.
+  Explicit guard prevents silent fixture fallback
+PASSED
+tests/integration/test_no_silent_fixture_fallback.py::test_no_silent_fallback_guard_is_byte_unchanged 
+[NO SILENT FALLBACK - CODE VERIFIED]
+  Guard code is byte-unchanged
+PASSED
+
+============================== 4 passed in 0.04s ==============================
+warning: in the working copy of 'src/trading/data/adapters/kraken_v2_book.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/trading/data/adapters/kraken_v2_book.py b/src/trading/data/adapters/kraken_v2_book.py
+index df2b947..50633fd 100644
+--- a/src/trading/data/adapters/kraken_v2_book.py
++++ b/src/trading/data/adapters/kraken_v2_book.py
+@@ -22,9 +22,17 @@ from dataclasses import dataclass, field
+ from unittest.mock import Mock
+ import enum
+ import binascii
++import asyncio
++import json
++import logging
++import time
++import websockets
++from websockets.exceptions import ConnectionClosed, ConnectionClosedError
+ 
+ from trading.data.market_state import MarketState
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ class LocalBookState(enum.Enum):
+     """
+@@ -447,16 +455,256 @@ class KrakenV2BookAdapter:
+ 
+     # Book subscription parameters
+     BOOK_DEPTH = 1  # Top of book only
++    BOOK_SYMBOL = "XBT/USD"  # Kraken symbol for BTC/USD
+ 
+     # Checksum failure threshold
+     CHECKSUM_FAILURE_THRESHOLD = 5
+ 
+-    def __init__(self):
+-        """Initialize adapter."""
++    # Reconnection parameters
++    RECONNECT_BASE_DELAY = 1.0  # seconds
++    RECONNECT_MAX_DELAY = 60.0  # seconds
++
++    def __init__(self, live_mode: bool = False):
++        """
++        Initialize adapter.
++
++        Args:
++            live_mode: If True, connect to live WebSocket. If False, fixture mode only.
++                       This is an EXPLICIT choice - no silent fallback.
++
++        Raises:
++            ValueError: If live_mode=True and connection fails (WO-008b-A §1.4)
++
++        Constitutional requirements:
++            - Mode selection is explicit and logged (WO-008b-A §1.4)
++            - Failed connection in live mode RAISES, never falls back to fixtures
++        """
+         self._local_book = LocalBookData()
+         self._rolling_stats = RollingTradeStats()
+         self._log_error = Mock()  # Placeholder - will be implemented with real logger
+ 
++        # Mode selection (WO-008b-A §1.4: explicit mode, no silent fallback)
++        self._live_mode = live_mode
++        self._running = False
++        self._websocket = None
++        self._reconnect_delay = self.RECONNECT_BASE_DELAY
++        self._reconnect_needed = False
++
++        # Diagnostic counters
++        self._raw_received = 0
++        self._market_states_emitted = 0
++        self._start_time = None
++
++        # Connection health tracking
++        self._connection_errors = 0
++        self._reconnect_count = 0
++        self._sequence_gaps_detected = 0
++        self._checksum_failures = 0
++        self._staleness_guard_firings = 0
++
++        if self._live_mode:
++            logger.info(f"[WO-008b-A] LIVE MODE ENABLED - Connecting to {self.WS_URL}")
++        else:
++            logger.info("[WO-008b-A] FIXTURE MODE - WebSocket connection disabled")
++
++    @property
++    def venue_name(self) -> str:
++        """Return venue name for diagnostics."""
++        return "kraken_mainnet" if self._live_mode else "kraken_fixture"
++
++    def get_diagnostic_counters(self) -> dict:
++        """
++        Get diagnostic counters (WO-008b-A §3.2).
++
++        Returns:
++            Dict with diagnostic metrics
++
++        Counters at different layers (WO-008a-R2):
++            - raw_messages_received: At feed/parse boundary (EVERY raw message)
++            - market_states_emitted: At yield boundary (successful parses only)
++        """
++        import time
++        elapsed = (time.time() - self._start_time) if self._start_time else 0
++        raw_rate = self._raw_received / elapsed if elapsed > 0 else 0
++        emitted_rate = self._market_states_emitted / elapsed if elapsed > 0 else 0
++
++        return {
++            "raw_messages_received": self._raw_received,
++            "market_states_emitted": self._market_states_emitted,
++            "raw_rate_per_minute": raw_rate * 60,
++            "emitted_rate_per_minute": emitted_rate * 60,
++            "elapsed_seconds": elapsed,
++            "connection_errors": self._connection_errors,
++            "reconnect_count": self._reconnect_count,
++            "sequence_gaps_detected": self._sequence_gaps_detected,
++            "checksum_failures": self._checksum_failures,
++            "staleness_guard_firings": self._staleness_guard_firings,
++            "live_mode": self._live_mode,
++            "venue": self.venue_name,
++        }
++
++    async def _connect_websocket(self) -> websockets.WebSocketClientProtocol:
++        """
++        Establish WebSocket connection to Kraken v2 endpoint.
++
++        Returns:
++            WebSocket connection
++
++        Raises:
++            ConnectionError: If connection fails (WO-008b-A §1.4)
++        """
++        try:
++            logger.info(f"[WO-008b-A] Connecting to {self.WS_URL}...")
++            websocket = await websockets.connect(
++                self.WS_URL,
++                close_timeout=10,
++                ping_interval=20,
++                ping_timeout=20,
++            )
++            logger.info("[WO-008b-A] WebSocket connected successfully")
++            return websocket
++        except Exception as e:
++            logger.error(f"[WO-008b-A] WebSocket connection failed: {e}")
++            raise ConnectionError(f"Failed to connect to {self.WS_URL}: {e}")
++
++    async def _subscribe_book(self, websocket: websockets.WebSocketClientProtocol) -> None:
++        """
++        Subscribe to v2 book channel for BTC/USD.
++
++        Args:
++            websocket: Active WebSocket connection
++
++        Subscription message format per Kraken v2 API:
++        {
++            "event": "subscribe",
++            "pair": ["XBT/USD"],
++            "subscription": {
++                "name": "book",
++                "depth": 1
++            }
++        }
++        """
++        subscribe_msg = {
++            "event": "subscribe",
++            "pair": [self.BOOK_SYMBOL],
++            "subscription": {
++                "name": "book",
++                "depth": self.BOOK_DEPTH
++            }
++        }
++
++        logger.info(f"[WO-008b-A] Subscribing to book channel: {self.BOOK_SYMBOL}")
++        await websocket.send(json.dumps(subscribe_msg))
++        logger.info("[WO-008b-A] Subscription message sent")
++
++    def _parse_book_message(self, raw_message: dict) -> Optional[QuoteUpdate]:
++        """
++        Parse raw book message from Kraken v2 WebSocket into QuoteUpdate.
++
++        PATH IDENTITY (WO-008b-A §1.2):
++        This method ONLY parses the raw message into QuoteUpdate format.
++        The actual validation (checksum, sequence) happens in _process_quote_update(),
++        which is the SAME entry point used by fixtures.
++
++        Args:
++            raw_message: Raw message from Kraken WebSocket
++
++        Returns:
++            QuoteUpdate if valid message, None if heartbeat/status
++
++        Kraken v2 book message format:
++        - Snapshot: [<sequence>, <bids>, <asks>, <checksum>]
++        - Update: [<sequence>, <bids>, <asks>, <checksum>]
++        - Heartbeat: {"event": "heartbeat"}
++        - Status: {"event": "status", ...}
++        """
++        # Skip heartbeat and status messages
++        if isinstance(raw_message, dict):
++            if raw_message.get("event") in ("heartbeat", "status"):
++                return None
++
++        # Parse book data (snapshot or update)
++        if isinstance(raw_message, list) and len(raw_message) >= 4:
++            try:
++                sequence = int(raw_message[0])
++
++                # Parse bids and asks
++                # Format: [["price", "size"], ...] or ["price", "size", ...]
++                bids_raw = raw_message[1] if len(raw_message) > 1 else []
++                asks_raw = raw_message[2] if len(raw_message) > 2 else []
++
++                # Get best bid (level 0)
++                if bids_raw and len(bids_raw) > 0:
++                    best_bid = bids_raw[0]
++                    if isinstance(best_bid, list) and len(best_bid) >= 2:
++                        bid_price = Decimal(best_bid[0])
++                        bid_size = Decimal(best_bid[1])
++                    else:
++                        return None  # Invalid format
++                else:
++                    return None  # No bid data
++
++                # Get best ask (level 0)
++                if asks_raw and len(asks_raw) > 0:
++                    best_ask = asks_raw[0]
++                    if isinstance(best_ask, list) and len(best_ask) >= 2:
++                        ask_price = Decimal(best_ask[0])
++                        ask_size = Decimal(best_ask[1])
++                    else:
++                        return None  # Invalid format
++                else:
++                    return None  # No ask data
++
++                # Extract checksum
++                checksum = int(raw_message[3]) if len(raw_message) > 3 else 0
++
++                return QuoteUpdate(
++                    bid_price=bid_price,
++                    bid_size=bid_size,
++                    ask_price=ask_price,
++                    ask_size=ask_size,
++                    checksum=checksum,
++                    sequence=sequence,
++                    timestamp=datetime.now(UTC),
++                )
++
++            except (ValueError, IndexError, Decimal.InvalidOperation) as e:
++                logger.error(f"[WO-008b-A] Failed to parse book message: {e}, message: {raw_message}")
++                self._connection_errors += 1
++                return None
++
++        logger.warning(f"[WO-008b-A] Unrecognized message format: {type(raw_message)}")
++        return None
++
++    async def _handle_snapshot(self, websocket: websockets.WebSocketClientProtocol, snapshot_data: list) -> None:
++        """
++        Handle initial snapshot message from Kraken.
++
++        Args:
++            websocket: Active WebSocket connection
++            snapshot_data: Snapshot data from Kraken
++
++        The snapshot initializes the local book state. We need to extract
++        the top-of-book prices and create an initial QuoteUpdate.
++
++        Path identity: Snapshot also flows through _process_quote_update().
++        """
++        # Parse snapshot into QuoteUpdate format
++        if len(snapshot_data) >= 4:
++            quote_update = self._parse_book_message(snapshot_data)
++            if quote_update:
++                logger.info(f"[WO-008b-A] Snapshot received: seq={quote_update.sequence}, "
++                          f"bid={quote_update.bid_price}, ask={quote_update.ask_price}")
++
++                # Initialize local book with snapshot data
++                # Apply to top level for now (depth=1)
++                self._local_book.bids = [(quote_update.bid_price, quote_update.bid_size)]
++                self._local_book.asks = [(quote_update.ask_price, quote_update.ask_size)]
++                self._local_book.last_sequence = quote_update.sequence
++                self._local_book.last_checksum = quote_update.checksum
++
++                logger.info("[WO-008b-A] Local book initialized from snapshot")
++
+     @staticmethod
+     def compute_checksum(bids: List[tuple], asks: List[tuple]) -> int:
+         """
+@@ -611,8 +859,13 @@ class KrakenV2BookAdapter:
+             expected_sequence = self._local_book.last_sequence + 1
+             if quote_update.sequence != expected_sequence:
+                 # Sequence gap detected - discard book and request fresh snapshot
+-                self._discard_book()
+-                self._request_snapshot()
++                self._sequence_gaps_detected += 1
++                logger.warning(
++                    f"[WO-008b-A] Sequence gap detected: expected={expected_sequence}, "
++                    f"got={quote_update.sequence}"
++                )
++                await self._discard_book()
++                await self._request_snapshot()
+                 # No MarketState emitted during gap recovery
+                 return None
+ 
+@@ -629,6 +882,7 @@ class KrakenV2BookAdapter:
+ 
+         if computed_checksum != quote_update.checksum:
+             # Checksum validation failed (FR-017)
++            self._checksum_failures += 1
+             self._local_book.record_failure()
+             self._log_error(
+                 f"Checksum validation failed: seq={quote_update.sequence}, "
+@@ -637,8 +891,8 @@ class KrakenV2BookAdapter:
+ 
+             # Check if we've reached the failure threshold (FR-018)
+             if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+-                self._reconnect()
+-                self._request_snapshot()
++                await self._reconnect()
++                await self._request_snapshot()
+ 
+             # Return None to indicate rejection
+             return None
+@@ -666,21 +920,65 @@ class KrakenV2BookAdapter:
+ 
+         return market_state
+ 
+-    def _discard_book(self) -> None:
++    async def _discard_book(self) -> None:
+         """Discard local book state (for sequence gap recovery)."""
+         self._local_book.reset_for_resync()
+ 
+-    def _request_snapshot(self) -> None:
+-        """Request fresh snapshot from Kraken."""
+-        # This would send a snapshot request message over WebSocket
+-        # For now, this is a placeholder for the connection logic
+-        pass
++    async def _request_snapshot(self) -> None:
++        """
++        Request fresh snapshot from Kraken (WO-008b-A §1.3).
++
++        Note: In Kraken v2 book protocol, snapshots are automatically sent
++        upon subscription. We don't explicitly request snapshots — instead,
++        we reconnect which triggers a new snapshot.
++
++        This method is called after sequence gaps or checksum failures.
++        """
++        logger.warning("[WO-008b-A] Snapshot requested - will reconnect to get fresh book")
++        # In Kraken v2, we reconnect to get a fresh snapshot rather than
++        # sending an explicit snapshot request message
++        # Reset book state for fresh snapshot
++        await self._discard_book()
++        self._reconnect_needed = True
++
++    async def _reconnect(self) -> None:
++        """
++        Reconnect to Kraken WebSocket with exponential backoff (WO-008b-A §1.3).
++
++        Implements:
++        - Close existing connection
++        - Exponential backoff (base=1s, max=60s)
++        - Increment reconnect counter
++        - Reset book state for fresh snapshot
++
++        Reconnection policy (WO-008b-A):
++        - Base delay: 1 second
++        - Max delay: 60 seconds
++        - Exponential backoff: delay * 2 after each failure
++        """
++        if self._websocket:
++            try:
++                await self._websocket.close()
++                logger.info("[WO-008b-A] WebSocket connection closed for reconnection")
++            except Exception as e:
++                logger.error(f"[WO-008b-A] Error closing WebSocket: {e}")
++
++        # Increment reconnect counter
++        self._reconnect_count += 1
++
++        # Calculate backoff delay with exponential increase
++        delay = min(self._reconnect_delay, self.RECONNECT_MAX_DELAY)
++
++        logger.info(f"[WO-008b-A] Reconnecting in {delay:.1f}s... (attempt #{self._reconnect_count})")
++
++        await asyncio.sleep(delay)
++
++        # Double the delay for next time (exponential backoff)
++        self._reconnect_delay = min(self._reconnect_delay * 2, self.RECONNECT_MAX_DELAY)
+ 
+-    def _reconnect(self) -> None:
+-        """Reconnect to Kraken WebSocket."""
+-        # This would close and reopen the WebSocket connection
+-        # For now, this is a placeholder for the connection logic
+-        pass
++        # Reset book state to force fresh snapshot on reconnect
++        await self._discard_book()
++        logger.info("[WO-008b-A] Book state reset - will receive fresh snapshot on reconnect")
+ 
+     def _log_error(self, message: str) -> None:
+         """Log an error message."""
+@@ -711,121 +1009,167 @@ class KrakenV2BookAdapter:
+ 
+     async def get_market_data(self, fixture_data: List = None) -> AsyncIterator[MarketState]:
+         """
+-        Stream market data updates (fixture-based for WO-008a FIXTURES ONLY).
++        Stream market data updates.
++
++        WO-008b-A: Now supports both fixture mode and live WebSocket mode.
+ 
+         Args:
+-            fixture_data: Optional list of QuoteUpdate objects representing raw book messages
++            fixture_data: Optional list of QuoteUpdate objects (fixture mode only)
+ 
+         Yields:
+             MarketState objects with quote-centric data
+ 
+         Constitutional requirements:
+-            - WO-008a: FIXTURES ONLY - no live WebSocket connections
+             - FR-019a: Pause on book unavailable
+             - §2.4: Diagnostic counters at different layers (WO-008a-R2 BLOCKER 1 fix)
++            - WO-008b-A §1.2: Live data flows through IDENTICAL parse path as fixtures
+ 
+         Counters (WO-008a-R2 fix):
+             - raw_messages_received: Incremented at feed/parse boundary for EACH raw message
+             - market_states_emitted: Incremented only when MarketState is yielded
+-            - These MUST be at different layers to allow divergence detection
+ 
+-        Parse path (WO-008a-R2):
+-            - Fixtures supply QuoteUpdate objects (representing raw book messages)
+-            - Each QuoteUpdate is parsed through _process_quote_update()
+-            - Only successful parses produce MarketState (checksum validation, sequence check)
+-            - Rejected updates (checksum fail, sequence gap) return None, not emitted
++        PATH IDENTITY (WO-008b-A §1.2):
++            - Fixture mode: QuoteUpdate → _process_quote_update() → MarketState
++            - Live mode: WebSocket frame → _parse_book_message() → QuoteUpdate → _process_quote_update() → MarketState
++            - Both paths use the SAME _process_quote_update() entry point
++            - No live-only parsing branch exists
+         """
+-        import asyncio
+-        from datetime import timedelta
+         import time
+ 
+         # Diagnostic counters (WO-008a-R2: separated at different layers)
+         self._raw_received = 0
+         self._market_states_emitted = 0
+-        self._start_time = time.time()  # Track start time for rate reporting
++        self._start_time = time.time()
++        self._running = True
+ 
++        # FIXTURE MODE: Replay fixture data (WO-008a)
+         if fixture_data:
+-            # Replay fixture data (FIXTURES ONLY mode)
+-            # Each item in fixture_data is a QuoteUpdate representing a raw book message
++            logger.info("[WO-008b-A] FIXTURE MODE - replaying fixture data")
+             for raw_message in fixture_data:
+                 # LAYER 1: Feed/Parse boundary - count EVERY raw message received
+                 self._raw_received += 1
+ 
+                 # LAYER 2: Check if adapter can process this message
+-                # If paused/unavailable, raw message is received but no MarketState emitted
+                 if self._local_book.is_paused:
+-                    # Raw message was received (counter already incremented above)
+-                    # But no MarketState emitted due to pause (FR-019a)
+-                    # This creates the divergence: raw_received > market_states_emitted
+                     await asyncio.sleep(0.01)
+                     continue
+ 
+-                # LAYER 3: Parse boundary - process raw message through quote update pipeline
+-                # This performs checksum validation, sequence gap check, and book update
+-                # Returns MarketState on success, None on rejection
++                # LAYER 3: Parse boundary - SAME entry point for fixtures AND live (WO-008b-A §1.2)
+                 market_state = await self._process_quote_update(raw_message)
+ 
+                 # LAYER 4: Yield boundary - only emit when parsing succeeded
+                 if market_state is not None:
+                     self._market_states_emitted += 1
+                     yield market_state
+-                # Note: If market_state is None (rejected), raw_received incremented but emitted not
+-                # This creates divergence for rejected updates
+ 
+-                await asyncio.sleep(0.01)  # Small delay between events
++                await asyncio.sleep(0.01)
++
++        # LIVE MODE: Connect to WebSocket (WO-008b-A)
++        elif self._live_mode:
++            logger.info("[WO-008b-A] LIVE MODE - connecting to WebSocket")
++            async for market_state in self._get_market_data_live():
++                yield market_state
+         else:
+-            # Placeholder: Would connect to WebSocket in WO-008b
+-            # For now, generate minimal test data using QuoteUpdate format
+-            from datetime import datetime, UTC
+-            from decimal import Decimal
+-
+-            # Initialize book with a snapshot so checksum validation works
+-            snapshot_bids = [
+-                ('65000.0', '1.50000000'),
+-                ('64999.0', '1.00000000'),
+-                ('64998.0', '1.00000000'),
+-                ('64997.0', '1.00000000'),
+-                ('64996.0', '1.00000000'),
+-                ('64995.0', '1.00000000'),
+-                ('64994.0', '1.00000000'),
+-                ('64993.0', '1.00000000'),
+-                ('64992.0', '1.00000000'),
+-                ('64991.0', '1.00000000'),
+-            ]
+-            snapshot_asks = [
+-                ('65005.0', '2.00000000'),
+-                ('65006.0', '1.00000000'),
+-                ('65007.0', '1.00000000'),
+-                ('65008.0', '1.00000000'),
+-                ('65009.0', '1.00000000'),
+-                ('65010.0', '1.00000000'),
+-                ('65011.0', '1.00000000'),
+-                ('65012.0', '1.00000000'),
+-                ('65013.0', '1.00000000'),
+-                ('65014.0', '1.00000000'),
+-            ]
+-
+-            # Compute checksum for this snapshot
+-            bid_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_bids]]
+-            ask_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_asks]]
+-            initial_checksum = self.compute_checksum(bid_levels, ask_levels)
+-
+-            # Apply snapshot to initialize the book
+-            self._local_book.apply_snapshot(
+-                [(Decimal(p), Decimal(s)) for p, s in snapshot_bids],
+-                [(Decimal(p), Decimal(s)) for p, s in snapshot_asks],
+-                sequence=1,
+-                checksum=initial_checksum
++            # NEITHER fixture NOR live mode - raise error (WO-008b-A §1.4: no silent fallback)
++            raise ValueError(
++                "Neither fixture_data nor live_mode specified. "
++                "This adapter cannot produce market data. "
++                "Use KrakenV2BookAdapter(live_mode=True) for live connection, "
++                "or pass fixture_data for replay mode. "
++                "This is a constitutional guard preventing silent fixture fallback."
+             )
+ 
+-            for i in range(10):
+-                # LAYER 1: Count raw message at feed boundary
+-                self._raw_received += 1
++    async def _get_market_data_live(self) -> AsyncIterator[MarketState]:
++        """
++        Live WebSocket mode implementation (WO-008b-A).
+ 
+-                # LAYER 2: Check pause state
+-                if self._local_book.is_paused:
+-                    await asyncio.sleep(0.01)
+-                    continue
++        PATH IDENTITY (WO-008b-A §1.2):
++        - WebSocket frame → _parse_book_message() → QuoteUpdate → _process_quote_update() → MarketState
++        - The SAME _process_quote_update() entry point is used for both fixture and live modes
++        - No live-only parsing branch exists
++
++        Yields:
++            MarketState objects
++
++        Raises:
++            ConnectionError: If WebSocket connection fails (WO-008b-A §1.4)
++        """
++        try:
++            # Establish WebSocket connection
++            self._websocket = await self._connect_websocket()
++
++            # Subscribe to book channel
++            await self._subscribe_book(self._websocket)
++
++            # Wait for snapshot and process it
++            snapshot_received = False
++            logger.info("[WO-008b-A] Waiting for snapshot...")
++
++            # Main message loop
++            async for raw_message_str in self._websocket:
++                if not self._running:
++                    logger.info("[WO-008b-A] Stopping...")
++                    break
++
++                try:
++                    # Parse JSON message
++                    raw_message = json.loads(raw_message_str)
++
++                    # Handle subscription confirmation
++                    if isinstance(raw_message, dict) and raw_message.get("event") == "subscriptionStatus":
++                        logger.info(f"[WO-008b-A] Subscription confirmed: {raw_message}")
++                        continue
++
++                    # LAYER 1: Feed/Parse boundary - count EVERY raw message received
++                    self._raw_received += 1
++
++                    # Handle heartbeat
++                    if isinstance(raw_message, dict) and raw_message.get("event") == "heartbeat":
++                        logger.debug("[WO-008b-A] Heartbeat received")
++                        continue
++
++                    # Parse book message into QuoteUpdate
++                    quote_update = self._parse_book_message(raw_message)
++
++                    if quote_update is None:
++                        continue  # Skip non-book messages
++
++                    # Log the quote update
++                    logger.debug(
++                        f"[WO-008b-A] QuoteUpdate: seq={quote_update.sequence}, "
++                        f"bid={quote_update.bid_price}, ask={quote_update.ask_price}"
++                    )
++
++                    # LAYER 3: Parse boundary - SAME entry point for fixtures AND live (WO-008b-A §1.2)
++                    # This is the PATH IDENTITY - both fixture and live data flow through this method
++                    market_state = await self._process_quote_update(quote_update)
++
++                    # LAYER 4: Yield boundary - only emit when parsing succeeded
++                    if market_state is not None:
++                        self._market_states_emitted += 1
++                        yield market_state
++                    else:
++                        # MarketState rejected (checksum fail, sequence gap, etc.)
++                        logger.warning(f"[WO-008b-A] MarketState rejected for seq={quote_update.sequence}")
++
++                except json.JSONDecodeError as e:
++                    logger.error(f"[WO-008b-A] Failed to parse JSON: {e}")
++                    self._connection_errors += 1
++                except Exception as e:
++                    logger.error(f"[WO-008b-A] Error processing message: {e}")
++                    self._connection_errors += 1
++
++        except ConnectionClosed as e:
++            logger.error(f"[WO-008b-A] WebSocket connection closed: {e}")
++            raise ConnectionError(f"WebSocket closed: {e}")
++        except Exception as e:
++            logger.error(f"[WO-008b-A] Live data error: {e}")
++            raise
++        finally:
++            self._running = False
++            if self._websocket:
++                await self._websocket.close()
++                logger.info("[WO-008b-A] WebSocket connection closed")
+ 
+                 # LAYER 3: Create QuoteUpdate and process through parse path
+                 quote_update = QuoteUpdate(
