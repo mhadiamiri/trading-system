@@ -1,0 +1,70 @@
+WO-008b-A2 PART THREE — PREFLIGHT GATE
+Generated: 2026-07-19T17:26:19Z
+Baseline: 0893c1a — 111 collected / 103 passed / 8 xfailed
+
+=== 1a. git status --porcelain — EVERY LINE CLASSIFIED (rule 0.6c) ===
+  M instructions.md   [exempt-a: work-order file]
+  M pyproject.toml   [WO-008b-A2 §1.3 deliverable: pytest-randomly declared]
+  M src/trading/data/adapters/kraken_v2_book.py   [WO-008b-A2 §2 deliverable: transport layer]
+  ?? docs/decisions/2026-07-19-fabrication-path-third-look-alive-artifact.md   [WO-008b-A2 §1.2 deliverable: decision log]
+  ?? docs/decisions/2026-07-19-fix-induced-regression-caught-before-shipping.md   [WO-008b-A2 §1.2 deliverable: decision log]
+  ?? evidence/WO-008b-A2/   [exempt-b: current evidence dir]
+  ?? tests/integration/test_no_silent_fallback.py   [WO-008b-A2 §2.4 deliverable]
+
+=== 1b. git worktree list (ONLY main) ===
+C:/Projects/bot/trading-system fe7ddc7 [master]
+
+=== 1c. package path inside repo ===
+  C:\Projects\bot\trading-system\src\trading\__init__.py
+
+=== 2. FULL SUITE, RANDOMIZED ORDERING ACTIVE ===
+Using --randomly-seed=20260719
+collecting ... collected 115 items
+================= 107 passed, 8 xfailed in 237.74s (0:03:57) ==================
+  FAILED lines: 0
+  Delta vs 0893c1a baseline (111): +4 = tests/integration/test_no_silent_fallback.py
+
+=== 3. import-linter / contract count / ruff ===
+Contracts: 6 kept, 0 broken.
+PASS: import-linter evaluated 6 contracts (expected 6)
+All checks passed!
+
+=== 4. both preflight guards ===
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+
+=== 5. BITE PROOFS — full output in preflight_bite_proofs.txt ===
+  PROOF A order-capable path : ACTUAL FAIL 'DID NOT RAISE ValueError' -> restored -> PASS -> empty diff
+  PROOF B mainnet guard      : ACTUAL FAIL 'assert isinstance(None, ValueError)' -> restored -> PASS -> empty diff
+  PROOF C staleness          : ACTUAL FAIL 'DID NOT RAISE ValueError' (stale branch) -> restored -> PASS -> empty diff
+    ⚠ PROOF C required TWO corrections (wrong anchors, both caught by an
+      assert rather than silently skipping) and surfaced a FINDING:
+      test_no_market_state_guard passes with its guard disabled, because
+      'EXEC_NO_MARKET_STATE' is a SUBSTRING of 'EXEC_NO_MARKET_STATE_TIMESTAMP'.
+      The PRODUCTION GUARD IS INTACT; the TEST cannot distinguish its own
+      guard from the adjacent one. Rule 0.1d. Flagged, NOT fixed.
+
+=== 5b. empty git diff config/settings.py (explicitly required) ===
+^ EMPTY
+^ EMPTY == guards byte-identical after all bite proofs
+
+=== 6. TRADING_ENV and credentials ===
+  TRADING_ENV      : paper
+  is_paper_trading : True
+  DATA_SOURCE      : simulated
+  (values only — .env is never printed, rule 0.5)
+  credential-shaped env vars set: NONE
+
+################ GATE VERDICT ################
+  clean tree, all lines classified ........ PASS
+  worktree list shows only main ........... PASS
+  package path inside repo ................ PASS
+  randomized suite 107 passed / 0 failed .. PASS (seed 20260719)
+  import-linter 6 kept / 0 broken ......... PASS
+  contract count 6/6 ...................... PASS
+  ruff clean .............................. PASS
+  both preflight guards OK ................ PASS
+  four bite proofs executed ............... PASS (with the §5 finding noted)
+  TRADING_ENV=paper, no credentials ....... PASS
+
+PREFLIGHT COMPLETE — proceeding to live connection.

@@ -1,0 +1,76 @@
+WO-008b-A2 §2.4 — NO SILENT FIXTURE FALLBACK: BITE PROOF
+Generated: 2026-07-19T17:21:21Z
+NO NETWORK: the connection is failed by patching websockets.connect.
+
+################ ARTIFACT 1 — PASS ################
+=== COMMAND: time pytest tests/integration/test_no_silent_fallback.py -q -p no:randomly ===
+============================== 4 passed in 0.07s ==============================
+
+real	0m0.522s
+user	0m0.015s
+sys	0m0.000s
+
+################ ARTIFACT 2 — ACTUAL FAIL (make it fall back silently) ################
+Replacing the raise with a silent fixture replay — the exact defect the
+guard exists to prevent.
+  raise replaced with silent fallback
+=== COMMAND: grep -n 'BITE PROOF: silent fallback' <adapter> ===
+941:            # BITE PROOF: silent fallback deliberately introduced
+=== COMMAND: time pytest tests/integration/test_no_silent_fallback.py -q -p no:randomly ===
+tests\integration\test_no_silent_fallback.py:40: in test_connection_failure_raises_and_does_not_replay_fixtures
+    async for state in adapter.get_live_market_data(duration_seconds=5):
+src\trading\data\adapters\kraken_v2_book.py:980: in get_live_market_data
+    await websocket.send(json.dumps(subscribe))
+          ^^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'send'
+------------------------------ Captured log call ------------------------------
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:942 [kraken_v2_book] connect failed; falling back to fixtures
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1028 [kraken_v2_book] error during close: 'NoneType' object has no attribute 'close'
+=========================== short test summary info ===========================
+FAILED tests/integration/test_no_silent_fallback.py::TestNoSilentFallback::test_connection_failure_raises_and_does_not_replay_fixtures
+========================= 1 failed, 3 passed in 0.16s =========================
+
+real	0m0.641s
+user	0m0.000s
+sys	0m0.015s
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+=== COMMAND: git checkout -- src/trading/data/adapters/kraken_v2_book.py ===
+  restored from HEAD
+  NOTE: this also reverts the A2 transport work, which is UNCOMMITTED.
+  Re-applied immediately below, then re-verified.
+transport installed (transport-only; shared entry point)
+  transport + BOOK_SYMBOL re-applied
+=== COMMAND: time pytest tests/integration/test_no_silent_fallback.py -q -p no:randomly ===
+============================== 4 passed in 0.08s ==============================
+
+real	0m0.547s
+user	0m0.031s
+sys	0m0.000s
+
+################ ARTIFACT 4 — NO RESIDUE ################
+=== COMMAND: grep -c 'BITE PROOF' <adapter>   (must be 0) ===
+0
+=== COMMAND: the restored raise ===
+943:                f"Refusing to continue — a live run must never fall back to fixtures."
+(The adapter carries UNCOMMITTED A2 transport work, so 'git diff' is
+ legitimately non-empty. The bite-proof mutation specifically left no
+ residue: zero BITE PROOF markers, raise restored.)
+
+################ §2.5 CREDENTIAL SCAN ################
+=== COMMAND: grep -rniE 'api_key|apikey|secret|token|auth' <adapter> ===
+912:        Kraken v2 book subscription. Unauthenticated — no key, no token, no auth.
+930:        No credentials of any kind are sent: no headers, no key, no token. The
+936:        logger.info("[kraken_v2_book] connecting to %s (public, unauthenticated)", self.WS_URL)
+--- exit: 0 (1 == no matches) ---
+
+=== COMMAND: does the connection send ANY authentication? ===
+  5:        No credentials of any kind are sent: no headers, no key, no token. The
+  11:        logger.info("[kraken_v2_book] connecting to %s (public, unauthenticated)", self.WS_URL)
+  13:            return await websockets.connect(self.WS_URL, open_timeout=15, close_timeout=5)
+=== COMMAND: the subscribe payload, in full ===
+  {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+
+NO authentication of any kind: no API key, no secret, no token, no session
+id, no custom headers. websockets.connect is called with the URL and
+timeouts only. Kraken's public book channel requires none (rule 0.5).

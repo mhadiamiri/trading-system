@@ -1,0 +1,54 @@
+WO-008b-A2 §4.4 — CAPTURED FRAMES RETAINED AS DURABLE GROUND TRUTH
+Generated: 2026-07-19T17:31:51Z
+
+=== FIXTURE HEADER ===
+"""
+GROUND TRUTH: captured live from Kraken v2, 2026-07-19T17:26:53.817753+00:00, run WO-008b-A2 smoke.
+
+Endpoint : wss://ws.kraken.com/v2
+Symbol   : BTC/USD   Depth: 10
+Captured : 1 snapshot + 1071 updates over a 120s window (1192 raw frames total).
+Retained : the snapshot + the first 40 updates, verbatim as received.
+
+WHY THIS FILE MATTERS
+---------------------
+Kraken documents a checksum for the SNAPSHOT case ONLY. Until this capture, the
+INCREMENTAL path had no independent ground truth anywhere — every incremental
+fixture was self-generated, encoding our own assumptions on both sides of the
+comparison. These frames carry KRAKEN'S OWN CHECKSUMS for real incremental
+updates, permanently closing a verification gap no constructed fixture could.
+
+WHAT THEY ALREADY PROVED
+------------------------
+Replayed offline, all 1070 usable updates validate against Kraken's checksums
+when the checksum is computed over the POST-update book, and NONE validate
+pre-update (1070/1070 vs 0/1070). That is independent confirmation of the
+FR-018a(b) ordering fix from WO-008b-A1, which no fixture could establish.
+
+⚠ NOTE ON NUMBER RENDERING — the defect this capture exposed
+------------------------------------------------------------
+Kraken sends price and qty as JSON NUMBERS, not strings, so `json.loads` floats
+them before any project code runs. `Decimal(str(5.1e-05))` renders "0.000051",
+dropping trailing zeros the checksum digits require; Kraken's own rendering is
+fixed-point 8dp, "0.00005100". Reproducing these checksums therefore requires
+fixed-point rendering, NOT str(Decimal(float)).
+
+=== SIZE / CONTENT ===
+24576 tests/fixtures/kraken_v2_captured_frames.py
+  snapshot frames retained: 1
+  update frames retained  : 40
+  snapshot checksum (Kraken): 3372482100
+  first update checksum     : 2268426556
+
+=== REPLAY TEST RESULT ===
+tests/test_captured_frames_ground_truth.py::TestCapturedGroundTruth::test_captured_snapshot_matches_krakens_checksum PASSED [ 25%]
+tests/test_captured_frames_ground_truth.py::TestCapturedGroundTruth::test_every_captured_update_validates_post_update PASSED [ 50%]
+tests/test_captured_frames_ground_truth.py::TestCapturedGroundTruth::test_pre_update_ordering_does_not_match PASSED [ 75%]
+tests/test_captured_frames_ground_truth.py::TestCapturedGroundTruth::test_qty_zero_deletion_appears_in_real_traffic PASSED [100%]
+============================== 4 passed in 0.03s ==============================
+
+=== REDACTION ===
+Nothing redacted. Public market data only. Scanned for credential shapes:
+  credential-shaped matches in fixture: 1
+  credential-shaped matches in raw json: 0
+  (the Kraken public book feed carries no credential, token or session id)

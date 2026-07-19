@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import enum
 import binascii
 import logging
+import json
 
 from trading.data.market_state import MarketState
 
@@ -479,6 +480,11 @@ class KrakenV2BookAdapter:
     # could never hold the 10 levels per side the CRC32 is computed over.
     BOOK_DEPTH = 10
 
+    # WO-008b-A2 §2.2: Kraken v2 uses slash-separated ISO-style symbols.
+    # (v1 used "XBT/USD"; v2 documents "BTC/USD".)
+    # Cite: https://docs.kraken.com/api/docs/websocket-v2/book/
+    BOOK_SYMBOL = "BTC/USD"
+
     # Checksum failure threshold
     CHECKSUM_FAILURE_THRESHOLD = 5
 
@@ -889,6 +895,138 @@ class KrakenV2BookAdapter:
             timestamp=timestamp,
         )
         self._rolling_stats.add_trade(trade, current_timestamp=timestamp)
+
+    # ────────────────────────────────────────────────────────────────────
+    # TRANSPORT (WO-008b-A2). The WebSocket layer's ONLY job is transport.
+    #
+    # Receive frame -> json.loads -> hand the raw dict to process_raw_frame(),
+    # the SAME entry point the raw-frame fixtures feed. There is NO live-only
+    # parsing branch: parsing, checksum validation, book application, the
+    # no-emission window and MarketState construction are all the shared code
+    # proven in WO-009 and WO-008b-A1. If transport forked the parse path, every
+    # one of those proofs would silently detach from the running system.
+    # ────────────────────────────────────────────────────────────────────
+
+    def _build_subscribe_message(self) -> dict:
+        """
+        Kraken v2 book subscription. Unauthenticated — no key, no token, no auth.
+
+        Cite: https://docs.kraken.com/api/docs/websocket-v2/book/
+        """
+        return {
+            "method": "subscribe",
+            "params": {
+                "channel": "book",
+                "symbol": [self.BOOK_SYMBOL],
+                "depth": self.BOOK_DEPTH,
+                "snapshot": True,
+            },
+        }
+
+    async def _connect(self):
+        """
+        Open the public v2 WebSocket. Raises on failure — NEVER falls back.
+
+        No credentials of any kind are sent: no headers, no key, no token. The
+        Kraken public book channel requires none, and needing one would signal
+        something deeply wrong (rule 0.5).
+        """
+        import websockets
+
+        logger.info("[kraken_v2_book] connecting to %s (public, unauthenticated)", self.WS_URL)
+        try:
+            return await websockets.connect(self.WS_URL, open_timeout=15, close_timeout=5)
+        except Exception as exc:
+            # RAISE. A failed connection must never silently replay fixtures.
+            raise ConnectionError(
+                f"Kraken v2 connection FAILED: {type(exc).__name__}: {exc}. "
+                f"Refusing to continue — a live run must never fall back to fixtures."
+            ) from exc
+
+    async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
+        """
+        Stream MarketStates from the LIVE Kraken v2 public book channel.
+
+        Transport only. Every frame goes to process_raw_frame() unmodified.
+
+        Args:
+            duration_seconds: hard wall-clock bound on the capture window.
+
+        Raises:
+            ValueError: if called on a fixture-mode adapter (no silent switching).
+            ConnectionError: if the socket cannot be opened or drops.
+        """
+        import asyncio
+        import time
+
+        if self._mode != self.MODE_LIVE:
+            raise ValueError(
+                f"get_live_market_data requires mode={self.MODE_LIVE!r}, "
+                f"got {self._mode!r}. Mode is explicit and never inferred."
+            )
+
+        self._raw_received = 0
+        self._market_states_emitted = 0
+        self._start_time = time.time()
+        self.captured_frames = []
+
+        websocket = await self._connect()
+        logger.info(
+            "[kraken_v2_book] CONNECTED mode=%s venue=%s url=%s",
+            self._mode, self.venue_name, self.WS_URL,
+        )
+
+        try:
+            subscribe = self._build_subscribe_message()
+            await websocket.send(json.dumps(subscribe))
+            logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
+
+            deadline = time.time() + duration_seconds
+            while time.time() < deadline:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                try:
+                    message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+
+                # LAYER 1: feed boundary. Count EVERY raw frame received, before
+                # any filtering, validation or pause check — the same semantic
+                # position proven on fixtures in WO-008a-R2.
+                self._raw_received += 1
+
+                try:
+                    raw_frame = json.loads(message)
+                except json.JSONDecodeError as exc:
+                    self._log_error(f"Non-JSON frame from venue: {exc}")
+                    continue
+
+                # Retain verbatim for the durable ground-truth fixture (§4.4).
+                self.captured_frames.append(raw_frame)
+
+                # LAYER 3: the SHARED entry point. Identical to the fixture path.
+                logger.debug(
+                    "[kraken_v2_book] live frame -> process_raw_frame() "
+                    "(SHARED entry point, no live-only branch)"
+                )
+                market_states = await self.process_raw_frame(raw_frame)
+
+                # LAYER 4: yield boundary.
+                for market_state in market_states:
+                    self._market_states_emitted += 1
+                    yield market_state
+
+        finally:
+            self._running = False
+            try:
+                await websocket.close()
+                logger.info(
+                    "[kraken_v2_book] DISCONNECTED cleanly. raw=%d emitted=%d",
+                    self._raw_received, self._market_states_emitted,
+                )
+            except Exception as exc:
+                logger.error("[kraken_v2_book] error during close: %s", exc)
 
     async def get_market_data(self, fixture_data: List = None) -> AsyncIterator[MarketState]:
         """

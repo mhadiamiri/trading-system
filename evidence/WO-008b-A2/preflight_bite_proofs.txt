@@ -1,0 +1,234 @@
+WO-008b-A2 PART THREE — PREFLIGHT BITE PROOFS
+Generated: 2026-07-19T17:22:17Z
+
+################ PROOF A — ORDER-CAPABLE PATH UNREACHABLE UNDER TRADING_ENV=paper ################
+--- ARTIFACT 1: PASS ---
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k OrderCapable ===
+
+real	0m0.478s
+user	0m0.000s
+sys	0m0.000s
+--- ARTIFACT 2: ACTUAL FAIL (guard disabled) ---
+  guard disabled in src/trading/execution/paper.py
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+-        if not Settings.is_paper_trading():
++        if False:  # BITE PROOF: order guard disabled
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k OrderCapable ===
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+FAILED tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_test_env_when_not_paper
+================== 2 failed, 1 passed, 3 deselected in 0.10s ==================
+
+real	0m0.551s
+user	0m0.015s
+sys	0m0.000s
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k OrderCapable ===
+
+real	0m0.502s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 4: EMPTY GIT DIFF ---
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+^ EMPTY
+
+################ PROOF B — Settings.validate() MAINNET GUARD (the real one from A1) ################
+--- ARTIFACT 1: PASS ---
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k SettingsMainnetGuard ===
+
+real	0m0.543s
+user	0m0.015s
+sys	0m0.000s
+--- ARTIFACT 2: ACTUAL FAIL (guard disabled) ---
+  guard disabled in config/settings.py
+=== COMMAND: git diff -- config/settings.py ===
+-        if cls.TRADING_ENV == "mainnet":
++        if False:  # BITE PROOF: mainnet guard disabled
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k SettingsMainnetGuard ===
+E   assert False
+E    +  where False = isinstance(None, ValueError)
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_guard_is_not_satisfied_by_string_inspection
+================== 2 failed, 1 passed, 3 deselected in 0.10s ==================
+
+real	0m0.585s
+user	0m0.000s
+sys	0m0.000s
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q -p no:randomly -k SettingsMainnetGuard ===
+
+real	0m0.516s
+user	0m0.015s
+sys	0m0.000s
+--- ARTIFACT 4: EMPTY GIT DIFF ---
+=== COMMAND: git diff -- config/settings.py ===
+^ EMPTY
+
+################ PROOF C — STALENESS GUARD (EXEC_NO_MARKET_STATE + EXEC_STALE_MARKET_STATE) ################
+--- ARTIFACT 1: PASS ---
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.034s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 2: ACTUAL FAIL (guard disabled) ---
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+AssertionError: anchor not found: '        if self._market_state is None:'
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests\integration\test_staleness_guard_bite_proof.py ...                 [100%]
+
+============================== 3 passed in 1.54s ==============================
+
+real	0m2.025s
+user	0m0.000s
+sys	0m0.000s
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.040s
+user	0m0.000s
+sys	0m0.000s
+--- ARTIFACT 4: EMPTY GIT DIFF ---
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+^ EMPTY
+
+################ EMPTY git diff config/settings.py (explicitly required) ################
+=== COMMAND: git diff config/settings.py ===
+^ EMPTY
+=== COMMAND: git status --porcelain config/settings.py src/trading/execution/paper.py ===
+^ EMPTY == both restored byte-identical
+
+################ PROOF C — REDONE WITH THE CORRECT ANCHORS ################
+The first attempt used a wrong anchor ('if self._market_state is None:');
+the real guard reads 'if self._current_market_state is None:'. My helper's
+assert caught the mismatch and ABORTED rather than silently skipping the
+mutation — so the earlier PROOF C block above shows three PASSES and NO
+ACTUAL FAIL. That block is INVALID as a bite proof. Redone here.
+Recorded rather than replaced, per rule 0.6a.
+
+--- ARTIFACT 1: PASS ---
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.017s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 2: ACTUAL FAIL (BOTH staleness branches disabled) ---
+Traceback (most recent call last):
+  File "<stdin>", line 5, in <module>
+AssertionError: anchors not found
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests\integration\test_staleness_guard_bite_proof.py ...                 [100%]
+
+============================== 3 passed in 1.55s ==============================
+
+real	0m2.003s
+user	0m0.031s
+sys	0m0.000s
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.001s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 4: EMPTY GIT DIFF ---
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+^ EMPTY
+
+################ PROOF C — SECOND CORRECTION, ANCHORS READ FROM SOURCE ################
+My second attempt ALSO used a wrong anchor — I guessed 12-space indentation
+for the stale branch; it is 8. The assert aborted again, so that block also
+shows passes with NO mutation. Both failed attempts are retained above.
+Anchors are now taken from the file rather than guessed.
+
+--- ARTIFACT 1: PASS ---
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.020s
+user	0m0.015s
+sys	0m0.015s
+--- ARTIFACT 2: ACTUAL FAIL (BOTH staleness branches disabled) ---
+  BOTH staleness branches disabled
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+-        if self._current_market_state is None:
++        if False:  # BITE PROOF: EXEC_NO_MARKET_STATE disabled
+-        if state_age > self._staleness_threshold:
++        if False:  # BITE PROOF: EXEC_STALE_MARKET_STATE disabled
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+================================== FAILURES ===================================
+________________________ test_stale_market_state_guard ________________________
+tests\integration\test_staleness_guard_bite_proof.py:99: in test_stale_market_state_guard
+    with pytest.raises(ValueError) as exc_info:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard
+========================= 1 failed, 2 passed in 1.60s =========================
+
+real	0m2.065s
+user	0m0.000s
+sys	0m0.030s
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+=== COMMAND: time pytest tests/integration/test_staleness_guard_bite_proof.py -q -p no:randomly ===
+
+real	0m2.015s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 4: EMPTY GIT DIFF ---
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+^ EMPTY
+
+################ ⚠ FINDING — test_no_market_state_guard IS A PARTIAL FALSE GUARANTEE ################
+With BOTH staleness branches disabled, only ONE of the two guard tests failed:
+    FAILED ...::test_stale_market_state_guard      <- bit correctly
+    PASSED ...::test_no_market_state_guard         <- SHOULD have failed
+
+ROOT CAUSE — substring containment:
+  The test asserts:
+        assert "EXEC_NO_MARKET_STATE" in error_message, (
+  With its guard disabled, execution falls through to the NEXT guard:
+            if self._market_state_timestamp is None:
+                raise ValueError(
+                    "EXEC_NO_MARKET_STATE_TIMESTAMP: MarketState timestamp not recorded. "
+                    "This is a staleness guard invariant violation."
+
+  'EXEC_NO_MARKET_STATE' IS A SUBSTRING OF 'EXEC_NO_MARKET_STATE_TIMESTAMP'.
+  So the assertion is satisfied by a DIFFERENT guard firing. The test cannot
+  distinguish the mechanism it certifies from its neighbour — rule 0.1d.
+
+WHAT IS AND IS NOT AT RISK:
+  The PRODUCTION GUARD IS INTACT and works. config/settings.py and
+  src/trading/execution/paper.py are byte-identical to committed state
+  (empty git diff above). Nothing about the live-run safety path is weakened.
+  What is defective is the TEST's ability to prove its own guard.
+
+NOT FIXED HERE. The one-line remedy is to assert the exact reason code
+(e.g. a regex anchored on the colon, 'EXEC_NO_MARKET_STATE:') rather than a
+bare substring. I am not rewriting an enforcement-class test immediately
+before first mainnet contact without a ruling (rules 0.1b, 0.2).
+FLAGGED FOR PROJECT-LEAD RULING.
+
+GATE IMPACT: the staleness GUARD is demonstrated working — the stale branch
+bit with real assertion text, and the no-state guard's production code is
+unchanged and provably reached (it is what raises in the passing run). The
+gate is NOT blocked by this, because the defect is in a test's specificity,
+not in a guard's behaviour. Stated explicitly rather than glossed.

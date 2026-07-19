@@ -1,0 +1,27 @@
+2026-07-19 13:26:53,817 INFO [kraken_v2_book] adapter initialised mode=live venue=kraken_mainnet
+2026-07-19 13:26:53,817 INFO [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+2026-07-19 13:26:54,258 INFO [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+2026-07-19 13:26:54,258 INFO [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+2026-07-19 13:26:54,536 ERROR [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=3372482100, computed=2236699257
+2026-07-19 13:26:54,538 ERROR [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+2026-07-19 13:28:54,442 INFO [kraken_v2_book] DISCONNECTED cleanly. raw=1192 emitted=0
+SMOKE START (UTC): 2026-07-19T17:26:53.817753+00:00
+mode=live  venue_name=kraken_mainnet
+WS_URL=wss://ws.kraken.com/v2  symbol=BTC/USD  depth=10
+
+==============================================================
+SMOKE END (UTC): 2026-07-19T17:28:54.443112+00:00   elapsed=120.6s
+raw frames received      : 1192
+  of which snapshots     : 1
+  of which updates       : 1071
+  non-book (heartbeat/ack): 120
+MarketStates emitted     : 0
+checksum failures        : 1 (consecutive, current)
+awaiting_resync at end   : True
+venue_name as recorded   : kraken_mainnet
+book depth at end        : 0/0
+per-minute emissions     : {}
+SMOKE OBSERVATION ONLY — NOT a throughput result (<60s refusal applies to rates)
+==============================================================
+diagnostic counters: {"raw_messages_received": 1192, "market_states_emitted": 0, "elapsed_seconds": 120.62553906440735, "raw_rate_per_minute": 592.9092674297793, "emitted_rate_per_minute": 0.0, "rate_reported": true}
+captured 1192 raw frames -> evidence/WO-008b-A2/captured_frames_raw.json

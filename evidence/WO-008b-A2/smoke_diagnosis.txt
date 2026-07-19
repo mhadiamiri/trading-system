@@ -1,0 +1,62 @@
+WO-008b-A2 §4.3 — SMOKE TEST FAILED. OFFLINE DIAGNOSIS AGAINST CAPTURED FRAMES.
+Generated: 2026-07-19T17:32:28Z
+
+PER §4.3: no retry, no tuning, no adjustment of the validation. The run was
+stopped, the raw frames captured, and diagnosed offline. Reported as a
+failure that was diagnosed honestly.
+
+################ WHAT HAPPENED ################
+Connection SUCCEEDED. Subscription SUCCEEDED. Snapshot ARRIVED.
+The snapshot's checksum FAILED on the very first frame:
+    expected=3372482100  computed=2236699257
+The no-emission window (FR-018a(d)) opened correctly and never closed, so
+ZERO MarketStates were emitted from 1192 raw frames. The guard behaved
+exactly as designed — it refused to price an unverified book.
+
+################ THE PRE-RULED HYPOTHESIS WAS WRONG — AND THAT MATTERS ################
+§4.3 says assume the ordering defect first. I did. IT IS NOT THE ORDERING.
+Evidence below shows the ordering fix is CORRECT and the failure is a
+separate defect in NUMBER RENDERING at the parse boundary.
+
+################ ROOT CAUSE ################
+Kraken sends price and qty as JSON NUMBERS, not strings:
+    [{'price': 64623.3, 'qty': 0.00335266}, {'price': 64623.1, 'qty': 5.1e-05}]
+    types: float float
+
+So json.loads FLOATS them before any project code runs. Then
+Decimal(str(5.1e-05)) renders '0.000051' — dropping the trailing zeros the
+checksum digits require. Kraken's own rendering is fixed-point 8dp:
+'0.00005100'.
+
+The irony is exact: tests/fixtures/kraken_v2_raw_frames.py already warned
+'a float round-trip would corrupt it' — and stored prices as STRINGS for
+that reason. The wire sends numbers, so the corruption happened upstream of
+the code that was being careful. The fixture was more correct than reality.
+
+################ PROOF — same frame, two renderings ################
+  Kraken declared               : 3372482100
+  current rendering (production): 2236699257  match=False
+  fixed-point 8dp rendering     : 3372482100  match=True
+
+THE CHECKSUM ALGORITHM IS CORRECT. It reproduces Kraken's documented
+example (3310070434) AND this live value (3372482100) when fed correctly
+rendered digits. The defect is entirely in the parse layer's rendering.
+
+################ THE ORDERING QUESTION — ANSWERED WITH REAL DATA ################
+All 1070 usable captured updates replayed offline:
+  updates replayed          : 1070
+  matched PRE-update ladder : 0  (0.00%)
+  matched POST-update ladder: 1070  (100.00%)
+
+  => THE POST-UPDATE ORDERING FIX IS CONFIRMED CORRECT AGAINST REAL KRAKEN
+     DATA. 1070/1070 post-update, 0/1070 pre-update. This is the question
+     WO-008b-A1 could not answer and the reason this run existed — and it
+     is answered even though the smoke test itself failed.
+
+################ WHAT WAS NOT DONE ################
+NOT retried. NOT tuned. The rendering defect is NOT fixed in this work
+order: fixing it after seeing the number, then re-running to green, is
+precisely how a wrong assumption survives contact (§4.3, rule 0.8).
+The remedy is known and small — parse with json.loads(..., parse_float=Decimal)
+or render fixed-point at the parse boundary — but it belongs to a work order
+that starts from this diagnosis, not to the run that discovered it.
