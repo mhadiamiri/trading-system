@@ -1,0 +1,174 @@
+WO-009 §4 — REDEFINITION LINT RULE (ruff F811): BITE PROOF
+Generated: 2026-07-19T14:20:02Z
+Instrument: ruff F811 static analysis. Deliberately NOT an import-linter
+  contract — that would change EXPECTED_CONTRACT_COUNT and is the wrong
+  instrument for this defect class (per §4).
+
+=== COMMAND: ruff --version ===
+ruff 0.15.21
+
+=== COMMAND: rule as configured ===
+# WO-009 §4: redefinition detection via static analysis.
+# `venue_name` and `get_diagnostic_counters` were each defined twice on
+# KrakenV2BookAdapter, the later definition silently winning — so a live run and
+# a fixture replay became indistinguishable in the decision log (Principle VIII).
+# F811 catches duplicate methods AND duplicate @property definitions.
+# Deliberately NOT an import-linter contract: that would change
+# EXPECTED_CONTRACT_COUNT and is the wrong instrument for this defect class.
+# Scoped to F811 only — this is a targeted guard, not a general lint rollout.
+[tool.ruff.lint]
+select = ["F811"]
+
+################ ⚠ FINDING 1 — THE ORIGINAL DUPLICATES ARE GONE ################
+§4 says: 'Do NOT fix the real duplicates (WO-008b-A scope). Only prove the
+rule catches them: run it against the current tree and paste whether it
+flags them.'
+
+THE PREMISE NO LONGER HOLDS. venue_name and get_diagnostic_counters were
+duplicated in the UNCOMMITTED WEBSOCKET SPIKE, which WO-010 §4 reverted.
+In the current tree each is defined exactly ONCE:
+=== COMMAND: grep -n 'def venue_name\|def get_diagnostic_counters' <adapter> ===
+863:    def venue_name(self) -> str:
+867:    def get_diagnostic_counters(self) -> dict:
+=== COMMAND: same check at 43ca600 (confirms it was never committed twice) ===
+863:    def venue_name(self) -> str:
+867:    def get_diagnostic_counters(self) -> dict:
+
+So F811 CANNOT flag them: there is nothing left to flag. The defect was
+removed by the spike revert, not by this rule. Reported rather than
+quietly claiming the rule 'caught the real duplicates'.
+
+PROOF THE RULE WOULD HAVE CAUGHT THEM — the exact defect shape, isolated:
+=== COMMAND: ruff check --select F811 --isolated <probe with duplicated @property> ===
+F811 Redefinition of unused `venue_name` from line 3
+   |         ^^^^^^^^^^ `venue_name` redefined here
+   |         ---------- previous definition of `venue_name` here
+F811 Redefinition of unused `get_diagnostic_counters` from line 6
+   |         ^^^^^^^^^^^^^^^^^^^^^^^ `get_diagnostic_counters` redefined here
+   |         ----------------------- previous definition of `get_diagnostic_counters` here
+Found 2 errors.
+
+  ^ F811 catches BOTH the duplicated @property AND the duplicated plain
+    method — precisely the two shapes of the historical defect.
+
+################ ⚠ FINDING 2 — THE RULE CAUGHT A DIFFERENT, REAL DEFECT ################
+Run against the current tree, F811 flags a genuine pre-existing duplicate
+that nobody was looking for:
+=== COMMAND: ruff check --select F811 --no-cache tests/ ===
+F811 [*] Redefinition of unused `importlib` from line 12
+   --> tests\test_boundaries.py:168:16
+    |
+166 |         """
+167 |         import os
+168 |         import importlib
+    |                ^^^^^^^^^ `importlib` redefined here
+169 |         from trading.execution.paper import PaperExecutionClient
+    |
+   ::: tests\test_boundaries.py:12:8
+    |
+ 11 | import pytest
+ 12 | import importlib
+    |        --------- previous definition of `importlib` here
+ 13 | import sys
+    |
+help: Remove definition: `importlib`
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.
+
+  tests/test_boundaries.py — 'import importlib' at line 12 and again at 168.
+  NOT FIXED. §4 forbids fixing real duplicates here, and rule 0.8 forbids
+  tuning to green. Recorded for the owning work order.
+  Impact is low (a duplicate stdlib import, not a shadowed method), but it
+  is a true positive found on the first run of a rule added for a defect
+  that had already been reverted away.
+
+################ FOUR-ARTIFACT BITE PROOF ################
+Scope for PASS artifacts: src/ tools/ conftest.py — clean baseline.
+tests/ is EXCLUDED from the pass baseline solely because of the
+pre-existing test_boundaries.py violation above, which §4 forbids fixing.
+That exclusion is stated, not hidden.
+
+################ ARTIFACT 1 — PASS (clean baseline) ################
+=== COMMAND: time ruff check --select F811 --no-cache src/ tools/ conftest.py ===
+All checks passed!
+
+real	0m0.279s
+user	0m0.000s
+sys	0m0.000s
+EXIT: 0
+
+################ ARTIFACT 2 — ACTUAL FAIL (deliberate duplicate introduced) ################
+Introducing a duplicate venue_name into the REAL adapter, mirroring the
+historical defect exactly.
+  duplicate venue_name inserted before get_diagnostic_counters
+
+=== COMMAND: grep -n 'def venue_name' <adapter>   (now TWO) ===
+863:    def venue_name(self) -> str:
+869:    def venue_name(self) -> str:
+
+=== COMMAND: time ruff check --select F811 --no-cache src/ tools/ conftest.py ===
+F811 Redefinition of unused `venue_name` from line 863
+   --> src\trading\data\adapters\kraken_v2_book.py:869:9
+    |
+868 |     @property
+869 |     def venue_name(self) -> str:
+    |         ^^^^^^^^^^ `venue_name` redefined here
+870 |         """WO-009 §4 BITE PROOF — deliberate duplicate. To be removed."""
+871 |         return "DELIBERATE_DUPLICATE"
+    |
+   ::: src\trading\data\adapters\kraken_v2_book.py:863:9
+    |
+862 |     @property
+863 |     def venue_name(self) -> str:
+    |         ---------- previous definition of `venue_name` here
+864 |         """Return venue name."""
+865 |         return "kraken_v2"
+    |
+help: Remove definition: `venue_name`
+
+Found 1 error.
+
+real	0m0.295s
+user	0m0.000s
+sys	0m0.000s
+EXIT: 1
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+=== COMMAND: git checkout -- src/trading/data/adapters/kraken_v2_book.py ===
+restored
+=== COMMAND: grep -n 'def venue_name' <adapter>   (back to ONE) ===
+863:    def venue_name(self) -> str:
+
+=== COMMAND: time ruff check --select F811 --no-cache src/ tools/ conftest.py ===
+All checks passed!
+
+real	0m0.283s
+user	0m0.000s
+sys	0m0.016s
+EXIT: 0
+
+################ ARTIFACT 4 — EMPTY GIT DIFF ################
+=== COMMAND: git diff --stat -- src/ ===
+^ EMPTY == src/ byte-identical to committed state; the deliberate
+  duplicate left no residue.
+=== COMMAND: git status --porcelain -- src/ ===
+^ EMPTY
+
+################ FOUR-ARTIFACT SUMMARY ################
+  1 PASS ............. All checks passed!            exit 0, 0.279s
+  2 ACTUAL FAIL ...... F811 Redefinition of unused
+                       `venue_name` from line 863     exit 1, 0.295s
+  3 PASS AFTER RESTORE All checks passed!            exit 0, see above
+  4 EMPTY GIT DIFF ... git diff -- src/ empty
+
+################ ANSWER TO §4's QUESTION ################
+Q: 'Does it flag the real duplicates?'
+A: NO — because THE REAL DUPLICATES NO LONGER EXIST. They lived only in the
+   uncommitted WebSocket spike and were removed by the WO-010 §4 revert.
+   The rule is proven to catch that exact shape (isolated probe + the
+   artifact-2 bite proof on the real adapter), so it will catch a
+   reintroduction during the WO-008b-A rewrite — which is when the risk
+   actually returns.
+   It DID flag one unrelated genuine duplicate in tests/test_boundaries.py,
+   left unfixed per §4.

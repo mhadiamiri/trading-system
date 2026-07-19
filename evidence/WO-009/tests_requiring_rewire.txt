@@ -1,0 +1,126 @@
+WO-009 §2.4 — TESTS REQUIRING REWIRE IN WO-008b-A
+Generated: 2026-07-19T14:17:52Z
+
+SCOPE NOTE: nothing below was rewired here. WO-009 is spec+fixtures only.
+The raw-frame consumer does not exist yet; building it is WO-008b-A.
+
+################ 1. TESTS CONSTRUCTING PRE-PARSED QuoteUpdate FIXTURES ################
+Each must be rewired to feed a RAW v2 FRAME through the parse path instead.
+
+=== COMMAND: grep -n 'def test_\|QuoteUpdate(' tests/test_data_adapters.py ===
+15:# Every `QuoteUpdate(...)` constructed in this file is a PRE-PARSED OBJECT, not
+55:    async def test_valid_checksum_passes_and_updates_book(self):
+119:    async def test_corrupted_checksum_rejected_and_logged(self):
+140:        quote_update = QuoteUpdate(
+164:    async def test_five_consecutive_failures_trigger_resync(self):
+182:            quote_update = QuoteUpdate(
+204:            quote_update = QuoteUpdate(
+221:    async def test_sequence_gap_triggers_resnapshot(self):
+247:        quote_update = QuoteUpdate(
+274:    def test_local_book_state_initialization(self):
+296:    def test_local_book_state_transitions(self):
+323:    def test_quote_update_validation(self):
+330:        quote = QuoteUpdate(
+355:    def test_rolling_trade_stats_initialization(self):
+373:    def test_add_trade_increases_count(self):
+408:    def test_window_count_cap_truncation(self):
+435:    def test_window_time_cap_truncation(self):
+480:    def test_hybrid_truncation_both_caps(self):
+513:    def test_reset_clears_window(self):
+
+=== COMMAND: grep -n 'def test_\|QuoteUpdate(' tests/integration/test_live_loop.py ===
+14:# Every `QuoteUpdate(...)` constructed in this file is a PRE-PARSED OBJECT, not
+43:    async def test_end_to_end_loop_completes(self):
+80:    async def test_every_decision_logged(self):
+135:    async def test_simulated_fills_recorded(self):
+170:    async def test_kill_switch_blocks_orders(self):
+207:    async def test_clamp_fires_during_loop(self):
+260:    async def test_live_loop_pauses_when_book_unavailable(self):
+318:            QuoteUpdate(
+367:    async def test_pause_resume_cycle(self):
+422:            QuoteUpdate(
+480:    async def test_end_to_end_quote_centric_pipeline(self):
+526:    async def test_observed_spread_used_in_cost_calculation(self):
+591:    def test_paper_execution_requires_paper_mode(self):
+650:    def test_paper_mode_guard_fail_then_pass_proof(self):
+701:    def test_mainnet_guard_is_intact(self):
+757:    def test_mainnet_guard_source_is_intact(self):
+799:    async def test_counters_at_different_layers_pass_through(self):
+858:                QuoteUpdate(
+891:    async def test_counters_diverge_using_pause_mechanism(self):
+949:            QuoteUpdate(
+990:    async def test_counters_reportable_without_live_connection(self):
+1050:            QuoteUpdate(
+1074:    async def test_rate_reporting_format(self):
+1130:            QuoteUpdate(
+1190:    async def test_rate_reporting_both_branches(self):
+1246:            QuoteUpdate(
+1295:            QuoteUpdate(
+1356:    def test_guard_bites_when_trading_env_is_test(self):
+1422:    def test_mainnet_guard_bites_when_trading_env_is_mainnet(self):
+
+################ 2. THE TEST THAT DIES OUTRIGHT ################
+=== COMMAND: grep -n 'def test_sequence_gap_triggers_resnapshot' tests/test_data_adapters.py ===
+221:    async def test_sequence_gap_triggers_resnapshot(self):
+
+  tests/test_data_adapters.py::test_sequence_gap_triggers_resnapshot
+  This test certifies a mechanism that CANNOT OCCUR in production: the
+  Kraken v2 public book channel transmits no sequence number, so its
+  trigger condition is unreachable. Under rule 0.1d that makes it a FALSE
+  GUARANTEE, not merely an obsolete test.
+  WO-008b-A action: DELETE, and replace with a checksum-divergence
+  resync test — the broader detector that supersedes it.
+  NOT deleted here: §2.4 forbids rewiring or removing tests in WO-009.
+
+################ 3. PARSE PATH — CURRENTLY ZERO COVERAGE ################
+=== COMMAND: grep -rn '_parse_book_message' tests/ ===
+tests/fixtures/kraken_v2_raw_frames.py:11:`_parse_book_message` was never exercised by any test, and the fixtures drifted
+
+  WO-008b-A must add parse-path tests using tests/fixtures/kraken_v2_raw_frames.py:
+    - SNAPSHOT_FRAME                      -> snapshot applied, GROUND-TRUTH checksum validates
+    - UPDATE_MODIFY_LEVEL                 -> level qty modified
+    - UPDATE_DELETE_LEVEL_QTY_ZERO        -> qty:0 REMOVES the level (never before tested)
+    - UPDATE_NEW_LEVEL_CAUSES_TRUNCATION  -> book truncated to depth 10, worst level dropped
+    - SUBSCRIPTION_ACK_FRAME / HEARTBEAT_FRAME -> must NOT be parsed as book data
+
+################ 4. IMPLEMENTATION DEFECTS THAT BLOCK THE REWIRE ################
+Rewiring cannot succeed until these are fixed (all WO-008b-A scope):
+  a. Checksum validated PRE-update; Kraken defines it POST-update.
+     Amended FR-018a §(b) now makes the ordering an explicit requirement.
+     evidence/WO-008b-DIAG/checksum_pre_vs_post_update.txt
+  b. _parse_book_message expects a LIST envelope [seq, bids, asks, checksum];
+     real v2 sends a DICT {channel, type, data:[...]}. It matches neither
+     v1 nor v2 framing. evidence/WO-008b-DIAG/live_path_failures.txt
+  c. Levels expected as positional pairs, not {price, qty} dicts.
+  d. BOOK_DEPTH = 1 — illegal at Kraken (legal: 10/25/100/500/1000) and
+     incapable of holding the 10 levels the checksum requires.
+     Amended FR-018a §(e) pins depth 10.
+  e. QuoteUpdate carries a 'sequence' field the venue never sends;
+     amended spec Key Entities removes it.
+
+################ 5. SUMMARY COUNTS ################
+  QuoteUpdate construction sites, test_data_adapters.py : 6
+  QuoteUpdate construction sites, test_live_loop.py     : 9
+  tests to DELETE (unreachable trigger)                 : 1
+  parse-path tests to ADD                              : 5+ (frames above)
+
+################ CORRECTION TO SECTION 5 ################
+The counts printed above (6 and 9) are WRONG. 'grep -c QuoteUpdate('
+also matched the DEPRECATION BANNER line, which contains the literal
+text `QuoteUpdate(...)` inside a comment. Off by exactly one per file.
+Corrected below rather than edited away (rule 0.6a).
+
+=== COMMAND: count only real construction sites (exclude comment lines) ===
+  tests/test_data_adapters.py              5 construction sites
+  tests/integration/test_live_loop.py      8 construction sites
+
+=== cross-check: count of DEPRECATED markers actually applied ===
+  tests/test_data_adapters.py              5 marked
+  tests/integration/test_live_loop.py      8 marked
+
+CORRECTED SUMMARY:
+  QuoteUpdate construction sites, test_data_adapters.py : 5
+  QuoteUpdate construction sites, test_live_loop.py     : 8
+  TOTAL deprecated fixture sites, all marked in-line    : 13
+  tests to DELETE (unreachable trigger)                 : 1
+  parse-path tests to ADD                               : 5+

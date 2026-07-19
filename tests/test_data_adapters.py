@@ -9,6 +9,22 @@ Constitutional Principles:
 - VIII. Total Observability: All errors logged with reason codes
 """
 
+# ═══════════════════════════════════════════════════════════════════════════
+# DEPRECATED FIXTURES (WO-009 §2.4) — REMOVAL OWNER: WO-008b-A
+#
+# Every `QuoteUpdate(...)` constructed in this file is a PRE-PARSED OBJECT, not
+# a raw Kraken v2 wire frame. Such fixtures never exercise the parse path, and
+# they carried a synthetic `sequence` field — a protocol element the Kraken v2
+# public book channel does not transmit (see amended FR-018a).
+#
+# RETAINED deliberately: deleting them here would remove coverage before the
+# raw-frame consumer exists. They are superseded by
+# tests/fixtures/kraken_v2_raw_frames.py.
+#
+# WO-008b-A owns: building the raw-frame parse path, rewiring these tests onto
+# it, and deleting these fixtures. See evidence/WO-009/tests_requiring_rewire.txt
+# ═══════════════════════════════════════════════════════════════════════════
+
 import pytest
 from datetime import datetime, UTC
 from decimal import Decimal
@@ -121,7 +137,7 @@ class TestKrakenV2BookChecksum:
         # Create update with CORRUPTED checksum
         # Valid checksum for bid=65000, ask=65005 is 388076886
         # But we use that checksum with corrupted ask price (65100)
-        quote_update = QuoteUpdate(
+        quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
             bid_price=Decimal("65000.00"),
             bid_size=Decimal("1.5"),
             ask_price=Decimal("65100.00"),  # CORRUPTED: price changed
@@ -163,7 +179,7 @@ class TestKrakenV2BookChecksum:
 
         # Simulate 5 consecutive checksum failures
         for i in range(5):
-            quote_update = QuoteUpdate(
+            quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
                 bid_price=Decimal("65000.00"),
                 bid_size=Decimal("1.5"),
                 ask_price=Decimal("65100.00"),  # Corrupted
@@ -185,7 +201,7 @@ class TestKrakenV2BookChecksum:
         adapter._request_snapshot.reset_mock()
 
         for i in range(4):  # Only 4 failures
-            quote_update = QuoteUpdate(
+            quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
                 bid_price=Decimal("65000.00"),
                 bid_size=Decimal("1.5"),
                 ask_price=Decimal("65100.00"),
@@ -228,7 +244,7 @@ class TestKrakenV2BookChecksum:
         )
 
         # Receive update with sequence 105 (GAP: missing 101-104)
-        quote_update = QuoteUpdate(
+        quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
             bid_price=Decimal("65001.00"),
             bid_size=Decimal("1.6"),
             ask_price=Decimal("65006.00"),
@@ -311,7 +327,7 @@ class TestQuoteUpdate:
         This test should FAIL initially (entity doesn't exist),
         then PASS after T010 implementation.
         """
-        quote = QuoteUpdate(
+        quote = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
             bid_price=Decimal("65000.00"),
             bid_size=Decimal("1.5"),
             ask_price=Decimal("65005.00"),

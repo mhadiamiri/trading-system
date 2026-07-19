@@ -1,0 +1,176 @@
+WO-009 §1.3 — CROSS-ARTIFACT CONSISTENCY ANALYSIS
+Generated: 2026-07-19T14:13:31Z
+
+################ ⚠ INVOCATION NOTE — READ FIRST ################
+The /speckit-analyze SLASH COMMAND COULD NOT BE INVOKED from this session.
+The skill exists at .claude/skills/speckit-analyze/SKILL.md and is marked
+'user-invocable: true', but it is not exposed to the agent's Skill tool:
+    Skill(speckit-analyze) -> 'Unknown skill: speckit-analyze'
+
+Rather than report §1.3 as done, or paste invented tool output (rule 0.6a),
+the SUBSTANTIVE analysis §1.3 asks for is performed below by direct
+inspection of every artifact. Hadi can run /speckit-analyze himself to
+produce the tool's own output; this is not a substitute for that, it is the
+answer to the question §1.3 poses: does any artifact still rely on sequence
+numbers?
+
+################ ARTIFACTS INSPECTED ################
+  specs/002-quote-level-data/:
+  analyze-report.md
+  checklists
+  contracts
+  data-model.md
+  plan.md
+  quickstart.md
+  research.md
+  spec.md
+  tasks.md
+  
+  specs/002-quote-level-data/contracts/:
+  data-adapter.yml
+
+################ EXHAUSTIVE SEQUENCE SEARCH — ALL ARTIFACTS ################
+=== COMMAND: grep -rniE 'sequence|seq_|last_seq' specs/002-quote-level-data/ ===
+specs/002-quote-level-data/analyze-report.md:37:| Q4: Sequence gap (discard + resnapshot) | Decision 2: Sequence gap → resnapshot | ✅ MATCH |
+specs/002-quote-level-data/analyze-report.md:63:| FR-004, FR-016 through FR-019 (checksum) | Entity 1: LocalBookState (checksum, sequence, failures) | ✅ COMPLETE |
+specs/002-quote-level-data/analyze-report.md:65:| FR-001, FR-002 (quote updates) | Entity 4: QuoteUpdate (bid/ask, checksum, sequence) | ✅ COMPLETE |
+specs/002-quote-level-data/analyze-report.md:74:| FR-018a (sequence gap) | Reason Codes: SEQUENCE_GAP_RESNAPSHOT defined | ✅ ENFORCED |
+specs/002-quote-level-data/analyze-report.md:87:| Scenario 4: Sequence gap → resnapshot | FR-018a, Q4 clarification | ✅ COVERED |
+specs/002-quote-level-data/analyze-report.md:149:- Plan.md: "All v2-specific detail (protocol, checksum algorithm, sequence tracking, resync logic) is confined to a single adapter module"
+specs/002-quote-level-data/analyze-report.md:202:- Project Structure (plan.md): "NEW adapter module: src/trading/data/adapters/kraken_v2_book.py — ALL v2/book/checksum/sequence/resync detail lives here"
+specs/002-quote-level-data/analyze-report.md:216:- FR-018a: "System MUST track sequence numbers; on a sequence gap, system MUST discard the local book and request a fresh snapshot"
+specs/002-quote-level-data/analyze-report.md:218:- Reason Codes (data-adapter.yml): PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+specs/002-quote-level-data/analyze-report.md:219:- Decision 10 (Research): "Add reason codes to LAYER_VERB_DETAIL for abnormal-spread reject, pause-on-book-unavailable, checksum-resync, sequence-gap resnapshot"
+specs/002-quote-level-data/analyze-report.md:291:4. Quickstart Scenarios 2, 3, 4: Checksum rejection, recovery (5 failures), sequence gap
+specs/002-quote-level-data/analyze-report.md:330:**Assertion**: "All v2/book/checksum/sequence/resync detail confined to kraken_v2_book.py; import-linter contract blocks leaks above adapter"
+specs/002-quote-level-data/analyze-report.md:333:- ✅ Plan.md: "ALL v2/book/checksum/sequence/resync detail lives here"
+specs/002-quote-level-data/contracts/data-adapter.yml:89:class SequenceGapError(FeedError):
+specs/002-quote-level-data/contracts/data-adapter.yml:90:    """Sequence gap detected. Book discarded; resnapshot triggered."""
+specs/002-quote-level-data/contracts/data-adapter.yml:171:- Detect sequence gaps and trigger resnapshot
+specs/002-quote-level-data/contracts/data-adapter.yml:178:- Sequence number tracking
+specs/002-quote-level-data/contracts/data-adapter.yml:329:| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+specs/002-quote-level-data/data-model.md:28:| `last_sequence` | `int` | Required, >=0 | Last sequence number received |
+specs/002-quote-level-data/data-model.md:40:SYNCHRONIZED ──sequence_gap_detected──> RESYNC_REQUIRED
+specs/002-quote-level-data/data-model.md:49:2. **Sequence gap detection**: If incoming sequence != last_sequence + 1, discard book and request fresh snapshot.
+specs/002-quote-level-data/data-model.md:160:| `sequence` | `int` | Required, >=0 | Sequence number |
+specs/002-quote-level-data/data-model.md:166:2. **Sequence monotonic**: sequence should increase (gap = resync)
+specs/002-quote-level-data/data-model.md:185:                                               ├─> Sequence Gap Check
+specs/002-quote-level-data/data-model.md:281:| LocalBookState | Checksum match, sequence continuity, bid/ask sanity |
+specs/002-quote-level-data/data-model.md:284:| QuoteUpdate | Checksum format, sequence monotonic |
+specs/002-quote-level-data/plan.md:11:Replace the trades feed with quote-level (order book) data from Kraken WebSocket v2 so the cost model uses **REAL observed spread** instead of an assumption. The data adapter migrates to Kraken v2 book channel (top-of-book: best bid/ask) as primary, with trades channel as secondary enrichment for rolling statistics. All v2-specific detail (protocol, checksum algorithm, sequence tracking, resync logic) is confined to a single adapter module. MarketState becomes quote-centric, and the backtest cost model computes spread cost from actual observed bid/ask only — no synthetic or fallback spreads anywhere.
+specs/002-quote-level-data/plan.md:87:   - Sequence gap → discard book + resnapshot
+specs/002-quote-level-data/plan.md:118:│   │   ├── kraken_v2_book.py        # NEW: v2 book adapter (checksum, sequence, resync)
+specs/002-quote-level-data/plan.md:150:├── test_data_adapters.py            # NEW: Adapter tests (checksum, sequence, resync)
+specs/002-quote-level-data/plan.md:164:1. **NEW adapter module**: `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/sequence/resync detail lives here
+specs/002-quote-level-data/plan.md:178:   - `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/sequence/resync detail lives here
+specs/002-quote-level-data/plan.md:193:   - v2 protocol, checksum algorithm, sequence numbers, resync logic are adapter-internal
+specs/002-quote-level-data/quickstart.md:79:- No "checksum failure" or "sequence gap" errors under normal conditions
+specs/002-quote-level-data/quickstart.md:134:### Scenario 4: Sequence Gap → Resnapshot
+specs/002-quote-level-data/quickstart.md:136:**Objective**: Verify sequence gap detection triggers resnapshot.
+specs/002-quote-level-data/quickstart.md:141:# Run sequence gap test
+specs/002-quote-level-data/quickstart.md:142:pytest tests/test_data_adapters.py -v -k "test_sequence_gap_resnapshot"
+specs/002-quote-level-data/quickstart.md:147:- Out-of-order sequence detected (gap)
+specs/002-quote-level-data/quickstart.md:153:1. Establishes synchronized book (sequence 100)
+specs/002-quote-level-data/quickstart.md:154:2. Receives update with sequence 105 (gap)
+specs/002-quote-level-data/quickstart.md:330:3. Check for sequence gaps (may indicate message loss)
+specs/002-quote-level-data/quickstart.md:371:- [ ] Scenario 4: Sequence gap → resnapshot
+specs/002-quote-level-data/research.md:23:- v2 provides snapshot/incremental protocol with sequence numbers for gap detection
+specs/002-quote-level-data/research.md:44:- Sequence-number tracking enables gap detection → resnapshot on gap
+specs/002-quote-level-data/research.md:50:- **Continue on sequence gap**: Rejected — violates checksum discipline; corrupted state untrustworthy
+specs/002-quote-level-data/research.md:208:**Decision**: Add reason codes to LAYER_VERB_DETAIL for: abnormal-spread reject, pause-on-book-unavailable, checksum-resync, sequence-gap resnapshot.
+specs/002-quote-level-data/research.md:235:| Sequence gap detection | Track sequence; on gap, discard book + resnapshot | Q4 in spec clarifications |
+specs/002-quote-level-data/research.md:252:- Sequence numbers in message headers
+specs/002-quote-level-data/spec.md:23:- **Q: Sequence gap detection → A: ~~Track sequence numbers; on a gap, discard the local book and request a fresh snapshot.~~** ***SUPERSEDED 2026-07-19 (WO-009).*** This answer assumed a sequence number that the Kraken v2 **public** book channel does not transmit. The clarification is preserved rather than deleted because the record of a false premise is itself evidence. The surviving and correct half of the intent — *discard the local book and re-snapshot rather than trusting patched-over state, with no continue-on-failure path* — is retained in amended **FR-018a**, triggered by **checksum mismatch** instead of by a sequence gap. See Amendment History.
+specs/002-quote-level-data/spec.md:141:- **FR-018a** *(AMENDED 2026-07-19, WO-009 — supersedes the sequence-number mandate; see Amendment History)*: The CRC32 checksum is the **sole** integrity mechanism for the book channel. The system MUST NOT depend on sequence numbers, which the Kraken v2 **public** book channel does not provide. Specifically:
+specs/002-quote-level-data/spec.md:142:  - **(a) Integrity mechanism.** Book integrity MUST be established by CRC32 checksum validation. No sequence-number tracking, gap detection, or ordering field may be relied upon for the public book channel, because none is transmitted.
+specs/002-quote-level-data/spec.md:147:- **FR-019** *(AMENDED 2026-07-19, WO-009)*: System MUST detect book drift (e.g., checksum divergence, stale data) and recover without silent corruption. Note that checksum validation is **broader** than the sequence-gap mechanism originally specified: a sequence gap detects only a *missing* message, whereas a checksum mismatch detects *any* divergence — missed messages, misapplied updates, and the system's own book-maintenance bugs.
+specs/002-quote-level-data/spec.md:165:- **QuoteUpdate** *(AMENDED 2026-07-19, WO-009)*: Represents a book update parsed from a raw Kraken v2 book frame, containing the bid/ask ladder (`{price, qty}` levels), the server-sent timestamp, the symbol, the message type (`snapshot` | `update`), and the CRC32 checksum. **No `sequence` field**: the Kraken v2 public book channel transmits no sequence number, and a vestigial field modeling a nonexistent protocol element is what allowed "sequence-gap detection proven" to be asserted against a fiction.
+specs/002-quote-level-data/spec.md:257:### 2026-07-19 — WO-009: FR-018a sequence-number mandate replaced by CRC32 checksum semantics
+specs/002-quote-level-data/spec.md:259:**What was wrong.** FR-018a mandated tracking sequence numbers for book updates and
+specs/002-quote-level-data/spec.md:260:detecting gaps. **The Kraken v2 public book channel transmits no sequence number.**
+specs/002-quote-level-data/spec.md:261:CRC32 checksum is the sole integrity mechanism it provides. Sequence numbers exist on
+specs/002-quote-level-data/spec.md:264:**How it survived review.** The Phase 1-3 fixtures carried a synthetic `sequence` field,
+specs/002-quote-level-data/spec.md:265:so "sequence-gap detection proven" was a guarantee attached to a fictional protocol. The
+specs/002-quote-level-data/spec.md:274:| Clarifications (sequence-gap Q/A) | Struck through and marked SUPERSEDED; original text preserved |
+specs/002-quote-level-data/spec.md:276:| FR-019 | "sequence gaps" → "checksum divergence"; notes checksum is the broader detector |
+specs/002-quote-level-data/spec.md:277:| Key Entities → QuoteUpdate | `sequence` removed; raw-frame field set specified |
+specs/002-quote-level-data/spec.md:280:than the mechanism it replaces. A sequence gap detects only a **missing message**. A
+specs/002-quote-level-data/spec.md:294:(`sequence_usage.txt`, `fixture_fidelity_audit.txt`, `checksum_pre_vs_post_update.txt`).
+specs/002-quote-level-data/tasks.md:95:- [ ] **T008 [P] [US3]** Test: Sequence gap triggers resnapshot
+specs/002-quote-level-data/tasks.md:97:  - Test: Establish synchronized book (sequence 100); receive update with sequence 105 (gap); verify book discarded; verify snapshot requested
+specs/002-quote-level-data/tasks.md:104:  - Fields: best_bid_price, best_bid_size, best_ask_price, best_ask_size, last_sequence, last_checksum, consecutive_failures, is_paused
+specs/002-quote-level-data/tasks.md:106:  - Validation rules: Checksum validation on every update; sequence gap detection; 5-failure threshold
+specs/002-quote-level-data/tasks.md:111:  - Fields: bid_price, bid_size, ask_price, ask_size, checksum, sequence, timestamp
+specs/002-quote-level-data/tasks.md:112:  - Validation: Checksum format (CRC-32); sequence monotonic
+specs/002-quote-level-data/tasks.md:146:- [ ] **T015 [US3]** Implement KrakenV2BookAdapter: Sequence gap detection and resnapshot
+specs/002-quote-level-data/tasks.md:148:  - Track sequence numbers
+specs/002-quote-level-data/tasks.md:149:  - On gap (incoming sequence != last_sequence + 1): discard local book; request fresh snapshot
+specs/002-quote-level-data/tasks.md:168:- [ ] **T018 [US3]** Add reason codes for checksum/resync/sequence-gap/pause events
+specs/002-quote-level-data/tasks.md:170:  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+specs/002-quote-level-data/tasks.md:369:  - Verify: Scenario 1 (quotes), Scenario 2 (checksum), Scenario 3 (recovery), Scenario 4 (sequence gap), Scenario 5 (pause), Scenario 6 (abnormal spread), Scenario 7 (observed spread only), Scenario 8 (backtest honesty), Scenario 9 (import boundaries), Scenario 10 (end-to-end)
+specs/002-quote-level-data/tasks.md:380:  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+specs/002-quote-level-data/tasks.md:455:- Recovery must fire (T007 resync, T008 sequence gap)
+
+################ PER-ARTIFACT VERDICT ################
+
+spec.md ...................... ✅ AMENDED (WO-009 §1)
+  No FR mandates sequence tracking. Every remaining occurrence is either
+  a strike-through SUPERSEDED marker, an explicit negation ('transmits no
+  sequence number'), or Amendment-History narrative. §1.3's literal
+  question — 'does any other FR reference sequence numbers?' — is NO.
+
+  Verification that surviving hits are all negations/history:
+    total hits in spec.md: 15
+    (enumerated in the exhaustive search above; none is a mandate)
+
+################ ⚠ BUT — SIX SIBLING ARTIFACTS STILL MANDATE SEQUENCE ################
+
+§1.3 warns: 'A half-amended spec is its own fictional reality.' That is the
+CURRENT STATE. spec.md is corrected; the artifacts derived FROM it are not.
+
+1. research.md — CONTAINS A FALSE STATEMENT OF VENUE FACT (most serious)
+     :23  'v2 provides snapshot/incremental protocol with sequence numbers
+           for gap detection'   <-- FACTUALLY UNTRUE of the public book channel
+     :44  'Sequence-number tracking enables gap detection → resnapshot on gap'
+     :252 'Sequence numbers in message headers'
+     :235 Decision table row: 'Track sequence; on gap, discard book + resnapshot'
+   This is the ORIGIN of the defect: the research decision recorded a
+   protocol capability that does not exist, and everything downstream
+   inherited it.
+
+2. data-model.md — SPECIFIES THE FIELD THE SPEC JUST REMOVED
+     :28  LocalBookState.last_sequence : int, Required, >=0
+     :160 QuoteUpdate.sequence : int, Required, >=0
+     :49  'If incoming sequence != last_sequence + 1, discard book'
+     :166 'Sequence monotonic: sequence should increase (gap = resync)'
+     :40  state machine edge: SYNCHRONIZED --sequence_gap_detected--> RESYNC_REQUIRED
+     :281/:284 validation tables cite 'sequence continuity'/'sequence monotonic'
+   DIRECT CONTRADICTION with amended spec.md Key Entities.
+
+3. contracts/data-adapter.yml — DEFINES AN ERROR TYPE FOR A NONEXISTENT EVENT
+     :89  class SequenceGapError(FeedError)
+     :171 'Detect sequence gaps and trigger resnapshot'
+     :178 'Sequence number tracking'
+     :329 reason code SEQUENCE_GAP_RESNAPSHOT
+   A reason code that can never legitimately fire on this channel.
+
+4. plan.md — :11, :87, :118, :150, :164, :178, :193 all cite sequence tracking
+5. quickstart.md — Scenario 4 'Sequence Gap → Resnapshot' (:134-154, :371)
+     validation scenario for a mechanism the venue cannot trigger
+6. tasks.md — T008, T011, T015, T018 (:95, :111, :146, :168)
+     T015 'Implement KrakenV2BookAdapter: Sequence gap detection'
+
+  (analyze-report.md also carries sequence claims, but it is the DATED
+   RECORD of the earlier WO-005-A analysis. Historical records are
+   annotated, not rewritten — same doctrine as the quarantined evidence.)
+
+################ SCOPE BOUNDARY — NOT ACTED ON ################
+WO-009 §1 instructs: 'Edit specs/002-quote-level-data/spec.md.' It names
+that ONE file. Amending research.md, data-model.md, contracts/,
+plan.md, quickstart.md and tasks.md is beyond that instruction.
+
+Per rule 0.1 (unspecified → STOP and ask) and 0.2 (blockers escalate),
+these six artifacts were NOT edited. The finding is reported instead.
+
+This is precisely the condition §1.3 exists to detect, and it is reported
+as a BLOCKING inconsistency rather than silently left or silently fixed.

@@ -1,0 +1,129 @@
+WO-009 §0 — PREFLIGHT GATE
+Generated: 2026-07-19T14:08:59Z
+Baseline required: 9a7c438 — 81 collected / 73 passed / 8 xfailed / 0 failed / 0 xpassed
+
+=== COMMAND: git rev-parse HEAD ===
+9a7c438f669863681bb5c6d10f90702fbf2c643e
+
+=== COMMAND: git status --porcelain   (MUST BE EMPTY) ===
+ M instructions.md
+?? .claude/worktrees/
+?? evidence/WO-009/
+[end of output]
+
+*** GATE CRITERION 1 FAILED: status is NOT empty. See analysis at foot. ***
+
+=== COMMAND: python -c "import trading; print(trading.__file__)" ===
+C:\Projects\bot\trading-system\src\trading\__init__.py
+
+=== COMMAND: both preflight guards ===
+PASS: trading package resolves inside the repo tree
+  C:\Projects\bot\trading-system\src\trading\__init__.py
+  exit: 0
+PASS: import-linter evaluated 6 contracts (expected 6)
+  exit: 0
+
+=== COMMAND: pytest tests/ -rX   (guards visible at session start) ===
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collecting ... collected 81 items
+================== 73 passed, 8 xfailed in 237.59s (0:03:57) ==================
+failures/errors: 0
+
+=== COMMAND: import-linter lint ===
+Contracts: 5 kept, 1 broken.
+
+################ GATE VERDICT ################
+  HEAD == 9a7c438 .................... PASS
+  package path inside repo ........... PASS
+  81 collected / 73 passed / 8 xfailed  PASS
+  0 failed / 0 xpassed ............... PASS
+  both preflight guards OK ........... PASS
+  import-linter 5 kept / 1 broken .... PASS (mock rule, expected red)
+  contract count 6/6 ................. PASS
+  git status --porcelain EMPTY ....... *** FAIL ***
+
+GATE NOT PASSED. Halting per §0 'If anything differs, STOP.'
+No spec file edited, no fixture created, no work beyond this capture.
+
+################ ANALYSIS OF THE THREE ENTRIES ################
+
+1.  M instructions.md
+    This IS work order WO-009, authored by the project lead. The gate
+    cannot be empty at the moment a new work order is issued, because
+    issuing it modifies this file. STRUCTURAL — not a tree defect.
+
+2. ?? evidence/WO-009/
+    Created to hold this very file, as §0 directs
+    ('Evidence -> evidence/WO-009/preflight.txt'). The gate instruction
+    and the empty-status requirement are in direct tension.
+    STRUCTURAL — not a tree defect.
+
+3. ?? .claude/worktrees/            <-- THE GENUINE ANOMALY
+    A REGISTERED git worktree living inside the repository:
+      C:/Projects/bot/trading-system                              9a7c438 [master]
+      C:/Projects/bot/trading-system/.claude/worktrees/wo-008a-r5 90882d0 [worktree-wo-008a-r5]
+    Pinned at 90882d0 (WO-008a-R3), untracked, predates this session.
+    Contents:
+      .claude/worktrees/wo-008a-r5/.claude/settings.local.json
+      .claude/worktrees/wo-008a-r5/.coverage
+      .claude/worktrees/wo-008a-r5/.env.example
+      .claude/worktrees/wo-008a-r5/.git
+      .claude/worktrees/wo-008a-r5/.gitignore
+      .claude/worktrees/wo-008a-r5/.importlinter.toml
+      .claude/worktrees/wo-008a-r5/.importlinter.yaml
+      .claude/worktrees/wo-008a-r5/.specify/feature.json
+      .claude/worktrees/wo-008a-r5/.specify/init-options.json
+      .claude/worktrees/wo-008a-r5/.specify/integration.json
+    Its untracked payload is evidence/WO-008a-R5/bypass_scan_before.txt.
+
+    LOSS CHECK before recommending anything:
+      that file IS already tracked in main:
+        evidence/WO-008a-R5/bypass_scan_before.txt
+      nothing in the worktree is absent from main. Removing it loses NOTHING.
+
+    NOT REMOVED. Escalated instead: it is a pre-existing artifact I did not
+    create, removal is destructive, and rule 0.2 says blockers escalate.
+
+################ GATE RESOLUTION — project lead rulings ################
+RULING 1: WO artifacts are EXEMPT by construction. The gate means 'no
+  UNEXPECTED modifications'; instructions.md (the work order itself) and
+  evidence/WO-009/ (mandated by §0) are expected and exempt.
+RULING 2: remove the stale worktree properly.
+
+=== COMMAND: git worktree remove --force .claude/worktrees/wo-008a-r5 ===
+removed
+=== COMMAND: git worktree prune ===
+pruned
+
+=== COMMAND: git worktree list   (only main should remain) ===
+C:/Projects/bot/trading-system 9a7c438 [master]
+
+=== COMMAND: ls .claude/ ===
+total 16
+drwxr-xr-x 1 mhadi 197609 0 Jul 18 11:26 .
+drwxr-xr-x 1 mhadi 197609 0 Jul 19 09:55 ..
+drwxr-xr-x 1 mhadi 197609 0 Jul 10 18:07 skills
+drwxr-xr-x 1 mhadi 197609 0 Jul 19 10:11 worktrees
+
+=== COMMAND: git status --porcelain   (RE-RUN AFTER RESOLUTION) ===
+ M instructions.md
+?? evidence/WO-009/
+[end of output]
+
+Remaining entries are exactly the two ruled EXEMPT. The genuine anomaly
+is gone. Loss check was performed BEFORE removal: nothing unique was in it.
+
+################ FINAL GATE VERDICT ################
+  HEAD == 9a7c438 ......................... PASS
+  package path inside repo ................ PASS
+  81 collected / 73 passed / 8 xfailed .... PASS
+  0 failed / 0 xpassed .................... PASS
+  both preflight guards OK ................ PASS
+  import-linter 5 kept / 1 broken ......... PASS (mock rule, expected red)
+  contract count 6/6 ...................... PASS
+  status clean apart from exempt WO files . PASS
+
+PREFLIGHT COMPLETE

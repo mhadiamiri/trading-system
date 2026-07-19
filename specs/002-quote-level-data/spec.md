@@ -20,7 +20,7 @@
 
 - **Q: Rolling trade window default → A: 100 trades AND 60 seconds (whichever comes first), configurable.** Hybrid approach self-limits in both active and dead markets while maintaining recency.
 
-- **Q: Sequence gap detection → A: Track sequence numbers; on a gap, discard the local book and request a fresh snapshot.** No continue-on-gap path may exist. This is the correct way to run a checksummed incremental book — throw away the local book and re-snapshot rather than trusting patched-over state.
+- **Q: Sequence gap detection → A: ~~Track sequence numbers; on a gap, discard the local book and request a fresh snapshot.~~** ***SUPERSEDED 2026-07-19 (WO-009).*** This answer assumed a sequence number that the Kraken v2 **public** book channel does not transmit. The clarification is preserved rather than deleted because the record of a false premise is itself evidence. The surviving and correct half of the intent — *discard the local book and re-snapshot rather than trusting patched-over state, with no continue-on-failure path* — is retained in amended **FR-018a**, triggered by **checksum mismatch** instead of by a sequence gap. See Amendment History.
 
 - **Q: Book unavailable, trades still connected → A: PAUSE (emit no MarketStates) until the book recovers.** MarketState is now quote-centric and the cost model requires observed spread. Producing a MarketState with null/stale bid/ask would either break the cost model or silently resurrect an assumed-spread fallback — the precise lie this sprint exists to remove. No honest book means no honest decision, so the system emits nothing, logs the degradation with a reason code, and resumes on recovery.
 
@@ -138,8 +138,13 @@ As a strategy designer, I need trade data (volume, last price) to be available a
 - **FR-016**: System MUST validate CRC checksums on every v2 book update per Kraken's documentation
 - **FR-017**: System MUST reject updates with invalid checksums and log the rejection
 - **FR-018**: System MUST initiate reconnection and resynchronization after 5 consecutive checksum validation failures. Rationale: Transient glitches are tolerated (1-4 failures); genuine book corruption is caught after 5 consecutive failures, which is a real "the book is corrupt" signal.
-- **FR-018a**: System MUST track sequence numbers for book updates; on a sequence gap, system MUST discard the local book and request a fresh snapshot. Rationale: This is the correct way to run a checksummed incremental book — throw away the local book and re-snapshot rather than trusting patched-over state. No continue-on-gap path may exist.
-- **FR-019**: System MUST detect book drift (e.g., sequence gaps, stale data) and recover without silent corruption
+- **FR-018a** *(AMENDED 2026-07-19, WO-009 — supersedes the sequence-number mandate; see Amendment History)*: The CRC32 checksum is the **sole** integrity mechanism for the book channel. The system MUST NOT depend on sequence numbers, which the Kraken v2 **public** book channel does not provide. Specifically:
+  - **(a) Integrity mechanism.** Book integrity MUST be established by CRC32 checksum validation. No sequence-number tracking, gap detection, or ordering field may be relied upon for the public book channel, because none is transmitted.
+  - **(b) Ordering — this is the guarantee, not an implementation detail.** Kraken's CRC32 is defined over the **post-update book state**. Validation MUST therefore occur **after** applying each update to the local book, never before. A mismatch invalidates the **applied** state, and the applied state MUST be discarded — not merely the incoming message. Validating a pre-update book against a post-update checksum is a defect, not an optimization.
+  - **(c) Validation frequency: EVERY update.** The system MUST validate the checksum on every single book update. Kraken permits periodic or sampled validation; **permitted and honest are different standards**. This project validates every update. This mandate is stated in the requirement text precisely so it cannot later drift to "periodic" as a throughput optimization.
+  - **(d) Recovery semantics, including the no-emission window.** On checksum failure the system MUST: (1) discard the local book; (2) resubscribe / request a fresh snapshot; and (3) **emit NO MarketState from the moment of failure until a fresh snapshot has been applied AND its checksum validates.** A book in an unverified state MUST NOT price anything. Emitting a quote from an unverified book would put an unverifiable spread into the cost model, which is the exact class of lie Principle V forbids. No continue-on-failure path may exist.
+  - **(e) Subscription depth is pinned.** Kraken accepts depth values of **10, 25, 100, 500, or 1000** only. This project subscribes at **depth 10**. Rationale: the CRC32 is computed over the top 10 levels per side regardless of subscribed depth, so depth 10 is the smallest legal value that supplies exactly the ladder the checksum requires — no wasted bandwidth, no under-supply. Depth MUST NOT be set to any value outside the legal set. Recorded explicitly because `BOOK_DEPTH = 1` — an illegal value that Kraken rejects and that can never satisfy a 10-level checksum — was only possible while no spec text made depth explicit.
+- **FR-019** *(AMENDED 2026-07-19, WO-009)*: System MUST detect book drift (e.g., checksum divergence, stale data) and recover without silent corruption. Note that checksum validation is **broader** than the sequence-gap mechanism originally specified: a sequence gap detects only a *missing* message, whereas a checksum mismatch detects *any* divergence — missed messages, misapplied updates, and the system's own book-maintenance bugs.
 - **FR-019a**: When book channel is unavailable but trades channel remains connected, system MUST PAUSE (emit no MarketStates) until the book recovers. Rationale: MarketState is now quote-centric and the cost model requires observed spread. Producing a MarketState with null/stale bid/ask would either break the cost model or silently resurrect an assumed-spread fallback — the precise lie this sprint exists to remove. No honest book means no honest decision, so the system emits nothing, logs the degradation with a reason code, and resumes on recovery.
 
 **API Migration**
@@ -157,7 +162,7 @@ As a strategy designer, I need trade data (volume, last price) to be available a
 
 ### Key Entities
 
-- **QuoteUpdate**: Represents a top-of-book update from Kraken v2 containing best bid/ask price and size, checksum, and sequence number
+- **QuoteUpdate** *(AMENDED 2026-07-19, WO-009)*: Represents a book update parsed from a raw Kraken v2 book frame, containing the bid/ask ladder (`{price, qty}` levels), the server-sent timestamp, the symbol, the message type (`snapshot` | `update`), and the CRC32 checksum. **No `sequence` field**: the Kraken v2 public book channel transmits no sequence number, and a vestigial field modeling a nonexistent protocol element is what allowed "sequence-gap detection proven" to be asserted against a fiction.
 - **LocalBookState**: Maintains the synchronized best bid/ask from the exchange, validated by checksums
 - **RollingTradeStats**: Aggregates trade data over a configurable window (count, volume, last price, VWAP if needed)
 - **MarketState**: Quote-centric data structure containing timestamp, bid/ask fields, derived mid-price/spread, and rolling trade stats
@@ -244,3 +249,46 @@ This specification was generated as part of WO-003 (Sprint 2 Spec Kickoff). The 
 1. ✅ Cost model uses observed spread (FR-011, FR-012, SC-002, SC-005, QG-001)
 2. ✅ v2 book checksum validation on every update (FR-004, FR-016 through FR-019, SC-003, QG-003)
 3. ✅ Strategy logic/interface is out of scope (FR-023 through FR-026, SC-006, QG-002)
+
+---
+
+## Amendment History
+
+### 2026-07-19 — WO-009: FR-018a sequence-number mandate replaced by CRC32 checksum semantics
+
+**What was wrong.** FR-018a mandated tracking sequence numbers for book updates and
+detecting gaps. **The Kraken v2 public book channel transmits no sequence number.**
+CRC32 checksum is the sole integrity mechanism it provides. Sequence numbers exist on
+Kraken v2 only for private/execution channels.
+
+**How it survived review.** The Phase 1-3 fixtures carried a synthetic `sequence` field,
+so "sequence-gap detection proven" was a guarantee attached to a fictional protocol. The
+fixtures supplied pre-parsed `QuoteUpdate` objects rather than raw frames, so the parse
+path was never under test and the fixtures drifted toward whatever the implementation
+expected — rather than toward what the venue actually sends.
+
+**Sections amended:**
+
+| Section | Change |
+|---|---|
+| Clarifications (sequence-gap Q/A) | Struck through and marked SUPERSEDED; original text preserved |
+| FR-018a | Replaced with CRC32 semantics: mechanism, post-update ordering, every-update validation, recovery incl. no-emission window, pinned depth |
+| FR-019 | "sequence gaps" → "checksum divergence"; notes checksum is the broader detector |
+| Key Entities → QuoteUpdate | `sequence` removed; raw-frame field set specified |
+
+**What is materially stronger, not merely different.** Checksum validation is *broader*
+than the mechanism it replaces. A sequence gap detects only a **missing message**. A
+checksum mismatch detects **any divergence** — missed messages, misapplied updates, and
+the system's own book-maintenance bugs. The amendment closes a fiction and widens real
+coverage at the same time.
+
+**What is now pinned that was previously unstated.** Subscription depth. Kraken accepts
+only 10/25/100/500/1000; this project uses **10**. `BOOK_DEPTH = 1` — illegal at the
+venue, and incapable of ever satisfying a 10-level checksum — was possible only because
+no spec text made depth explicit.
+
+**Not in scope of this amendment.** No implementation was changed. Wiring live frames
+through the parse path is WO-008b-A.
+
+**Evidence:** `evidence/WO-009/`, and the diagnosis in `evidence/WO-008b-DIAG/`
+(`sequence_usage.txt`, `fixture_fidelity_audit.txt`, `checksum_pre_vs_post_update.txt`).

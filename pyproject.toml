@@ -33,6 +33,17 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 
+# WO-009 §4: redefinition detection via static analysis.
+# `venue_name` and `get_diagnostic_counters` were each defined twice on
+# KrakenV2BookAdapter, the later definition silently winning — so a live run and
+# a fixture replay became indistinguishable in the decision log (Principle VIII).
+# F811 catches duplicate methods AND duplicate @property definitions.
+# Deliberately NOT an import-linter contract: that would change
+# EXPECTED_CONTRACT_COUNT and is the wrong instrument for this defect class.
+# Scoped to F811 only — this is a targeted guard, not a general lint rollout.
+[tool.ruff.lint]
+select = ["F811"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
