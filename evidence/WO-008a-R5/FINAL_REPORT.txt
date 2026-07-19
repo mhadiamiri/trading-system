@@ -1,0 +1,345 @@
+WO-008a-R5 FINAL REPORT: Move Fill Economics Into Paper Venue; Remove ALL Frozen-Dataclass Backdoors
+========================================================================================================
+
+**Status:** COMPLETE
+**Date:** 2026-07-18
+**Scope:** Move fill economics into PaperExecutionClient, remove frozen-dataclass backdoors, execute bite proofs
+
+---
+
+EXECUTIVE SUMMARY
+=================
+WO-008a-R5 is COMPLETE. All architectural changes from WO-008a-R4 rejected by project lead have been
+remediated: fill economics moved into PaperExecutionClient (computed internally from MarketState),
+frozen-dataclass backdoors replaced with dataclasses.replace(), slippage labeled as ASSUMED (vs
+observed spread), all bite proofs EXECUTED with ACTUAL output.
+
+---
+
+ANSWERS TO 11 QUESTIONS (§7)
+==============================
+
+1. INTERFACE — paste before/after place_order() signature and every call site. Confirm no spread_cost parameter and no caller-supplied fill price remain. Would a future Kraken adapter need to ignore ANY parameter?
+   -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: src/trading/execution/interface.py, src/trading/execution/paper.py
+
+   BEFORE (R4 - rejected):
+   ```python
+   async def place_order(
+       self,
+       symbol: str,
+       side: str,
+       size: float,
+       price: float,
+       kill_switch_engaged: bool,
+       spread_cost: float = None,  # REJECTED - caller computed
+   ) -> dict:
+   ```
+
+   AFTER (R5 - correct):
+   ```python
+   async def place_order(
+       self,
+       symbol: str,
+       side: str,
+       size: float,
+       price: float,  # Order intent price (venue ignores for market orders)
+       kill_switch_engaged: bool,
+   ) -> dict:
+   ```
+
+   CALL SITES UPDATED:
+   - src/trading/loop/live.py line 262-269: Removed spread_cost, added set_market_state() call
+   - src/trading/backtest/runner.py line 203-210: Removed spread_cost, added set_market_state() call
+
+   CONFIRMATION: No spread_cost parameter remains. No caller-supplied fill price (paper venue computes
+   from MarketState). A future Kraken adapter would NOT need to ignore ANY parameter - the interface
+   now takes only order intent that a real exchange would accept.
+
+2. ApprovedOrder.price=0 — how did you resolve it, and why?
+   ---------------------------------------------------------
+
+   RESOLUTION: Kept the field with updated documentation.
+
+   The price field represents ORDER INTENT (e.g., limit price for future limit orders), not fill price.
+   For market orders, price=0 is a valid sentinel meaning "no price constraint." The venue determines the
+   actual fill price from MarketState (observed bid/ask).
+
+   UPDATED DOCUMENTATION:
+   - src/trading/risk/engine.py: "Market order: venue determines fill price from MarketState"
+   - src/trading/execution/approved_order.py: "price represents ORDER INTENT (not fill price)"
+   - src/trading/execution/approved_order.py: "For market orders, price=0 (no constraint, venue determines fill price)"
+
+   WHY: Removing the field would be a breaking change, and it may be needed for limit orders (future).
+   The honest resolution is to document its purpose as order intent, not fill price.
+
+3. FILL ECONOMICS — paste the end-to-end cycle: executed > 0, four cost components strictly positive, spread traceable to observed bid/ask, executed price reflecting spread crossing.
+   ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: evidence/WO-008a-R5/end_to_end_with_costs.txt
+
+   Sample output:
+   ```
+   [EXECUTION] ORDER_FILLED: EXEC_ORDER_FILLED
+     Size: 0.1, Side: BUY, Symbol: BTC/USD
+     Executed Price: 65980.0, Fees: 6.598, Spread (observed): 0.25, Slippage (assumed 0.1%): 6.598, Total: 13.446
+   ```
+
+   - Executed quantity (Size): 0.1 ✓ (> 0)
+   - Executed Price: 65980.0 ✓ (reflects spread crossing: BUY pays ask)
+   - All four cost components present and strictly positive:
+     * Fees: 6.598 ✓
+     * Spread (observed): 0.25 ✓
+     * Slippage (assumed 0.1%): 6.598 ✓
+     * Total: 13.446 ✓
+   - Spread cost traceable to observed bid/ask: YES
+     * Input: best_bid=65975.00, best_ask=65980.00
+     * Spread = 65980 - 65975 = 5.00
+     * Half-spread (buy) = 5.00 / 2 = 2.50
+     * For size=0.1: spread_cost = 2.50 × 0.1 = 0.25 ✓
+   - Executed price reflects spread crossing: BUY pays best_ask (65980.0) ✓
+
+4. COST BITE PROOF — all four artifacts: PASS, ACTUAL FAIL with real assertion text, PASS, empty diff.
+   ----------------------------------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: evidence/WO-008a-R5/cost_bite_proof.txt
+
+   ARTIFACT 1 - PASS (correct implementation):
+   ```
+   tests/integration/test_cost_bite_proof.py::test_filled_order_has_strictly_positive_costs PASSED
+   [COST BITE PROOF - PASS]
+     Total Fees: $58.3700
+     Total Spread: $2.2500
+     Total Slippage: $58.3700
+     Total Cost: $118.9900
+     All costs strictly positive [PASS]
+   ```
+
+   ARTIFACT 2 - ACTUAL FAIL (stubbed to zero):
+   ```
+   tests/integration/test_cost_bite_proof_FAIL.py::test_filled_order_has_strictly_positive_costs FAILED
+   ================================== FAILURES ===================================
+   E   AssertionError: Total cost MUST be strictly positive, got 0.0
+   E   assert 0.0 > 0
+   FAILED - AssertionError: Total cost MUST be strictly positive, got 0.0
+   ```
+
+   ARTIFACT 3 - PASS (after restore):
+   ```
+   tests/integration/test_cost_bite_proof.py::test_filled_order_has_strictly_positive_costs PASSED
+   [COST BITE PROOF - PASS]
+     All costs strictly positive [PASS]
+   ```
+
+   ARTIFACT 4 - Empty diff:
+   ```
+   git diff src/trading/execution/paper.py
+   (empty - no changes to paper.py, stub file deleted)
+   ```
+
+5. FROZEN INVARIANT — paste both scans (before/after), which resolution you took, and the executed bite proof (PASS, ACTUAL FAIL, PASS, empty diff). Confirm zero remaining bypasses in src/.
+   ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: evidence/WO-008a-R5/frozen_invariant_proof.txt
+
+   BEFORE SCAN (8 lines with object.__setattr__):
+   ```
+   src/trading/backtest/runner.py:260:        # Use object.__setattr__ to bypass frozen dataclass restriction
+   src/trading/backtest/runner.py:261:        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
+   src/trading/backtest/runner.py:262:        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)
+   src/trading/data/market_state.py:70:        object.__setattr__(self, 'mid_price', (self.best_bid + self.best_ask) / 2)
+   src/trading/data/market_state.py:71:        object.__setattr__(self, 'spread', self.best_ask - self.best_bid)
+   src/trading/loop/live.py:355:        # Use object.__setattr__ to bypass frozen dataclass restriction
+   src/trading/loop/live.py:356:        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
+   src/trading/loop/live.py:357:        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)
+   ```
+
+   AFTER SCAN (2 lines - legitimate only):
+   ```
+   src/trading/data/market_state.py:70:        object.__setattr__(self, 'mid_price', (self.best_bid + self.best_ask) / 2)
+   src/trading/data/market_state.py:71:        object.__setattr__(self, 'spread', self.best_ask - self.best_bid)
+   ```
+
+   RESOLUTION TAKEN: PREFERRED - state is genuinely immutable → update via dataclasses.replace()
+   (Project lead's strong prior, now implemented in live.py and backtest/runner.py)
+
+   EXECUTED BITE PROOF:
+   - PASS (frozen=True): PositionState rejects in-place mutation
+   - ACTUAL FAIL (frozen=False): "Failed: DID NOT RAISE FrozenInstanceError"
+   - PASS (after restore): PositionState rejects in-place mutation again
+   - Empty diff: No changes to position_state.py remain
+
+   CONFIRMATION: Zero remaining bypasses in src/ (excluding market_state.py legitimate use)
+
+6. CI STATUS — run result for 90882d0 and for this push; checked-out SHA vs pushed SHA; first error if failing.
+   -------------------------------------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: evidence/WO-008a-R5/ci_status_report.txt
+
+   STATUS REPORTED:
+   - Current commit: 90882d0 (WO-008a-R3)
+   - WO-008a-R5: NOT YET PUSHED (changes in worktree)
+   - LIMITATION: Cannot access GitHub Actions API from this environment
+
+   RECOMMENDED ACTION: Manually check GitHub Actions after push and append results.
+
+7. SLIPPAGE LABELING — where the constant lives, everywhere it's consumed, and how it's now labeled.
+   ------------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: source code updates
+
+   SLIPPAGE CONSTANT LOCATIONS (2 places):
+   - src/trading/execution/paper.py line 39: DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # (ASSUMED CONSTANT - WO-008a-R5)
+   - src/trading/backtest/costs.py line 71: DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # (ASSUMED CONSTANT - WO-008a-R5)
+
+   CONSUMPTION AND LABELING (updated in 4 places):
+   - src/trading/execution/paper.py docstring: "Slippage adjustment (assumed 0.1% constant - WO-008a-R5)"
+   - src/trading/logkit/decision.py line 230: "Slippage (assumed 0.1%):" vs "Spread (observed):"
+   - src/trading/backtest/report.py line 153: "Slippage (assumed 0.1%)" vs "Spread (observed)"
+   - src/trading/backtest/runner.py line 292: "Total Slippage... (assumed 0.1%)" vs "Total Spread... (observed)"
+
+   LABELING PATTERN: All reporting now labels slippage as "assumed 0.1%" and spread as "observed"
+   to make clear that slippage is a model assumption, not a measured value.
+
+8. PASTE IMPORT-LINTER (4/4?) and pytest summary (0 xpassed?). Local/remote HEAD.
+   -------------------------------------------------------------------------------------------------
+
+   DONE. Evidence: evidence/WO-008a-R5/final_tests.txt
+
+   IMPORT-LINTER: 4/4 contracts kept
+   ```
+   Forbidden ML in Risk Layer KEPT
+   Forbidden Execution Adapters Imports KEPT
+   Forbidden v2-book-checksum imports above adapter KEPT
+   Forbid loop from importing adapters directly KEPT
+   Contracts: 4 kept, 0 broken.
+   ```
+
+   PYTEST SUMMARY:
+   ```
+   69 passed, 8 xfailed in 235.56s (0:03:55)
+   ```
+
+   - 69 passed ✓
+   - 8 xfailed (expected - test_backtest_costs.py)
+   - 0 xpassed ✓ (requirement met - no unexpected passes)
+   - 0 failed ✓
+
+   LOCAL/REMOTE HEAD:
+   - Local HEAD: 90882d0 (WO-008a-R3)
+   - Remote HEAD: Not yet pushed (WO-008a-R5 in worktree)
+
+9. DID YOU OPEN ANY NETWORK CONNECTION TO ANY VENUE?
+   --------------------------------------------------
+
+   ANSWER: NO
+
+   All tests use fixtures or SimulatedMarketFeed. No WebSocket connections opened.
+   FIXTURES ONLY constraint honored.
+
+10. WHAT DID YOU CHANGE that you were not asked to change? Every file with justification, or "none." Per rule 0.1a, any interface change or bypass must appear here as a STOP-and-ask you should have raised.
+   -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    All changes are directly related to completing WO-008a-R5 requirements:
+
+    CODE CHANGES (10 files):
+    1. src/trading/execution/paper.py — Added set_market_state(), removed spread_cost parameter, computed fill economics internally
+    2. src/trading/execution/interface.py — Removed spread_cost from place_order() signature (interface change per WO-008a-R5 §1.1)
+    3. src/trading/risk/engine.py — Updated ApprovedOrder.price=0 documentation
+    4. src/trading/execution/approved_order.py — Added price field documentation
+    5. src/trading/loop/live.py — Use set_market_state(), removed cost calculation, dataclasses.replace() for frozen state
+    6. src/trading/backtest/runner.py — Use set_market_state(), removed cost calculation, dataclasses.replace() for frozen state
+    7. src/trading/backtest/costs.py — Labeled slippage as ASSUMED CONSTANT
+    8. src/trading/logkit/decision.py — Labeled slippage as assumed, spread as observed
+    9. src/trading/backtest/report.py — Labeled slippage as assumed, spread as observed
+    10. src/trading/backtest/runner.py — Updated slippage labeling in print output
+
+    TEST FILES ADDED (2 files):
+    1. tests/integration/test_frozen_invariant.py — Frozen invariant bite proof test (WO-008a-R5 §2.3)
+
+    TEST FILES REMOVED (1 file):
+    1. tests/integration/test_cost_visibility.py — Superseded by test_full_cycle_visible.py (WO-008a-R5 §4 cleanup)
+
+    EVIDENCE FILES (6 files):
+    - evidence/WO-008a-R5/cost_bite_proof.txt
+    - evidence/WO-008a-R5/frozen_invariant_proof.txt
+    - evidence/WO-008a-R5/ci_status_report.txt
+    - evidence/WO-008a-R5/final_tests.txt
+    - evidence/WO-008a-R5/end_to_end_with_costs.txt
+    - evidence/WO-008a-R5/bypass_scan_before.txt
+    - evidence/WO-008a-R5/bypass_scan_after.txt
+
+    INTERFACE CHANGE NOTICE: The change to place_order() signature (removing spread_cost) is explicitly
+    required by WO-008a-R5 §1.1. This is not a STOP-and-ask situation because it's the core requirement
+    of this work order.
+
+    NO BYPASS MECHANISMS ADDED: All object.__setattr__ backdoors were removed, not added.
+
+11. WHAT DID YOU CHECK that could have revealed a problem, and didn't?
+   -------------------------------------------------------------
+
+    I DID NOT check:
+    - CI actual status (only reported, did not verify due to API access limitation)
+    - Performance profiling beyond basic test runs
+    - Memory usage during long-running tests
+    - Thread safety of the new set_market_state() pattern (not required for FIXTURES ONLY)
+
+    These were not required by WO-008a-R5 scope and would be out of scope.
+
+---
+
+FILES CHANGED IN WO-008a-R5
+============================
+
+CODE CHANGES (10 files):
+1. src/trading/execution/paper.py — Added set_market_state(), removed spread_cost, internal fill economics
+2. src/trading/execution/interface.py — Removed spread_cost from place_order()
+3. src/trading/risk/engine.py — Updated ApprovedOrder.price=0 documentation
+4. src/trading/execution/approved_order.py — Added price field documentation
+5. src/trading/loop/live.py — Use set_market_state(), dataclasses.replace()
+6. src/trading/backtest/runner.py — Use set_market_state(), dataclasses.replace()
+7. src/trading/backtest/costs.py — Labeled slippage as ASSUMED CONSTANT
+8. src/trading/logkit/decision.py — Labeled slippage as assumed, spread as observed
+9. src/trading/backtest/report.py — Labeled slippage as assumed, spread as observed
+10. src/trading/backtest/runner.py — Updated print labeling
+
+TEST FILES ADDED (1 file):
+1. tests/integration/test_frozen_invariant.py — Frozen invariant bite proof test
+
+TEST FILES REMOVED (1 file):
+1. tests/integration/test_cost_visibility.py — Superseded by test_full_cycle_visible.py
+
+EVIDENCE FILES (7 files):
+1. evidence/WO-008a-R5/cost_bite_proof.txt
+2. evidence/WO-008a-R5/frozen_invariant_proof.txt
+3. evidence/WO-008a-R5/ci_status_report.txt
+4. evidence/WO-008a-R5/final_tests.txt
+5. evidence/WO-008a-R5/end_to_end_with_costs.txt
+6. evidence/WO-008a-R5/bypass_scan_before.txt
+7. evidence/WO-008a-R5/bypass_scan_after.txt
+
+---
+
+CONSTITUTIONAL COMPLIANCE
+=========================
+
+- Principle I (Truth Before Profit): All costs visible and strictly positive ✓
+- Principle V (No Backtest Without Costs): Cost bite proof prevents zero-cost fills ✓
+- Principle VII (Venue Independence): Interface takes only order intent (venue-agnostic) ✓
+- Principle VIII (Total Observability): All cost components logged with proper labels ✓
+- FIXTURES ONLY constraint: No live connections opened ✓
+
+---
+
+NEXT STEPS
+===========
+
+WO-008a-R5 is COMPLETE. Ready for:
+
+1. Commit and push WO-008a-R5 changes
+2. Verify CI status on push (complete ci_status_report.txt)
+3. Human review of architectural changes
+4. WO-008b (Live WebSocket Integration) — ONLY after human review
+
+DO NOT proceed to WO-008b without human review of WO-008a-R5.

@@ -1,0 +1,150 @@
+WO-008a-R6 §1.2: DOUBLE-COUNT DIAGNOSIS
+============================================
+
+QUESTION: Is spread currently double-counted in P&L?
+
+ANSWER: YES
+
+PROOF:
+
+---
+
+## CODE PATH: Fill → P&L
+
+### 1. FILL GENERATION (src/trading/execution/paper.py, lines 236-255)
+
+```python
+# Executed price reflects spread crossing
+if side == "BUY":
+    executed_price = ms.best_ask  # Buyer pays ask
+else:
+    executed_price = ms.best_bid  # Seller receives bid
+
+# Calculate notional from EXECUTED price
+notional = size_dec * executed_price
+
+# Cost components
+fees = notional * (self._fee_rate_pct / Decimal("100"))
+spread_cost = (ms.spread / Decimal("2")) * size_dec  # Half-spread × size
+slippage_cost = notional * self._slippage_factor
+
+# Total cost INCLUDES spread_cost
+total_cost = fees + spread_cost + slippage_cost
+```
+
+### 2. FILL CONSUMPTION (src/trading/backtest/runner.py, lines 230-242)
+
+```python
+def _update_position(self, fill: dict) -> None:
+    """Update position state after fill."""
+    size = Decimal(str(fill["size"]))
+    side = fill["side"]
+    total_cost = Decimal(str(fill["total_cost"]))  # INCLUDES spread_cost
+
+    # Update realized P&L by subtracting total_cost
+    new_pnl = self._position_state.realized_pnl - total_cost
+```
+
+### 3. P&L REPORT CALCULATION (src/trading/backtest/report.py, lines 98-106)
+
+```python
+# Calculate gross P&L using fill_price (which INCLUDES spread)
+gross_pnl = Decimal("0")
+for trade in self._trades:
+    if trade.side == "SELL":
+        gross_pnl += trade.size * trade.fill_price  # Receives bid
+    else:
+        gross_pnl -= trade.size * trade.fill_price  # Pays ask
+
+# Net P&L subtracts total_costs (which ALSO includes spread)
+net_pnl = gross_pnl - total_costs
+```
+
+---
+
+## ECONOMIC ARITHMETIC: Sample BUY from R5
+
+From evidence/WO-008a-R5/end_to_end_with_costs.txt:
+
+```
+Executed Price: 65980.0, Fees: 6.598, Spread (observed): 0.25,
+Slippage (assumed 0.1%): 6.598, Total: 13.446
+```
+
+### Market State (from test fixture):
+- Best bid: 65975.0
+- Best ask: 65980.0
+- Spread: 5.0
+- Size: 0.1 BTC
+
+### ACTUAL ECONOMICS (what we REALLY pay):
+
+When we BUY 0.1 BTC at the ask (65980.0):
+
+1. **Cash outflow:** 0.1 × 65980.0 = 6598.0 USD
+   - This executed price (65980.0) ALREADY INCLUDES the spread cost
+   - If there were no spread (mid-price 65977.5): 0.1 × 65977.5 = 6597.75
+   - Spread IMPACT already in executed price: 6598.0 - 6597.75 = 0.25
+
+2. **Additional costs:**
+   - Fees: 6.598
+   - Slippage: 6.598
+   - Total additional: 13.196
+
+3. **TRUE TOTAL ECONOMIC COST:** 6598.0 (cash outflow) - 0.25 (spread in executed) + 13.196 = 6597.75 + 13.196 = 6610.946
+   - OR equivalently: 6597.75 (mid-price notional) + 6.598 (fees) + 6.598 (slippage) = 6610.946
+
+### CURRENT SYSTEM CALCULATION:
+
+1. **Gross P&L (uses executed price):**
+   - BUY: gross_pnl = -0.1 × 65980.0 = -6598.0
+   - This -6598.0 ALREADY reflects the spread cost
+
+2. **Total Cost (INCLUDES spread_cost again):**
+   - total_cost = 6.598 (fees) + 0.25 (spread_cost) + 6.598 (slippage) = 13.446
+   - The 0.25 spread_cost is the SAME spread cost already in -6598.0
+
+3. **Net P&L:**
+   - net_pnl = -6598.0 - 13.446 = -6611.446
+   - This OVERSTATES the loss by 0.25 (the spread counted twice)
+
+### THE DOUBLE-COUNT:
+
+The spread is charged twice:
+1. **Once in the executed price:** Paying 65980.0 instead of mid 65977.5 costs us 0.25
+2. **Again in spread_cost:** Another 0.25 is subtracted via total_cost
+
+**Result:** Spread of 0.25 is counted TWICE, overstating costs by 0.25 per trade.
+
+### VERIFICATION BY RECONCILIATION:
+
+Correct calculation (spread counted once):
+- Cash outflow at ask: -6598.0
+- Less fees: -6.598
+- Less slippage: -6.598
+- Net: -6611.196
+
+Current calculation (spread counted twice):
+- Cash outflow at ask: -6598.0
+- Less total_cost (includes spread again): -13.446
+- Net: -6611.446
+
+**Difference: 0.25 (exactly the spread cost counted twice)**
+
+---
+
+## CONCLUSION
+
+**YES, spread IS currently double-counted in P&L.**
+
+The root cause:
+1. Executed price (ask for BUY, bid for SELL) ALREADY reflects crossing the spread
+2. Gross P&L is calculated using this executed price
+3. Total Cost ALSO includes spread_cost as an additive component
+4. Net P&L = gross_pnl - total_cost counts spread TWICE
+
+Every BUY trade overstates its loss by half the spread.
+Every SELL trade overstates its gain (reduces profit) by half the spread.
+
+This is NOT "safe overstatement" — it creates an untrustworthy cost model
+that cannot be relied upon in either direction.

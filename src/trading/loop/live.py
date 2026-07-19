@@ -9,6 +9,7 @@ Constitutional Principles:
 """
 
 import asyncio
+import dataclasses
 from datetime import datetime, UTC
 from decimal import Decimal
 from typing import Optional, AsyncIterator
@@ -25,7 +26,6 @@ from trading.risk.position_state import PositionState
 from trading.execution.interface import ExchangeClient, KillSwitchEngagedError
 from trading.execution.paper import PaperExecutionClient
 from trading.logkit.decision import DecisionLogger, Layer, get_logger
-from trading.backtest.costs import CostModel
 
 
 class LiveTradingLoop:
@@ -67,7 +67,6 @@ class LiveTradingLoop:
         self._execution_client = execution_client or PaperExecutionClient()
         self._decision_logger = decision_logger or get_logger()
         self._persistence = persistence or MarketDataPersistence()
-        self._cost_model = CostModel()  # For calculating observed spread costs
 
         # Portfolio state
         self._position_state = PositionState(
@@ -252,20 +251,15 @@ class LiveTradingLoop:
             try:
                 kill_switch_engaged = self._risk_engine.get_kill_switch_state()
 
-                # Calculate costs using observed spread from market_state (T028: no synthetic spread)
-                costs = self._cost_model.calculate_costs_from_market_state(
-                    side=approved_order.side,
-                    size=approved_order.size,
-                    market_state=market_state,
-                )
+                # Register market state with paper venue (WO-008a-R5: venue computes fill economics)
+                self._execution_client.set_market_state(market_state)
 
                 fill = await self._execution_client.place_order(
                     symbol=approved_order.symbol,
                     side=approved_order.side,
                     size=float(approved_order.size),
-                    price=float(approved_order.price),
+                    price=float(approved_order.price),  # Order intent price (venue ignores for market orders)
                     kill_switch_engaged=kill_switch_engaged,
-                    spread_cost=float(costs.spread_cost),
                 )
 
                 # Log execution
@@ -280,6 +274,9 @@ class LiveTradingLoop:
                     intended_price=approved_order.price,
                     executed_price=Decimal(str(fill["fill_price"])),
                     fees=Decimal(str(fill["fees"])),
+                    spread_cost=Decimal(str(fill["spread_cost"])),
+                    slippage_cost=Decimal(str(fill["slippage_cost"])),
+                    total_cost=Decimal(str(fill["total_cost"])),
                     strategy_version=self._strategy.version,
                     feature_snapshot_hash=desired_position.feature_snapshot_hash,
                 )
@@ -349,9 +346,12 @@ class LiveTradingLoop:
         # Update realized P&L (simplified)
         new_pnl = self._position_state.realized_pnl - total_cost
 
-        # Use object.__setattr__ to bypass frozen dataclass restriction
-        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
-        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)
+        # Use dataclasses.replace() for immutable update (WO-008a-R5: no bypass)
+        self._position_state = dataclasses.replace(
+            self._position_state,
+            current_quantity=new_quantity,
+            realized_pnl=new_pnl,
+        )
 
     def stop(self) -> None:
         """Stop the trading loop."""

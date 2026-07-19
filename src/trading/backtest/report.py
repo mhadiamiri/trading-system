@@ -60,9 +60,9 @@ class PnLReport:
             side: "BUY" or "SELL"
             size: Trade size
             fill_price: Fill price
-            fees: Trading fees
-            spread_cost: Bid/ask spread cost
-            slippage_cost: Slippage adjustment
+            fees: Trading fees (observed)
+            spread_cost: Bid/ask spread cost (observed)
+            slippage_cost: Slippage adjustment (assumed 0.1%)
         """
         total_cost = fees + spread_cost + slippage_cost
         self._trades.append(
@@ -93,7 +93,9 @@ class PnLReport:
         total_fees = sum(trade.fees for trade in self._trades)
         total_spread = sum(trade.spread_cost for trade in self._trades)
         total_slippage = sum(trade.slippage_cost for trade in self._trades)
-        total_costs = total_fees + total_spread + total_slippage
+        # WO-008a-R6: spread is attribution (included in executed price), NOT additive
+        # Total costs = fees + slippage only
+        total_costs = total_fees + total_slippage
 
         # Calculate gross P&L (simplified for walking skeleton)
         gross_pnl = Decimal("0")
@@ -148,10 +150,10 @@ class PnLReport:
         print(f"Gross P&L: ${report['gross_pnl']:.2f}")
         print("-" * 60)
         print("COST BREAKDOWN:")
-        print(f"  Fees:        ${report['total_fees']:.2f}")
-        print(f"  Spread:      ${report['total_spread_cost']:.2f}")
-        print(f"  Slippage:    ${report['total_slippage_cost']:.2f}")
-        print(f"  Total Costs: ${report['total_costs']:.2f}")
+        print(f"  Fees:               ${report['total_fees']:.2f} (additive)")
+        print(f"  Spread:             ${report['total_spread_cost']:.2f} (observed, included in executed price)")
+        print(f"  Slippage:           ${report['total_slippage_cost']:.2f} (additive, assumed 0.1%)")
+        print(f"  Total Costs:        ${report['total_costs']:.2f} (fees + slippage only)")
         print("-" * 60)
         print(f"Net P&L:     ${report['net_pnl']:.2f}")
         print(f"Win Rate:    {report['win_rate']:.1%}")

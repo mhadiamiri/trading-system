@@ -1,0 +1,5 @@
+90882d0 WO-008a-R3: Complete T036, demonstrate full 4-layer loop, fix cost path
+af27491 WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts
+400a28b fix(ci): track all src/trading/data modules previously excluded by unanchored data/ ignore rule
+71eb901 fix(ci): track data-layer modules excluded by unanchored .gitignore data/ pattern
+4aeaa41 chore(ci): remove PYTHONPATH from pytest command (pytest.ini handles it)

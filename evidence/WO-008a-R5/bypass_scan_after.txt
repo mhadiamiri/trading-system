@@ -1,0 +1,2 @@
+src/trading/data/market_state.py:70:        object.__setattr__(self, 'mid_price', (self.best_bid + self.best_ask) / 2)
+src/trading/data/market_state.py:71:        object.__setattr__(self, 'spread', self.best_ask - self.best_bid)

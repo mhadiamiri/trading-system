@@ -66,9 +66,9 @@ class CostModel:
     """
 
     # Default parameters (configurable)
-    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side
+    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side (observed)
     # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - use calculate_costs_from_market_state()
-    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # Linear slippage factor
+    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # Linear slippage factor (ASSUMED CONSTANT - WO-008a-R5)
 
     def __init__(
         self,

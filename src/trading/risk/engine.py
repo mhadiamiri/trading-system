@@ -97,7 +97,7 @@ class DeterministicRiskEngine(RiskEngine):
                 symbol=desired.symbol,
                 side=desired.side.value,
                 size=approved_size,
-                price=Decimal("0"),  # Will be filled by execution layer
+                price=Decimal("0"),  # Market order: venue determines fill price from MarketState
                 reason_code=self.REASON_CLAMP_MAX_POSITION,
                 original_size=desired.quantity,
             )

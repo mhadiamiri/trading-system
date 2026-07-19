@@ -1,0 +1,8 @@
+src/trading/backtest/runner.py:260:        # Use object.__setattr__ to bypass frozen dataclass restriction
+src/trading/backtest/runner.py:261:        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
+src/trading/backtest/runner.py:262:        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)
+src/trading/data/market_state.py:70:        object.__setattr__(self, 'mid_price', (self.best_bid + self.best_ask) / 2)
+src/trading/data/market_state.py:71:        object.__setattr__(self, 'spread', self.best_ask - self.best_bid)
+src/trading/loop/live.py:355:        # Use object.__setattr__ to bypass frozen dataclass restriction
+src/trading/loop/live.py:356:        object.__setattr__(self._position_state, 'current_quantity', new_quantity)
+src/trading/loop/live.py:357:        object.__setattr__(self._position_state, 'realized_pnl', new_pnl)

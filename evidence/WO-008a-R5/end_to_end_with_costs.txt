@@ -1,0 +1,56 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_full_cycle_visible.py::test_full_cycle_with_visible_costs Starting live trading loop...
+Strategy: trivial-momentum-v1.0.0
+Feed Type: simulated (SIMULATED)
+Risk Engine: DeterministicRiskEngine
+Execution: PaperExecutionClient
+Data Persistence: data
+Max updates: 10, Max duration: 1 minutes
+--------------------------------------------------
+Using SimulatedMarketFeed
+Warning: Could not read existing file: Could not open Parquet input source 'data/market_events_20260719.parquet': Parquet file size is 4 bytes, smaller than the minimum file footer (8 bytes)
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] NO_SIGNAL: STRAT_NO_SIGNAL
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] SIGNAL_GENERATED: STRAT_SIGNAL_BUY
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+[RISK] PASS: RISK_PASS
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+[EXECUTION] ORDER_FILLED: EXEC_ORDER_FILLED
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+  Executed Price: 65980.0, Fees: 6.598, Spread (observed): 0.25, Slippage (assumed 0.1%): 6.598, Total: 13.446
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] SIGNAL_GENERATED: STRAT_SIGNAL_BUY
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+[RISK] PASS: RISK_PASS
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+[EXECUTION] ORDER_FILLED: EXEC_ORDER_FILLED
+  Size: 0.1, Side: BUY, Symbol: BTC/USD
+  Executed Price: 66955.0, Fees: 6.6955, Spread (observed): 0.25, Slippage (assumed 0.1%): 6.6955, Total: 13.641
+Data file closed: data\market_events_20260719.parquet
+
+Processed: 3
+Trades: 2
+
+Decision log entries: 10
+{"timestamp": "2026-07-19T00:50:06.736437+00:00", "layer": "EXECUTION", "event_type": "MARKET_DATA_RECEIVED", "reason_code": "DATA_RECEIVED", "venue": "simulated", "symbol": "BTC/USD", "side": null, "size": null, "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": null, "feature_snapshot_hash": null}
+{"timestamp": "2026-07-19T00:50:06.736842+00:00", "layer": "STRATEGY", "event_type": "NO_SIGNAL", "reason_code": "STRAT_NO_SIGNAL", "venue": "simulated", "symbol": "BTC/USD", "side": null, "size": null, "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "ed6c33d0c35d115940417e18e3fa1e2c4f77e25971df891cb2674ce9478922cf"}
+{"timestamp": "2026-07-19T00:50:06.737598+00:00", "layer": "EXECUTION", "event_type": "MARKET_DATA_RECEIVED", "reason_code": "DATA_RECEIVED", "venue": "simulated", "symbol": "BTC/USD", "side": null, "size": null, "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": null, "feature_snapshot_hash": null}
+{"timestamp": "2026-07-19T00:50:06.737818+00:00", "layer": "STRATEGY", "event_type": "SIGNAL_GENERATED", "reason_code": "STRAT_SIGNAL_BUY", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "1f53cf888b54cc0f532d8de4b47c1facc374eb9b9dfe793cc4373ec24db7e7a1"}
+{"timestamp": "2026-07-19T00:50:06.738014+00:00", "layer": "RISK", "event_type": "PASS", "reason_code": "RISK_PASS", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "1f53cf888b54cc0f532d8de4b47c1facc374eb9b9dfe793cc4373ec24db7e7a1"}
+{"timestamp": "2026-07-19T00:50:06.738206+00:00", "layer": "EXECUTION", "event_type": "ORDER_FILLED", "reason_code": "EXEC_ORDER_FILLED", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": "0", "executed_price": "65980.0", "fees": "6.598", "spread_cost": "0.25", "slippage_cost": "6.598", "total_cost": "13.446", "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "1f53cf888b54cc0f532d8de4b47c1facc374eb9b9dfe793cc4373ec24db7e7a1"}
+{"timestamp": "2026-07-19T00:50:06.738798+00:00", "layer": "EXECUTION", "event_type": "MARKET_DATA_RECEIVED", "reason_code": "DATA_RECEIVED", "venue": "simulated", "symbol": "BTC/USD", "side": null, "size": null, "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": null, "feature_snapshot_hash": null}
+{"timestamp": "2026-07-19T00:50:06.739046+00:00", "layer": "STRATEGY", "event_type": "SIGNAL_GENERATED", "reason_code": "STRAT_SIGNAL_BUY", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "370853aaae92ad7b27496110086481deafdc471614455fa353203147cadf2c23"}
+{"timestamp": "2026-07-19T00:50:06.739222+00:00", "layer": "RISK", "event_type": "PASS", "reason_code": "RISK_PASS", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": null, "executed_price": null, "fees": null, "spread_cost": null, "slippage_cost": null, "total_cost": null, "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "370853aaae92ad7b27496110086481deafdc471614455fa353203147cadf2c23"}
+{"timestamp": "2026-07-19T00:50:06.739467+00:00", "layer": "EXECUTION", "event_type": "ORDER_FILLED", "reason_code": "EXEC_ORDER_FILLED", "venue": "simulated", "symbol": "BTC/USD", "side": "BUY", "size": "0.1", "intended_price": "0", "executed_price": "66955.0", "fees": "6.6955", "spread_cost": "0.25", "slippage_cost": "6.6955", "total_cost": "13.641", "strategy_version": "trivial-momentum-v1.0.0", "feature_snapshot_hash": "370853aaae92ad7b27496110086481deafdc471614455fa353203147cadf2c23"}
+PASSED
+
+============================== 1 passed in 0.76s ==============================

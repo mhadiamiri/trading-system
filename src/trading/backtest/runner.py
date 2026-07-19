@@ -9,6 +9,7 @@ Constitutional Principles:
 """
 
 import asyncio
+import dataclasses
 from datetime import datetime, UTC
 from decimal import Decimal
 from typing import List, Dict
@@ -18,7 +19,6 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from trading.data.market_state import MarketState
-from trading.backtest.costs import Side
 from trading.data.fixtures import sample_market_data
 from trading.strategy.interface import Strategy
 from trading.strategy.trivial import TrivialMomentumStrategy
@@ -27,7 +27,6 @@ from trading.risk.engine import DeterministicRiskEngine
 from trading.risk.position_state import PositionState
 from trading.execution.interface import ExchangeClient
 from trading.execution.paper import PaperExecutionClient
-from trading.backtest.costs import CostModel, Side
 from trading.backtest.report import PnLReport
 from config.settings import Settings
 
@@ -96,7 +95,6 @@ class BacktestRunner:
         strategy: Strategy = None,
         risk_engine: RiskEngine = None,
         execution_client: ExchangeClient = None,
-        cost_model: CostModel = None,
     ) -> None:
         """
         Initialize backtest runner.
@@ -105,12 +103,12 @@ class BacktestRunner:
             strategy: Trading strategy (default: TrivialMomentumStrategy)
             risk_engine: Risk engine (default: DeterministicRiskEngine)
             execution_client: Execution client (default: PaperExecutionClient)
-            cost_model: Cost model (default: CostModel)
+
+        Note (WO-008a-R5): Cost model removed - paper venue computes fill economics internally.
         """
         self._strategy = strategy or TrivialMomentumStrategy()
         self._risk_engine = risk_engine or DeterministicRiskEngine()
         self._execution_client = execution_client or PaperExecutionClient()
-        self._cost_model = cost_model or CostModel()
 
         # Portfolio state
         self._position_state = PositionState(
@@ -183,30 +181,16 @@ class BacktestRunner:
                 processed_count += 1
                 continue
 
-            # Simulate execution with costs using OBSERVED spread from MarketState
-            # Use the new cost model method that respects FR-015a (no synthetic spread)
-            try:
-                # Calculate costs from observed market state
-                side_enum = Side.BUY if approved_order.side == "BUY" else Side.SELL
-                costs = self._cost_model.calculate_costs_from_market_state(
-                    side=side_enum,
-                    size=Decimal(str(approved_order.size)),
-                    market_state=market_state,
-                )
-            except ValueError as e:
-                # Abnormal spread detected - reject this trade
-                # Log the rejection and continue to next event
-                print(f"Trade rejected: {e}")
-                continue
+            # Register market state with paper venue (WO-008a-R5: venue computes fill economics)
+            self._execution_client.set_market_state(market_state)
 
-            # Simulate execution with calculated costs
+            # Simulate execution (paper venue computes costs internally from MarketState)
             fill = await self._execution_client.place_order(
                 symbol=approved_order.symbol,
                 side=approved_order.side,
                 size=float(approved_order.size),
-                price=float(market_state.last_price),  # Use market price
+                price=float(approved_order.price),  # Order intent price (venue ignores for market orders)
                 kill_switch_engaged=False,
-                spread_cost=float(costs.spread_cost),
             )
 
             # Add to P&L report
@@ -250,12 +234,19 @@ class BacktestRunner:
         total_cost = Decimal(str(fill["total_cost"]))
 
         if side == "BUY":
-            self._position_state.current_quantity += size
+            new_quantity = self._position_state.current_quantity + size
         else:
-            self._position_state.current_quantity -= size
+            new_quantity = self._position_state.current_quantity - size
 
         # Update realized P&L
-        self._position_state.realized_pnl -= total_cost
+        new_pnl = self._position_state.realized_pnl - total_cost
+
+        # Use dataclasses.replace() for immutable update (WO-008a-R5: no bypass)
+        self._position_state = dataclasses.replace(
+            self._position_state,
+            current_quantity=new_quantity,
+            realized_pnl=new_pnl,
+        )
 
 
 async def main() -> None:
@@ -296,9 +287,9 @@ async def main() -> None:
     pnl = result['pnl_report']
     print(f"\nTotal Trades: {pnl['total_trades']}")
     print(f"Gross P&L: ${pnl['gross_pnl']:.2f}")
-    print(f"Total Fees: ${pnl['total_fees']:.2f}")
-    print(f"Total Spread: ${pnl['total_spread_cost']:.2f}")
-    print(f"Total Slippage: ${pnl['total_slippage_cost']:.2f}")
+    print(f"Total Fees: ${pnl['total_fees']:.2f} (additive)")
+    print(f"Total Spread: ${pnl['total_spread_cost']:.2f} (observed, included in executed price)")
+    print(f"Total Slippage: ${pnl['total_slippage_cost']:.2f} (additive, assumed 0.1%)")
     print(f"Net P&L: ${pnl['net_pnl']:.2f}")
 
 

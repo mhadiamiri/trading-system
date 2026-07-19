@@ -1,0 +1,77 @@
+WO-008a-R5 §3: CI STATUS REPORT
+==================================
+
+CURRENT STATE (Before WO-008a-R5 Push)
+=======================================
+
+Current Commit: 90882d0
+Commit Message: WO-008a-R3: Complete T036, demonstrate full 4-layer loop, fix cost path
+
+Git Log (recent commits):
+90882d0 WO-008a-R3: Complete T036, demonstrate full 4-layer loop, fix cost path
+af27491 WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts
+400a28b fix(ci): track all src/trading/data modules previously excluded by unanchored data/ ignore rule
+71eb901 fix(ci): track data-layer modules excluded by unanchored .gitignore data/ pattern
+4aeaa41 chore(ci): remove PYTHONPATH from pytest command (pytest.ini handles it)
+
+---
+
+GITHUB ACTIONS STATUS FOR 90882d0
+==================================
+
+LIMITATION: Cannot access GitHub Actions API from this environment.
+To complete this report, the following information is needed:
+
+1. GitHub Actions run status for commit 90882d0: PASS or FAIL
+2. If FAIL: The failing step name and FIRST error message (pasted)
+3. The commit SHA the run actually checked out vs the SHA pushed (90882d0)
+
+RECOMMENDED ACTION: After pushing WO-008a-R5, manually check GitHub Actions at:
+https://github.com/[org]/[repo]/actions
+
+---
+
+WO-008A-R5 PUSH STATUS
+========================
+
+STATUS: NOT YET PUSHED
+REASON: WO-008a-R5 changes are in a worktree (.claude/worktrees/wo-008a-r5)
+        Changes need to be committed and pushed to trigger CI.
+
+PLANNED COMMITS FOR WO-008A-R5:
+- src/trading/execution/paper.py - Added set_market_state(), removed spread_cost parameter
+- src/trading/execution/interface.py - Removed spread_cost from place_order()
+- src/trading/risk/engine.py - Updated ApprovedOrder.price=0 documentation
+- src/trading/execution/approved_order.py - Added price field documentation
+- src/trading/loop/live.py - Use set_market_state(), removed cost calculation, dataclasses.replace()
+- src/trading/backtest/runner.py - Use set_market_state(), removed cost calculation, dataclasses.replace()
+- src/trading/backtest/costs.py - Labeled slippage as ASSUMED CONSTANT
+- src/trading/logkit/decision.py - Labeled slippage as assumed, spread as observed
+- src/trading/backtest/report.py - Labeled slippage as assumed, spread as observed
+- tests/integration/test_frozen_invariant.py - NEW: Frozen invariant bite proof test
+- evidence/WO-008a-R5/* - Evidence files for all bite proofs
+
+---
+
+EXPECTED CI CHECKLIST FOR WO-008A-R5 PUSH
+==========================================
+
+After pushing WO-008a-R5, verify:
+
+1. GitHub Actions run status: PASS or FAIL
+2. If FAIL: Failing step name and FIRST error message
+3. Commit SHA checked out vs pushed SHA
+4. All test files pass
+5. Import-linter passes (4/4 contracts)
+6. No xpassed tests (none should have been xfailed)
+
+---
+
+CONCLUSION
+==========
+
+CI STATUS: INCOMPLETE (cannot access GitHub Actions from this environment)
+RECOMMENDED ACTION: Manually check GitHub Actions after push and append results.
+
+This report documents the current state and provides the checklist needed
+to complete the CI status reporting after the WO-008a-R5 push.

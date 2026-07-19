@@ -97,6 +97,9 @@ class DecisionLogger:
         intended_price: Optional[Decimal] = None,
         executed_price: Optional[Decimal] = None,
         fees: Optional[Decimal] = None,
+        spread_cost: Optional[Decimal] = None,
+        slippage_cost: Optional[Decimal] = None,
+        total_cost: Optional[Decimal] = None,
         strategy_version: Optional[str] = None,
         feature_snapshot_hash: Optional[str] = None,
     ) -> None:
@@ -113,7 +116,10 @@ class DecisionLogger:
             size: Order size (None for no-signal decisions)
             intended_price: Intended price (None if not executed)
             executed_price: Actual executed price (None if not executed)
-            fees: Fees paid (None if not executed)
+            fees: Trading fees paid (None if not executed)
+            spread_cost: Observed spread cost from bid/ask (None if not executed)
+            slippage_cost: Assumed slippage cost 0.1% (None if not executed)
+            total_cost: Total cost including all components (None if not executed)
             strategy_version: Strategy version identifier
             feature_snapshot_hash: Hash of feature snapshot
 
@@ -133,6 +139,9 @@ class DecisionLogger:
             "intended_price": str(intended_price) if intended_price is not None else None,
             "executed_price": str(executed_price) if executed_price is not None else None,
             "fees": str(fees) if fees is not None else None,
+            "spread_cost": str(spread_cost) if spread_cost is not None else None,
+            "slippage_cost": str(slippage_cost) if slippage_cost is not None else None,
+            "total_cost": str(total_cost) if total_cost is not None else None,
             "strategy_version": strategy_version,
             "feature_snapshot_hash": feature_snapshot_hash,
         }
@@ -216,7 +225,10 @@ class DecisionLogger:
         if record['size']:
             print(f"  Size: {record['size']}, Side: {record['side']}, Symbol: {record['symbol']}")
         if record['executed_price']:
-            print(f"  Executed: {record['executed_price']}, Fees: {record['fees']}")
+            print(f"  Executed Price: {record['executed_price']}, Fees: {record['fees']}, "
+                  f"Spread (observed, included in executed price): {record.get('spread_cost', 'N/A')}, "
+                  f"Slippage (assumed 0.1%): {record.get('slippage_cost', 'N/A')}, "
+                  f"Total (fees + slippage): {record.get('total_cost', 'N/A')}")
 
 
 # Singleton logger instance

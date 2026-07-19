@@ -39,18 +39,19 @@ class ExchangeClient(ABC):
         size: float,
         price: float,
         kill_switch_engaged: bool,
-        spread_cost: float = None,
     ) -> dict:
         """
         Place order and return fill result.
 
+        This method takes an ORDER INTENT ONLY. The venue determines fill price
+        and all cost components internally.
+
         Args:
             symbol: Trading pair (e.g., "BTC/USD")
             side: "BUY" or "SELL"
-            size: Order size in base currency
-            price: Limit price (or market approximation)
+            size: Order size in base currency (from ApprovedOrder)
+            price: Order type/limit price from order intent (NOT fill price)
             kill_switch_engaged: If True, raise KillSwitchEngagedError
-            spread_cost: Observed spread cost from market (T028: no synthetic spread)
 
         Returns:
             Fill dict with keys: timestamp, symbol, side, size, fill_price,
@@ -59,7 +60,7 @@ class ExchangeClient(ABC):
         Constitutional requirements:
             - Raises KillSwitchEngagedError when kill_switch_engaged=True
             - Kill switch blocks new orders (Principle VI)
-            - No synthetic spread (T028): spread_cost must be calculated from market state
+            - Venue computes fill economics internally (WO-008a-R5)
         """
         pass
 

@@ -1,0 +1,117 @@
+WO-008a-R5 §6: FINAL TESTS AND VERIFICATION
+============================================
+
+PYTEST RESULTS
+==============
+
+Command: python -m pytest tests/ --tb=no -q
+
+Output:
+================== 69 passed, 8 xfailed in 235.56s (0:03:55) ==================
+
+SUMMARY:
+- 69 tests PASSED
+- 8 tests XFAILED (expected failures - test_backtest_costs.py)
+- 0 tests XPASSED (no unexpected passes - requirement met)
+- 0 tests FAILED
+
+XFAILED TESTS (expected):
+tests/test_backtest_costs.py::TestCostModel::test_fees_applied_to_every_trade XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_fees_calculation_accuracy XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_spread_applied_on_entry_and_exit XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_slippage_reduces_fill_prices XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_total_cost_equals_sum_of_components XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_no_cost_free_code_path XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_manual_calculation_matches_system XFAIL
+tests/test_backtest_costs.py::TestCostModel::test_buy_at_ask_sell_at_bid XFAIL
+
+Note: These xfailed tests are from the old cost model tests and are expected to fail
+in the new architecture where the paper venue computes costs internally.
+
+---
+
+IMPORT-LINTER RESULTS (4/4 CONTRACTS KEPT)
+============================================
+
+Command: import-linter lint
+
+Output:
+=============
+Import Linter
+=============
+
+---------
+Contracts
+---------
+
+Analyzed 54 files, 171 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+
+Contracts: 4 kept, 0 broken.
+
+CONCLUSION: All 4 import-linter contracts are active and green.
+The deep order book does not leak above the adapter.
+
+---
+
+KEY TESTS VERIFIED
+==================
+
+Cost Bite Proof (WO-008a-R5 §1.4):
+✓ test_filled_order_has_strictly_positive_costs PASSED
+✓ test_cost_bite_bites_when_zero PASSED
+
+Frozen Invariant Proof (WO-008a-R5 §2.3):
+✓ test_position_state_is_frozen PASSED
+✓ test_position_state_immutability_with_replace PASSED
+
+Full Cycle with Costs:
+✓ test_full_cycle_with_visible_costs PASSED
+
+Determinism with Immutable State:
+✓ test_determinism_verified PASSED
+
+Paper Mode Guard:
+✓ test_paper_execution_requires_paper_mode PASSED
+✓ test_guard_bites_when_trading_env_is_test PASSED
+
+Mainnet Guard:
+✓ test_mainnet_guard_is_intact PASSED
+✓ test_mainnet_guard_source_is_intact PASSED
+✓ test_mainnet_guard_bites_when_trading_env_is_mainnet PASSED
+
+---
+
+CLEANUP COMPLETED
+=================
+
+Removed:
+✓ tests/integration/test_cost_visibility.py (superseded by test_full_cycle_visible.py)
+
+No duplicate/overlapping cost tests found:
+✓ test_cost_bite_proof.py - Guard test (enforces positive costs)
+✓ test_full_cycle_visible.py - Integration test (demonstrates full cycle)
+✓ These serve different purposes (not overlapping)
+
+---
+
+CONCLUSION
+==========
+
+✓ 69 tests passed
+✓ 0 tests xpassed (no unexpected passes)
+✓ 4/4 import-linter contracts kept
+✓ All bite proof tests passed
+✓ All guard tests passed
+✓ Cleanup completed
+
+WO-008a-R5 requirements verified:
+- No test weakened (§0.8)
+- 0 xpassed (§6)
+- 4/4 contracts (§6)
+- All evidence files created

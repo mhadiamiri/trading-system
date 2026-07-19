@@ -8,13 +8,14 @@ Constitutional Principles:
 - IX. Secrets and Safety Rails: No real-money orders
 """
 
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from decimal import Decimal
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 import asyncio
 
 from trading.execution.interface import ExchangeClient, KillSwitchEngagedError
 from trading.execution.fill import Fill
+from trading.data.market_state import MarketState
 
 
 class PaperExecutionClient(ExchangeClient):
@@ -22,9 +23,10 @@ class PaperExecutionClient(ExchangeClient):
     Simulated (paper) execution client.
 
     All fills are simulated with realistic cost modeling:
-    - Trading fees (default 0.1% taker per side)
-    - Bid/ask spread cost
-    - Slippage adjustment
+    - Executed price reflects spread crossing (BUY pays ask, SELL gets bid)
+    - Trading fees (default 0.1% taker per side, observed from venue)
+    - Spread cost (observed from market state, included in executed price - WO-008a-R6)
+    - Slippage adjustment (assumed 0.1% constant - WO-008a-R5)
 
     Constitutional requirements:
     - No real-money orders (simulated only)
@@ -33,14 +35,22 @@ class PaperExecutionClient(ExchangeClient):
     """
 
     # Default cost parameters
-    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side
+    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side (observed)
     # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - pass observed spread
-    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # 0.1% slippage factor
+    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # 0.1% slippage factor (ASSUMED CONSTANT - WO-008a-R5)
+
+    # Staleness threshold (WO-008a-R6: guard against filling against stale market data)
+    # Historical rate: ~10 MarketStates/min = 1 state every 6 seconds
+    # Threshold: 18 seconds = 3x historical interval
+    # Reasoning: Allows normal variance but detects genuine stalls within seconds
+    # Not a round number: derived from 3 × (60 / 10) = 18
+    DEFAULT_STALENESS_THRESHOLD_SECONDS = 18
 
     def __init__(
         self,
         fee_rate_pct: Decimal = DEFAULT_FEE_RATE_PCT,
         slippage_factor: Decimal = DEFAULT_SLIPPAGE_FACTOR,
+        staleness_threshold_seconds: float = DEFAULT_STALENESS_THRESHOLD_SECONDS,
     ) -> None:
         """
         Initialize paper execution client.
@@ -48,6 +58,8 @@ class PaperExecutionClient(ExchangeClient):
         Args:
             fee_rate_pct: Trading fee rate as percentage (default 0.1%)
             slippage_factor: Slippage adjustment factor (default 0.001%)
+            staleness_threshold_seconds: Maximum age of MarketState before
+                it's considered stale (default 18 seconds, WO-008a-R6)
 
         Raises:
             ValueError: If TRADING_ENV is not 'paper' (constitutional guard)
@@ -61,6 +73,10 @@ class PaperExecutionClient(ExchangeClient):
         Note (T028):
             spread_pct parameter REMOVED: No synthetic spread allowed.
             Pass observed spread to _simulate_fill() instead.
+
+        Note (WO-008a-R6):
+            staleness_threshold_seconds prevents filling against stale data.
+            Derived from 3x historical interval (60/10 × 3 = 18).
         """
         # CONSTITUTIONAL GUARD (Principle IX):
         # Verify this client is only used in paper trading mode
@@ -76,7 +92,33 @@ class PaperExecutionClient(ExchangeClient):
 
         self._fee_rate_pct = fee_rate_pct
         self._slippage_factor = slippage_factor
+        self._staleness_threshold = timedelta(seconds=staleness_threshold_seconds)
         self._orders: dict[str, dict] = {}  # Simulated order book
+        self._current_market_state: Optional[MarketState] = None  # Current market state for fill economics
+        self._market_state_timestamp: Optional[datetime] = None  # When market_state was set (WO-008a-R6)
+
+    def set_market_state(self, market_state: MarketState) -> None:
+        """
+        Register the current market state for computing fill economics.
+
+        This method is specific to the paper venue simulator. Real venues
+        (Kraken, Coinbase) determine fill economics from their own matching
+        engine, so they don't need this method.
+
+        The caller (live loop or backtest runner) must call this method before
+        placing each order, so the paper venue can compute realistic fill
+        economics from the observed bid/ask spread.
+
+        Args:
+            market_state: Current market state with observed bid/ask
+
+        Constitutional requirements:
+            - Paper venue uses observed spread only (no synthetic, T028)
+            - Fill economics computed internally, not supplied by caller
+            - Staleness guard prevents filling against stale data (WO-008a-R6)
+        """
+        self._current_market_state = market_state
+        self._market_state_timestamp = datetime.now(UTC)  # Track when state was set (WO-008a-R6)
 
     async def place_order(
         self,
@@ -85,44 +127,73 @@ class PaperExecutionClient(ExchangeClient):
         size: float,
         price: float,
         kill_switch_engaged: bool,
-        spread_cost: float = None,
     ) -> dict:
         """
         Place simulated order and return fill result.
 
+        This method takes an ORDER INTENT ONLY: symbol, side, size, price, and
+        kill switch state. The paper venue computes all fill economics internally
+        from the current MarketState (registered via set_market_state()).
+
         Args:
             symbol: Trading pair
             side: "BUY" or "SELL"
-            size: Order size
-            price: Limit price
+            size: Order size (from ApprovedOrder)
+            price: Order type/limit price from order intent (NOT fill price)
             kill_switch_engaged: If True, raise KillSwitchEngagedError
-            spread_cost: Observed spread cost from market (T028: no synthetic spread)
 
         Returns:
-            Fill dict with all cost components
+            Fill dict with all cost components: timestamp, symbol, side, size,
+            fill_price, fees, spread_cost (attribution), slippage_cost,
+            total_cost (fees + slippage only), cad_value
 
         Raises:
             KillSwitchEngagedError: When kill_switch_engaged=True
+            ValueError: If MarketState not registered (set_market_state not called)
 
         Constitutional requirements:
             - Raises KillSwitchEngagedError when kill switch engaged (Principle VI)
-            - No synthetic spread (T028): spread_cost calculated from market state
+            - No synthetic spread (T028): spread_cost computed from observed bid/ask
+            - Fill economics computed internally by paper venue (WO-008a-R5)
         """
         if kill_switch_engaged:
             raise KillSwitchEngagedError()
 
-        # Simulate fill with realistic costs
-        fill = self._simulate_fill(symbol, side, size, price, spread_cost)
+        # Verify market state is registered (WO-008a-R6 staleness guard)
+        if self._current_market_state is None:
+            raise ValueError(
+                "EXEC_NO_MARKET_STATE: MarketState not registered. "
+                "Call set_market_state() before place_order(). "
+                "The paper venue refuses to fill without current market data."
+            )
+
+        # Verify market state is not stale (WO-008a-R6 staleness guard)
+        if self._market_state_timestamp is None:
+            raise ValueError(
+                "EXEC_NO_MARKET_STATE_TIMESTAMP: MarketState timestamp not recorded. "
+                "This is a staleness guard invariant violation."
+            )
+
+        state_age = datetime.now(UTC) - self._market_state_timestamp
+        if state_age > self._staleness_threshold:
+            raise ValueError(
+                f"EXEC_STALE_MARKET_STATE: MarketState is too old ({state_age.total_seconds():.1f}s). "
+                f"Threshold: {self._staleness_threshold.total_seconds():.1f}s. "
+                f"The paper venue refuses to fill against stale market data."
+            )
+
+        # Simulate fill with realistic costs (paper venue computes internally)
+        fill = self._simulate_fill(symbol, side, size, price)
         return {
             "timestamp": fill.timestamp.isoformat(),
             "symbol": fill.symbol,
             "side": fill.side,
             "size": float(fill.size),
-            "fill_price": float(fill.fill_price),
-            "fees": float(fill.fees),
-            "spread_cost": float(fill.spread_cost),
-            "slippage_cost": float(fill.slippage_cost),
-            "total_cost": float(fill.total_cost),
+            "fill_price": float(fill.fill_price),  # Includes spread cost (ask for BUY, bid for SELL)
+            "fees": float(fill.fees),  # Additive cost
+            "spread_cost": float(fill.spread_cost),  # Attribution only (included in fill_price, NOT additive)
+            "slippage_cost": float(fill.slippage_cost),  # Additive cost
+            "total_cost": float(fill.total_cost),  # fees + slippage only (WO-008a-R6: spread not additive)
             "cad_value": float(fill.cad_value),
         }
 
@@ -161,50 +232,65 @@ class PaperExecutionClient(ExchangeClient):
         return
 
     def _simulate_fill(
-        self, symbol: str, side: str, size: float, price: float,
-        spread_cost: Decimal = None
+        self, symbol: str, side: str, size: float, price: float
     ) -> Fill:
         """
-        Simulate fill with realistic cost modeling.
+        Simulate fill with realistic cost modeling (computed internally).
+
+        The paper venue computes all fill economics from the current MarketState:
+        - Executed price reflects spread crossing (BUY pays ask, SELL gets bid)
+        - Fees computed from notional (additive cost)
+        - Spread cost from observed bid/ask (ATTRIBUTION, not additive - WO-008a-R6)
+        - Slippage as assumed constant (additive cost - WO-008a-R5 labeling required)
 
         Args:
             symbol: Trading pair
             side: "BUY" or "SELL"
             size: Order size
-            price: Intended price
-            spread_cost: Observed spread cost from market (required for T028)
+            price: Order type/limit price from order intent (NOT used for fill)
 
         Returns:
             Fill with all cost components
 
         Constitutional requirements:
             - All costs included (Principle I: Truth Before Profit)
-            - No synthetic spread (T028): spread_cost must be passed in
+            - No synthetic spread (T028): spread from observed bid/ask
+            - Fill economics computed by paper venue (WO-008a-R5)
 
         Raises:
-            ValueError: If spread_cost is not provided (T028: no synthetic spread)
+            ValueError: If MarketState not registered
         """
-        if spread_cost is None:
-            raise ValueError(
-                "spread_cost is required (T028: no synthetic spread). "
-                "Use calculate_costs_from_market_state() to get observed spread cost."
-            )
+        if self._current_market_state is None:
+            raise ValueError("MarketState not registered. Call set_market_state() first.")
 
         size_dec = Decimal(str(size))
-        price_dec = Decimal(str(price))
-        notional = size_dec * price_dec
+        ms = self._current_market_state
 
-        # Calculate trading fee
+        # EXECUTED PRICE: Reflect spread crossing
+        # BUY orders cross the spread and pay the ask
+        # SELL orders cross the spread and receive the bid
+        if side == "BUY":
+            executed_price = ms.best_ask  # Buyer pays ask
+        else:  # SELL
+            executed_price = ms.best_bid  # Seller receives bid
+
+        # Calculate notional from EXECUTED price (not order intent price)
+        notional = size_dec * executed_price
+
+        # 1. Trading fee (from notional)
         fees = notional * (self._fee_rate_pct / Decimal("100"))
 
-        # Use observed spread cost (passed in, not synthetic)
-        spread_cost_dec = Decimal(str(spread_cost))
+        # 2. Spread cost (from observed bid/ask - half spread × size)
+        # Buy pays (ask - mid) = half spread, Sell receives (mid - bid) = half spread
+        spread_cost = (ms.spread / Decimal("2")) * size_dec
 
-        # Calculate slippage cost
+        # 3. Slippage cost (assumed 0.1% of notional - labeled per WO-008a-R5)
         slippage_cost = notional * self._slippage_factor
 
-        # Total cost
-        total_cost = fees + spread_cost_dec + slippage_cost
+        # Total cost (WO-008a-R6: spread is ATTRIBUTION, not additive)
+        # Executed price (ask/bid) already includes spread crossing cost
+        # Total cost = fees + slippage only (actual additive costs)
+        total_cost = fees + slippage_cost
 
         # CAD value (assume 1 USD = 1.35 CAD for simplicity)
         cad_value = notional * Decimal("1.35")
@@ -214,8 +300,8 @@ class PaperExecutionClient(ExchangeClient):
             symbol=symbol,
             side=side,
             size=size_dec,
-            fill_price=price_dec,
-            spread_cost=spread_cost_dec,
+            fill_price=executed_price,  # Reflects spread crossing
+            spread_cost=spread_cost,
             slippage_cost=slippage_cost,
             fees=fees,
             total_cost=total_cost,
