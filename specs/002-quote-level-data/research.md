@@ -18,8 +18,17 @@ This document consolidates research findings for the Quote-Level Data feature. A
 
 **Rationale**:
 - v1 trades-only feed provides ~14 events/min, too sparse for meaningful signals
-- v2 book channel provides hundreds to thousands of quote updates per minute
-- v2 provides CRC checksum validation for book integrity (load-bearing for data honesty)
+  *(provenance: MEASURED locally on 2026-07-12, not a vendor claim — see progress.md
+  session log. Retained as an observation, not a protocol assertion.)*
+- ⚠ **UNVERIFIED VENUE CLAIM (flagged under rule 0.1e, 2026-07-19):** "v2 book channel
+  provides hundreds to thousands of quote updates per minute". **No citation exists
+  for this figure and no measurement backs it.** Kraken publishes no rate guarantee.
+  This is precisely the question WO-008b was created to answer (acceptance threshold:
+  sustained ≥60 MarketStates/min), and it remains OPEN. It must NOT be relied upon as
+  established fact until a live capture measures it.
+- v2 provides CRC32 checksum validation for book integrity (load-bearing for data
+  honesty). *(cite: <https://docs.kraken.com/api/docs/websocket-v2/book/> — book
+  messages carry a `checksum` field, "CRC32 checksum for the top 10 bids and asks".)*
 - ~~v2 provides snapshot/incremental protocol with sequence numbers for gap detection~~
   **CORRECTED 2026-07-19 (WO-009b): THIS SENTENCE WAS FALSE.** The Kraken v2
   **public** book channel provides a snapshot/incremental protocol with a **CRC32
@@ -42,10 +51,15 @@ This document consolidates research findings for the Quote-Level Data feature. A
 - **Use third-party data provider**: Rejected — adds dependency; violates venue independence (Principle VII)
 - **Full order book depth**: Rejected — out of scope for Sprint 2; top-of-book sufficient for cost model
 
-**Evidence**:
-- Kraken v2 API documentation publicly available
-- v2 book channel checksum algorithm documented (CRC-32)
-- Snapshot/incremental protocol specified in v2 docs
+**Evidence** *(citations added 2026-07-19 under rule 0.1e — the originals asserted that
+documentation existed without ever pointing at it, which is how the false sequence-number
+claim passed review)*:
+- Kraken v2 API documentation: <https://docs.kraken.com/api/docs/websocket-v2/book/>
+- Checksum algorithm (CRC32, top 10 levels per side, computed over the POST-update
+  book): <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
+- Snapshot/incremental protocol, message envelope and `qty: 0` deletion semantics:
+  <https://docs.kraken.com/api/docs/websocket-v2/book/>
+- Legal subscription depths (10/25/100/500/1000): same source
 
 ---
 
@@ -76,9 +90,17 @@ This document consolidates research findings for the Quote-Level Data feature. A
   which is rejected for the same reason. The no-continue principle survives; only its
   trigger changes.
 
-**Evidence**:
-- Kraken v2 docs specify checksum algorithm
-- 5-failure threshold balances noise vs. signal (established practice in similar systems)
+**Evidence** *(citations added 2026-07-19 under rule 0.1e)*:
+- Checksum algorithm and post-update ordering:
+  <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
+- Ground truth available: Kraken publishes a worked 10-level snapshot with checksum
+  3310070434, reproduced in `tests/fixtures/kraken_v2_raw_frames.py`. **No incremental
+  checksum example is published**, so the incremental path has no documented ground
+  truth — verification deferred to first live contact (WO-008b-A).
+- 5-failure threshold: NOT a vendor specification. Project judgement, chosen to
+  balance noise vs. signal. *(flagged under 0.1e: previously stated as "established
+  practice in similar systems" with no source. It is our own call, and is now labelled
+  as such rather than borrowing unearned authority.)*
 
 ---
 
@@ -98,7 +120,13 @@ This document consolidates research findings for the Quote-Level Data feature. A
 - **Trade through with warning**: Rejected — risks real losses on corrupt data
 
 **Evidence**:
-- 5% threshold is conservative (typical spreads on BTC/USD are <0.1%)
+- ⚠ **UNCITED MARKET CLAIM (flagged under rule 0.1e, 2026-07-19):** "typical spreads on
+  BTC/USD are <0.1%". No source and no measurement backs this. It is plausible and is
+  not load-bearing for correctness — the 5% threshold only has to be far above normal —
+  but it is stated as fact without provenance. Flagged rather than corrected: the
+  observed-spread capture in WO-008b will supply a real measured distribution, at which
+  point this line should be replaced with our own data.
+- 5% threshold is a project judgement, not a vendor specification.
 - Principle V explicitly forbids assumed/fallback spreads (FR-015a)
 
 ---

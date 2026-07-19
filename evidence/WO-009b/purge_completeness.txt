@@ -1,0 +1,196 @@
+WO-009b ADDENDUM — §2 PURGE COMPLETENESS CHECK
+Generated: 2026-07-19T14:54:42Z
+Ruling: veto DECLINED — the SequenceGapError / SEQUENCE_GAP_RESNAPSHOT removal
+is RATIFIED. This verifies no consumer still references the purged vocabulary.
+
+################ THE GREP, AS SPECIFIED ################
+=== COMMAND: grep -rn "SequenceGapError|SEQUENCE_GAP_RESNAPSHOT" . ===
+./.git/COMMIT_EDITMSG:19:    SequenceGapError and SEQUENCE_GAP_RESNAPSHOT removed — an error class and
+./docs/decisions/2026-07-19-research-claims-are-load-bearing.md:25:        ├─> data-adapter.yml         class SequenceGapError, SEQUENCE_GAP_RESNAPSHOT
+./evidence/WO-009/speckit_analyze.txt:37:specs/002-quote-level-data/analyze-report.md:74:| FR-018a (sequence gap) | Reason Codes: SEQUENCE_GAP_RESNAPSHOT defined | ✅ ENFORCED |
+./evidence/WO-009/speckit_analyze.txt:42:specs/002-quote-level-data/analyze-report.md:218:- Reason Codes (data-adapter.yml): PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+./evidence/WO-009/speckit_analyze.txt:47:specs/002-quote-level-data/contracts/data-adapter.yml:89:class SequenceGapError(FeedError):
+./evidence/WO-009/speckit_analyze.txt:51:specs/002-quote-level-data/contracts/data-adapter.yml:329:| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+./evidence/WO-009/speckit_analyze.txt:109:specs/002-quote-level-data/tasks.md:170:  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+./evidence/WO-009/speckit_analyze.txt:111:specs/002-quote-level-data/tasks.md:380:  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+./evidence/WO-009/speckit_analyze.txt:151:     :89  class SequenceGapError(FeedError)
+./evidence/WO-009/speckit_analyze.txt:154:     :329 reason code SEQUENCE_GAP_RESNAPSHOT
+./evidence/WO-009b/contract_change.txt:17:class SequenceGapError(FeedError):
+./evidence/WO-009b/contract_change.txt:53:| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+./evidence/WO-009b/contract_change.txt:67:# class SequenceGapError(FeedError):
+./evidence/WO-009b/contract_change.txt:88:-class SequenceGapError(FeedError):
+./evidence/WO-009b/contract_change.txt:92:+# class SequenceGapError(FeedError):
+./evidence/WO-009b/contract_change.txt:134:-| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+./evidence/WO-009b/contract_change.txt:135:+| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+./evidence/WO-009b/contract_change.txt:147:  SequenceGapError        -> ChecksumValidationError   (pre-existing, same file)
+./evidence/WO-009b/contract_change.txt:148:  SEQUENCE_GAP_RESNAPSHOT -> CHECKSUM_RESYNC           (pre-existing, same table)
+./evidence/WO-009b/contract_change.txt:157:342:| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+./evidence/WO-009b/purge_completeness.txt:3:Ruling: veto DECLINED — the SequenceGapError / SEQUENCE_GAP_RESNAPSHOT removal
+./evidence/WO-009b/purge_completeness.txt:7:=== COMMAND: grep -rn "SequenceGapError|SEQUENCE_GAP_RESNAPSHOT" . ===
+./evidence/WO-009b/residual_sequence_grep.txt:8:specs/002-quote-level-data/analyze-report.md:74:| FR-018a (sequence gap) | Reason Codes: SEQUENCE_GAP_RESNAPSHOT defined | ✅ ENFORCED |
+./evidence/WO-009b/residual_sequence_grep.txt:13:specs/002-quote-level-data/analyze-report.md:218:- Reason Codes (data-adapter.yml): PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+./evidence/WO-009b/residual_sequence_grep.txt:18:specs/002-quote-level-data/contracts/data-adapter.yml:90:# class SequenceGapError(FeedError):
+./evidence/WO-009b/residual_sequence_grep.txt:23:specs/002-quote-level-data/contracts/data-adapter.yml:342:| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+./evidence/WO-009b/residual_sequence_grep.txt:52:specs/002-quote-level-data/research.md:237:**CORRECTED 2026-07-19 (WO-009b):** `SEQUENCE_GAP_RESNAPSHOT` is **withdrawn** — it
+./evidence/WO-009b/residual_sequence_grep.txt:83:specs/002-quote-level-data/tasks.md:173:  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(WITHDRAWN — trigger cannot occur; see WO-009b §2)*, PAUSE_ON_BOOK_UNAVAILABLE
+./evidence/WO-009b/residual_sequence_grep.txt:85:specs/002-quote-level-data/tasks.md:384:  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(withdrawn WO-009b)*, ABNORMAL_SPREAD_REJECT
+./evidence/WO-009b/residual_sequence_grep.txt:105:  (d) commented-out code in data-adapter.yml (SequenceGapError)
+./instructions.md:41:`contracts/data-adapter.yml` defines `class SequenceGapError` and reason code
+./instructions.md:42:`SEQUENCE_GAP_RESNAPSHOT` — an error type and reason code for an event that
+./instructions.md:91:   `SequenceGapError` / `SEQUENCE_GAP_RESNAPSHOT`, if anything?
+./instructions.md:110:Veto DECLINED — the SequenceGapError / SEQUENCE_GAP_RESNAPSHOT removal is
+./instructions.md:117:    grep -rn "SequenceGapError\|SEQUENCE_GAP_RESNAPSHOT" . \
+./specs/002-quote-level-data/analyze-report.md:74:| FR-018a (sequence gap) | Reason Codes: SEQUENCE_GAP_RESNAPSHOT defined | ✅ ENFORCED |
+./specs/002-quote-level-data/analyze-report.md:218:- Reason Codes (data-adapter.yml): PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+./specs/002-quote-level-data/contracts/data-adapter.yml:90:# class SequenceGapError(FeedError):
+./specs/002-quote-level-data/contracts/data-adapter.yml:342:| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+./specs/002-quote-level-data/research.md:265:**CORRECTED 2026-07-19 (WO-009b):** `SEQUENCE_GAP_RESNAPSHOT` is **withdrawn** — it
+./specs/002-quote-level-data/tasks.md:173:  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(WITHDRAWN — trigger cannot occur; see WO-009b §2)*, PAUSE_ON_BOOK_UNAVAILABLE
+./specs/002-quote-level-data/tasks.md:384:  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(withdrawn WO-009b)*, ABNORMAL_SPREAD_REJECT
+./src/trading/logkit/decision.py:12:  (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
+./src/trading/logkit/decision.py:39:        #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
+Binary file ./src/trading/logkit/__pycache__/decision.cpython-314.pyc matches
+
+################ ⭐ THE FINDING — THE ADDENDUM'S CONCERN WAS CORRECT ################
+The purge WAS incomplete. PRODUCTION CODE still carried the dead vocabulary:
+
+  src/trading/logkit/decision.py:11  module docstring listing the code
+  src/trading/logkit/decision.py:37  entry in VALID_REASON_CODES["DATA"]
+
+This is exactly 'a contract purge that leaves consumers referencing the purged
+vocabulary just relocates the fiction'. The contract said the code was
+withdrawn while the logging module still published it as valid.
+
+################ SAFETY CHECKS PERFORMED BEFORE REMOVING IT ################
+=== COMMAND: is it ever EMITTED (not merely declared)? ===
+  pre-change: 11:- Data layer: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+  pre-change: 37:        "SEQUENCE_GAP_RESNAPSHOT",  # T018: Sequence gap detected, requesting fresh snapshot
+  Only two occurrences existed, BOTH declarations (docstring + list entry).
+  No call site anywhere in src/ ever emitted it.
+=== COMMAND: does any TEST assert its existence? ===
+  NONE — no test references it (rule 0.1d check: no test asserts a dead code exists)
+=== COMMAND: is VALID_REASON_CODES enforced anywhere? ===
+./src/trading/logkit/decision.py:35:VALID_REASON_CODES = {
+  It is self-described in-code as 'documented for reference' — not enforced.
+
+################ DISPOSITION OF EVERY HIT ################
+
+A. src/trading/logkit/decision.py:11, :37   -> **REMOVED** (production code)
+   The only live consumer. Entry commented out with the withdrawal rationale
+   rather than deleted outright, so the record survives in place.
+=== COMMAND: git diff -- src/trading/logkit/decision.py ===
+warning: in the working copy of 'src/trading/logkit/decision.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/trading/logkit/decision.py b/src/trading/logkit/decision.py
+index ac17c7b..bf46201 100644
+--- a/src/trading/logkit/decision.py
++++ b/src/trading/logkit/decision.py
+@@ -8,7 +8,8 @@ Constitutional Principles:
+ - IX. Secrets and Safety Rails: No secrets in logs
+ 
+ Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
+-- Data layer: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
++- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE
++  (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
+ - Cost model: ABNORMAL_SPREAD_REJECT
+ - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
+ - Strategy layer: NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL
+@@ -34,7 +35,15 @@ class Layer(Enum):
+ VALID_REASON_CODES = {
+     "DATA": [
+         "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
+-        "SEQUENCE_GAP_RESNAPSHOT",  # T018: Sequence gap detected, requesting fresh snapshot
++        # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
++        #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
++        # The Kraken v2 PUBLIC book channel transmits no sequence number, so this
++        # code's trigger CANNOT OCCUR. A reason code that can never legitimately
++        # fire is a false guarantee (rule 0.1d). Superseded by CHECKSUM_RESYNC,
++        # which covers the real detector and is strictly broader — checksum
++        # divergence catches missed messages, misapplied updates, and our own
++        # book-maintenance bugs, none of which a sequence counter can see.
++        # Verified before removal: never emitted anywhere, no test referenced it.
+         "PAUSE_ON_BOOK_UNAVAILABLE",  # T017: Book channel disconnected, paused
+     ],
+     "COST_MODEL": [
+
+B. specs/002-quote-level-data/contracts/data-adapter.yml:90, :342
+   -> RETAINED AS ANNOTATED HISTORY. Commented-out class + struck-through
+      table row, both carrying the WITHDRAWN rationale. This IS the purge.
+
+C. specs/002-quote-level-data/tasks.md:173, :384
+   -> RETAINED AS ANNOTATED HISTORY. Struck through, marked withdrawn.
+
+D. specs/002-quote-level-data/research.md:237
+   -> RETAINED AS ANNOTATED HISTORY. The CORRECTED note that withdraws it.
+
+E. specs/002-quote-level-data/analyze-report.md:74, :218
+   -> RETAINED UNCHANGED. Dated record of the WO-005-A analysis. Historical
+      records are annotated, not rewritten — it documents what was believed
+      then, which is the evidence. NOT a live mandate.
+
+F. docs/decisions/2026-07-19-research-claims-are-load-bearing.md:25
+   -> RETAINED. The propagation diagram; naming the code is the point.
+
+G. evidence/WO-009/*, evidence/WO-009b/*
+   -> RETAINED. Evidence files quoting the before-state. Immutable by rule 0.6a.
+
+H. instructions.md:41,42,91,110,117
+   -> RETAINED. The work order and this addendum themselves.
+
+I. .git/COMMIT_EDITMSG
+   -> Git internal scratch file, not a source artifact. No action.
+
+################ VERIFICATION AFTER REMOVAL ################
+=== COMMAND: any LIVE (non-historical, non-evidence) reference remaining? ===
+src/trading/logkit/decision.py:12:  (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
+src/trading/logkit/decision.py:39:        #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
+
+=== COMMAND: confirm the reason-code vocabulary now published ===
+  DATA layer codes: ['CHECKSUM_RESYNC', 'PAUSE_ON_BOOK_UNAVAILABLE']
+  SEQUENCE_GAP_RESNAPSHOT present: False
+
+ANSWER: zero LIVE references remain. All surviving hits are annotated history,
+immutable evidence, or the work order text itself.
+
+################ ⚠ CORRECTION — THE 'ZERO LIVE REFERENCES' GREP WAS MIS-FILTERED ################
+The verification grep printed two hits and I concluded 'zero LIVE references
+remain'. The filter 'grep -v "^\s*#"' was applied to lines that begin with
+the 'path:lineno:' prefix, so it never matched the comment marker and could
+not exclude anything. The conclusion was right; the check that produced it
+was not. Corrected by inspecting both hits directly.
+
+=== THE TWO HITS, IN FULL CONTEXT ===
+--- src/trading/logkit/decision.py:12 ---
+    Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
+    - Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE
+      (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
+    - Cost model: ABNORMAL_SPREAD_REJECT
+    VERDICT: module DOCSTRING text recording the withdrawal. Not a code path.
+
+--- src/trading/logkit/decision.py:39 ---
+            "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
+            # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
+            #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
+            # The Kraken v2 PUBLIC book channel transmits no sequence number, so this
+    VERDICT: COMMENTED OUT. The '#' makes it inert. Not a list member.
+
+=== AUTHORITATIVE CHECK — ask the interpreter, not a regex ===
+  every reason code the module publishes:
+    CHECKSUM_RESYNC
+    PAUSE_ON_BOOK_UNAVAILABLE
+    ABNORMAL_SPREAD_REJECT
+    PASS
+    CLAMP
+    VETO
+    KILL_SWITCH_ENGAGED
+    NO_SIGNAL
+    LONG_SIGNAL
+    SHORT_SIGNAL
+    ORDER_FILLED
+    ORDER_REJECTED
+
+  SEQUENCE_GAP_RESNAPSHOT in the published vocabulary: False
+  assertion passed: the withdrawn code is NOT reachable at runtime
+
+CONFIRMED ANSWER: zero live references. The runtime vocabulary no longer
+contains the withdrawn code; the only surviving mentions in production are a
+docstring note and a commented-out line, both deliberate annotations.

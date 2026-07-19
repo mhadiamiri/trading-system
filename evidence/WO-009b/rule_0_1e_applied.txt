@@ -1,0 +1,88 @@
+WO-009b ADDENDUM — RULE 0.1e ADDED AND APPLIED
+Generated: 2026-07-19T14:55:43Z
+
+################ 1. THE RULE, ADDED TO A DURABLE HOME ################
+The addendum says: 'add to the boilerplate for all future work orders'.
+
+PROBLEM FOUND: the standing rules had NO durable home. They lived ONLY inside
+instructions.md, which is overwritten each time a work order is issued — the
+0.1-0.9 set could only be recovered from git history.
+=== COMMAND: where did the rules live? ===
+  ./docs/standing-rules.md
+  ./instructions.md
+  ./specs/002-quote-level-data/quickstart.md
+  ./specs/002-quote-level-data/research.md
+  ./specs/002-quote-level-data/tasks.md
+  (instructions.md only — the spec files match on unrelated text)
+=== COMMAND: does the constitution carry them? ===
+0
+  0 == no. The constitution holds principles, not the 0.x operating rules.
+
+REMEDY: docs/standing-rules.md now holds the canonical set, recovered from
+03b7460 and extended with 0.1e. The project lead copies from there.
+=== COMMAND: sed -n '/0.1e/,/blocking finding/p' docs/standing-rules.md ===
+- **0.1e RESEARCH ARTIFACTS ARE LOAD-BEARING.** *(NEW — 2026-07-19, WO-009b)*
+  Any claim about an external protocol, API, or venue behavior must cite the vendor's
+  documentation at the point of claim. Uncited protocol claims may not flow into
+  requirements. `/speckit-analyze` should treat an uncited protocol claim in a spec as a
+  blocking finding, same class as a principle violation.
+
+NOTE: creating this file does NOT by itself apply the rule to future work
+orders — the boilerplate is authored by the project lead. This gives that
+boilerplate a source of truth to copy from instead of git archaeology.
+
+################ 2. THE RULE, APPLIED TO research.md ################
+Instruction: 'every protocol claim you touch gets a citation, not just the
+one you're correcting.'
+
+=== COMMAND: citation count in research.md, before vs after ===
+  before (at 170f264): 5
+  after              : 10
+
+=== CLAIMS NOW CITED (Decision 1 + Decision 2, the blocks touched) ===
+  30:  honesty). *(cite: <https://docs.kraken.com/api/docs/websocket-v2/book/> — book
+  37:  Source: <https://docs.kraken.com/api/docs/websocket-v2/book/> and
+  38:  <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/> — book messages carry
+  57:- Kraken v2 API documentation: <https://docs.kraken.com/api/docs/websocket-v2/book/>
+  59:  book): <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
+  61:  <https://docs.kraken.com/api/docs/websocket-v2/book/>
+  95:  <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
+  309:**Documentation**: ~~https://docs.kraken.com/websockets/~~
+  311:references: <https://docs.kraken.com/api/docs/websocket-v2/book/> and
+  312:<https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
+
+################ 3. ⚠ TWO UNCITED CLAIMS FOUND AND FLAGGED, NOT QUIETLY FIXED ################
+
+Applying 0.1e surfaced two further claims stated as fact with no source.
+Neither is corrected — there is nothing to correct them TO without data.
+Both are flagged in place so they cannot be relied on as established:
+
+A. THE THROUGHPUT CLAIM — research.md Decision 1
+    - ⚠ **UNVERIFIED VENUE CLAIM (flagged under rule 0.1e, 2026-07-19):** "v2 book channel
+      provides hundreds to thousands of quote updates per minute". **No citation exists
+      for this figure and no measurement backs it.** Kraken publishes no rate guarantee.
+      This is precisely the question WO-008b was created to answer (acceptance threshold:
+      sustained ≥60 MarketStates/min), and it remains OPEN. It must NOT be relied upon as
+      established fact until a live capture measures it.
+
+    THIS IS THE PREMISE THE WHOLE SPRINT RESTS ON. Sprint 2 moved from the
+    trades feed to L2 book data because book updates were assumed 'far more
+    frequent'. That assumption has NO citation and NO measurement — and it is
+    exactly the open question WO-008b exists to answer (≥60 MarketStates/min).
+    Under 0.1e it may not flow into requirements as established fact.
+
+B. THE SPREAD CLAIM — research.md Decision 3
+    - ⚠ **UNCITED MARKET CLAIM (flagged under rule 0.1e, 2026-07-19):** "typical spreads on
+      BTC/USD are <0.1%". No source and no measurement backs this. It is plausible and is
+      not load-bearing for correctness — the 5% threshold only has to be far above normal —
+      but it is stated as fact without provenance. Flagged rather than corrected: the
+      observed-spread capture in WO-008b will supply a real measured distribution, at which
+      point this line should be replaced with our own data.
+
+################ 4. A CLAIM DOWNGRADED FROM BORROWED AUTHORITY ################
+The 5-consecutive-failure threshold was justified as 'established practice in
+similar systems' — an appeal to an unnamed authority. Relabelled:
+  - 5-failure threshold: NOT a vendor specification. Project judgement, chosen to
+    balance noise vs. signal. *(flagged under 0.1e: previously stated as "established
+    practice in similar systems" with no source. It is our own call, and is now labelled
+    as such rather than borrowing unearned authority.)*

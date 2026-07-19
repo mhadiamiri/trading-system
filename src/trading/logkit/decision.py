@@ -8,7 +8,8 @@ Constitutional Principles:
 - IX. Secrets and Safety Rails: No secrets in logs
 
 Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
-- Data layer: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE
+  (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
 - Strategy layer: NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL
@@ -34,7 +35,15 @@ class Layer(Enum):
 VALID_REASON_CODES = {
     "DATA": [
         "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
-        "SEQUENCE_GAP_RESNAPSHOT",  # T018: Sequence gap detected, requesting fresh snapshot
+        # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
+        #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
+        # The Kraken v2 PUBLIC book channel transmits no sequence number, so this
+        # code's trigger CANNOT OCCUR. A reason code that can never legitimately
+        # fire is a false guarantee (rule 0.1d). Superseded by CHECKSUM_RESYNC,
+        # which covers the real detector and is strictly broader — checksum
+        # divergence catches missed messages, misapplied updates, and our own
+        # book-maintenance bugs, none of which a sequence counter can see.
+        # Verified before removal: never emitted anywhere, no test referenced it.
         "PAUSE_ON_BOOK_UNAVAILABLE",  # T017: Book channel disconnected, paused
     ],
     "COST_MODEL": [
