@@ -673,7 +673,14 @@ class KrakenV2BookAdapter:
         """
         levels = []
         for level in raw_levels or []:
-            levels.append((Decimal(str(level["price"])), Decimal(str(level["qty"]))))
+            # WO-008b-A3 §1.1: values arriving as Decimal (parse_float/parse_int)
+            # are used AS-IS so the venue's digits survive. Decimal(str(x)) on a
+            # float would re-render and corrupt the checksum input.
+            price, qty = level["price"], level["qty"]
+            levels.append((
+                price if isinstance(price, Decimal) else Decimal(str(price)),
+                qty if isinstance(qty, Decimal) else Decimal(str(qty)),
+            ))
         return levels
 
     def _parse_book_frame(self, raw_frame: dict) -> List[QuoteUpdate]:
@@ -969,6 +976,7 @@ class KrakenV2BookAdapter:
         self._market_states_emitted = 0
         self._start_time = time.time()
         self.captured_frames = []
+        self.captured_raw_text = []
 
         websocket = await self._connect()
         logger.info(
@@ -997,13 +1005,28 @@ class KrakenV2BookAdapter:
                 self._raw_received += 1
 
                 try:
-                    raw_frame = json.loads(message)
+                    # WO-008b-A3 §1.1: PRESERVE the venue's transmitted digits.
+                    # parse_float/parse_int receive the RAW TEXT of each number,
+                    # so Kraken's "0.00005100" stays "0.00005100". Plain
+                    # json.loads would float it and Decimal(str(float)) would
+                    # render "0.000051", dropping the trailing zeros the CRC32
+                    # digits require. We do NOT re-render into an assumed format
+                    # (e.g. fixed 8dp): that would encode an uncited assumption
+                    # about venue behaviour (rule 0.1e) that holds for BTC/USD
+                    # today and breaks silently on the first symbol Kraken
+                    # renders differently.
+                    raw_frame = json.loads(
+                        message, parse_float=Decimal, parse_int=Decimal
+                    )
                 except json.JSONDecodeError as exc:
                     self._log_error(f"Non-JSON frame from venue: {exc}")
                     continue
 
-                # Retain verbatim for the durable ground-truth fixture (§4.4).
-                self.captured_frames.append(raw_frame)
+                # Retain the RAW WIRE TEXT for the durable ground-truth fixture.
+                # WO-008b-A3: A2 stored the POST-parse structure, which had
+                # already lost trailing zeros — the exact information the
+                # checksum depends on. Store the text as received.
+                self.captured_raw_text.append(message)
 
                 # LAYER 3: the SHARED entry point. Identical to the fixture path.
                 logger.debug(

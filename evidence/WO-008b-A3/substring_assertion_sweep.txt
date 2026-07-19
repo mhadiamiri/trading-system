@@ -1,0 +1,88 @@
+WO-008b-A3 §2 — SUBSTRING ASSERTION SWEEP + PREFIX FREEDOM
+Generated: 2026-07-19T17:49:29Z
+
+################ SWEEP — every substring assertion on codes/messages ################
+tests/integration/test_live_loop.py:128: assert "reason_code" in entry
+tests/integration/test_live_loop.py:621: assert "is_paper_trading()" in source or "TRADING_ENV" in source, \
+tests/integration/test_live_loop.py:1143: assert "rate_refusal_reason" in counters, \
+tests/integration/test_mainnet_guard.py:139: assert "TRADING_ENV=mainnet is BLOCKED" in str(exc)
+tests/integration/test_mainnet_guard.py:140: assert "constitutional guard" in str(exc)
+tests/integration/test_staleness_guard_bite_proof.py:65: assert error_message.startswith("EXEC_NO_MARKET_STATE:"), (
+tests/integration/test_staleness_guard_bite_proof.py:116: assert error_message.startswith("EXEC_STALE_MARKET_STATE:"), (
+tests/test_data_adapters.py:187: assert any("Checksum validation failed" in r.getMessage() for r in records), (
+
+DETERMINATION FOR EACH — can it pass with its mechanism disabled?
+  test_staleness_guard_bite_proof.py:61  EXEC_NO_MARKET_STATE      YES -> CONVERTED to exact
+  test_staleness_guard_bite_proof.py:110 EXEC_STALE_MARKET_STATE   NO (no code extends it) -> CONVERTED anyway for symmetry
+  test_mainnet_guard.py:139/140          TRADING_ENV=mainnet...    NO — no other guard emits this text; the
+                                          adjacent bite proof already proves it fails when disabled.
+  test_data_adapters.py:187              'Checksum validation failed' NO — unique log string; its own bite proof
+                                          (WO-008b-A1 §2) showed 'captured records: []' when silenced.
+  test_live_loop.py:128/1143             dict-key presence checks, not code matching — out of scope.
+
+################ ⚠ FINDING — THE STALENESS CODES WERE NEVER DECLARED ################
+  declared vocabulary (12):
+    ABNORMAL_SPREAD_REJECT
+    CHECKSUM_RESYNC
+    CLAMP
+    KILL_SWITCH_ENGAGED
+    LONG_SIGNAL
+    NO_SIGNAL
+    ORDER_FILLED
+    ORDER_REJECTED
+    PASS
+    PAUSE_ON_BOOK_UNAVAILABLE
+    SHORT_SIGNAL
+    VETO
+
+  EXEC_NO_MARKET_STATE declared?    False
+  EXEC_STALE_MARKET_STATE declared? False
+
+  So a prefix check over the DECLARED vocabulary alone passes trivially and
+  proves NOTHING — the collision lived entirely in production raise strings.
+  The new test therefore scrapes codes RAISED IN PRODUCTION as well.
+  The undeclared staleness codes are themselves a gap (T018 territory):
+  reported, NOT added to the vocabulary here (rule 0.1a, not asked).
+
+################ RENAME (single collision, executed under addendum B) ################
+  EXEC_NO_MARKET_STATE_TIMESTAMP -> EXEC_MARKET_STATE_TIMESTAMP_MISSING
+=== COMMAND: git diff -- src/trading/execution/paper.py ===
+-                "EXEC_NO_MARKET_STATE_TIMESTAMP: MarketState timestamp not recorded. "
++                "EXEC_MARKET_STATE_TIMESTAMP_MISSING: MarketState timestamp not recorded. "
+=== ORPHAN CHECK: any reference to the old code anywhere? ===
+tests/test_reason_code_vocabulary.py:13:`EXEC_NO_MARKET_STATE_TIMESTAMP` raised by the adjacent guard — so a substring
+tests/test_reason_code_vocabulary.py:94:        assert _prefix_collisions(["EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP"]) == [
+tests/test_reason_code_vocabulary.py:95:            ("EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP")
+
+################ test_no_market_state_guard NOW BITES — four artifacts ################
+--- ARTIFACT 1: PASS ---
+
+real	0m2.037s
+user	0m0.000s
+sys	0m0.000s
+--- ARTIFACT 2: ACTUAL FAIL (its own guard disabled) ---
+  guard disabled
+E   AssertionError: Error must raise reason code exactly 'EXEC_NO_MARKET_STATE'. Got: EXEC_MARKET_STATE_TIMESTAMP_MISSING: MarketState timestamp not recorded. This is a staleness guard invariant violation.
+E   assert False
+E    +  where False = <built-in method startswith of str object at 0x00000136DDB8B410>('EXEC_NO_MARKET_STATE:')
+E    +    where <built-in method startswith of str object at 0x00000136DDB8B410> = 'EXEC_MARKET_STATE_TIMESTAMP_MISSING: MarketState timestamp not recorded. This is a staleness guard invariant violation.'.startswith
+FAILED tests/integration/test_staleness_guard_bite_proof.py::test_no_market_state_guard
+========================= 1 failed, 2 passed in 1.60s =========================
+--- ARTIFACT 3: PASS AFTER RESTORE ---
+  restored
+
+real	0m2.042s
+user	0m0.000s
+sys	0m0.015s
+--- ARTIFACT 4: diff shows ONLY the intended rename ---
+  added lines: 2
+-                "EXEC_NO_MARKET_STATE_TIMESTAMP: MarketState timestamp not recorded. "
++                "EXEC_MARKET_STATE_TIMESTAMP_MISSING: MarketState timestamp not recorded. "
+  ^ the rename only; no bite-proof residue
+
+################ PREFIX-FREEDOM CHECK — BITE PROOF ################
+PASS (4 tests) -> collision reintroduced -> ACTUAL FAIL:
+  E   AssertionError: REASON CODE PREFIX COLLISION among codes raised in
+      production: [('EXEC_NO_MARKET_STATE', 'EXEC_NO_MARKET_STATE_TIMESTAMP')].
+      No reason code may be a prefix of another.
+-> restored -> PASS (4 tests). Captured live this session.

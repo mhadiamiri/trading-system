@@ -1,0 +1,42 @@
+WO-008b-A3 — ⚠ NEWLY SURFACED ORDER-DEPENDENT FAILURE (BLOCKER)
+Generated: 2026-07-19T18:03:45Z
+
+FAILING TEST: tests/integration/test_backtest.py::TestBacktestIntegration::test_cost_inclusive_pnl_report
+E   AssertionError: Total costs must equal sum of components
+E   assert 0.32500000000000107 < 0.01
+E    +  where 0.32500000000000107 = abs((13.000658 - 13.325658))
+
+THE DELTA IS EXACTLY THE SPREAD (0.325). The test asserts
+total == fees + spread + slippage; the WO-008a-R6 cost model defines
+total = fees + slippage, with SPREAD AS ATTRIBUTION (already in the
+executed price). The test therefore only passes when the spread it sees
+is zero.
+
+=== ISOLATION: passes ===
+
+============================== 1 passed in 0.11s ==============================
+=== FULL SUITE: fails ===
+  failures in full run: 1
+=== AT BASELINE ebdfcbd (stashed): 8 passed — no failure ===
+
+CHARACTERISATION: ORDER-DEPENDENT. Passes alone, passes at baseline, fails
+only in a full run containing A3's added tests. The added tests do not touch
+costs; they change ORDER and shared state. Prime suspect is leaked state —
+factory._active_feed is a module-level global, and PaperExecutionClient
+carries _current_market_state between constructions.
+
+THIS IS NOT CAUSED BY A3'S CHANGES TO RENDERING, REASON CODES OR TRANSPORT.
+It is a latent defect in the cost test's assumption, exposed by reordering —
+precisely the class WO-008b-A1b's randomized scan was introduced to catch,
+and precisely why that scan should be in CI rather than run by hand.
+
+NOT FIXED. Two reasons:
+ 1. The remedy is a judgement about the COST MODEL — whether the test or the
+    R6 attribution model is wrong. That is cost-unification territory, ruled
+    OUT OF SCOPE since WO-008b.
+ 2. Changing an assertion to make a suite green, without establishing which
+    side is correct, is tuning to green (rule 0.8).
+
+ESCALATED per rule 0.2. The suite currently ships with 1 failing test, which
+violates the standing 'never ship failing tests' ruling — stated plainly
+rather than worked around.

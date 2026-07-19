@@ -1,0 +1,28 @@
+2026-07-19 13:54:37,034 INFO [kraken_v2_book] adapter initialised mode=live venue=kraken_mainnet
+2026-07-19 13:54:37,034 INFO [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+2026-07-19 13:54:38,689 INFO [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+2026-07-19 13:54:38,689 INFO [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+2026-07-19 13:56:38,879 INFO [kraken_v2_book] DISCONNECTED cleanly. raw=1376 emitted=1254
+SMOKE START (UTC): 2026-07-19T17:54:37.034140+00:00
+mode=live  venue_name=kraken_mainnet
+WS_URL=wss://ws.kraken.com/v2  symbol=BTC/USD  depth=10
+  SAMPLE MarketState #1: bid=64525.0 ask=64525.1 spread=0.1 symbol=BTC/USD ts=2026-07-19 17:54:38.935095+00:00
+  SAMPLE MarketState #2: bid=64525.0 ask=64525.1 spread=0.1 symbol=BTC/USD ts=2026-07-19 17:54:38.947507+00:00
+  SAMPLE MarketState #3: bid=64525.0 ask=64525.1 spread=0.1 symbol=BTC/USD ts=2026-07-19 17:54:39.071720+00:00
+
+==============================================================
+SMOKE END (UTC): 2026-07-19T17:56:38.879231+00:00   elapsed=121.8s
+raw frames received      : 1376
+  of which snapshots     : 1
+  of which updates       : 1254
+  non-book (heartbeat/ack): 121
+MarketStates emitted     : 1254
+checksum failures        : 0 (consecutive, current)
+awaiting_resync at end   : False
+venue_name as recorded   : kraken_mainnet
+book depth at end        : 10/10
+per-minute emissions     : {0: 821, 1: 432, 2: 1}
+SMOKE OBSERVATION ONLY — NOT a throughput result (<60s refusal applies to rates)
+==============================================================
+diagnostic counters: {"raw_messages_received": 1376, "market_states_emitted": 1254, "elapsed_seconds": 121.8476185798645, "raw_rate_per_minute": 677.5676124181812, "emitted_rate_per_minute": 617.492577014825, "rate_reported": true}
+captured 1376 raw frames -> evidence/WO-008b-A3/captured_raw_text.json

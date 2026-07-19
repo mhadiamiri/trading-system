@@ -170,7 +170,7 @@ class PaperExecutionClient(ExchangeClient):
         # Verify market state is not stale (WO-008a-R6 staleness guard)
         if self._market_state_timestamp is None:
             raise ValueError(
-                "EXEC_NO_MARKET_STATE_TIMESTAMP: MarketState timestamp not recorded. "
+                "EXEC_MARKET_STATE_TIMESTAMP_MISSING: MarketState timestamp not recorded. "
                 "This is a staleness guard invariant violation."
             )
 

@@ -58,8 +58,13 @@ async def test_no_market_state_guard():
 
     # Assert the error message contains the correct reason code
     error_message = str(exc_info.value)
-    assert "EXEC_NO_MARKET_STATE" in error_message, (
-        f"Error must contain reason code 'EXEC_NO_MARKET_STATE'. Got: {error_message}"
+    # WO-008b-A3 §2: EXACT-code assertion, not a substring. A bare
+    # `"EXEC_NO_MARKET_STATE" in msg` was satisfied by the ADJACENT guard's
+    # message, so this test passed with its own guard disabled (rule 0.1d).
+    # Anchoring on the trailing colon pins the code to itself.
+    assert error_message.startswith("EXEC_NO_MARKET_STATE:"), (
+        f"Error must raise reason code exactly 'EXEC_NO_MARKET_STATE'. "
+        f"Got: {error_message}"
     )
 
     print(f"\n[NO-STATE GUARD - PASS]")
@@ -107,8 +112,10 @@ async def test_stale_market_state_guard():
 
     # Assert the error message contains the correct reason code
     error_message = str(exc_info.value)
-    assert "EXEC_STALE_MARKET_STATE" in error_message, (
-        f"Error must contain reason code 'EXEC_STALE_MARKET_STATE'. Got: {error_message}"
+    # WO-008b-A3 §2: EXACT-code assertion (see note above).
+    assert error_message.startswith("EXEC_STALE_MARKET_STATE:"), (
+        f"Error must raise reason code exactly 'EXEC_STALE_MARKET_STATE'. "
+        f"Got: {error_message}"
     )
 
     print(f"\n[STALE-STATE GUARD - PASS]")

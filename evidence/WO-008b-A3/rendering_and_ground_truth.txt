@@ -1,0 +1,50 @@
+WO-008b-A3 §1 — RENDERING FIX + GROUND TRUTHS
+Generated: 2026-07-19T17:58:04Z
+
+FIX USED: json.loads(message, parse_float=Decimal, parse_int=Decimal)
+  PRESERVE, not re-render. No assumption about Kraken's decimal places is
+  encoded anywhere: the digits are whatever the venue transmitted.
+
+=== the code ===
+                    # WO-008b-A3 §1.1: PRESERVE the venue's transmitted digits.
+                    # parse_float/parse_int receive the RAW TEXT of each number,
+                    # so Kraken's "0.00005100" stays "0.00005100". Plain
+                    # json.loads would float it and Decimal(str(float)) would
+                    # render "0.000051", dropping the trailing zeros the CRC32
+                    # digits require. We do NOT re-render into an assumed format
+                    # (e.g. fixed 8dp): that would encode an uncited assumption
+                    # about venue behaviour (rule 0.1e) that holds for BTC/USD
+                    # today and breaks silently on the first symbol Kraken
+                    # renders differently.
+                    raw_frame = json.loads(
+                        message, parse_float=Decimal, parse_int=Decimal
+
+################ §1.2 INTEGERS / qty:0 ################
+=== what does Kraken actually send for zero-quantity deletions? ===
+  frames with BARE INTEGER qty 0      : 0
+  frames with DECIMAL qty 0.00000000  : 334
+  sample as transmitted               : "qty":0.00000000
+  => Kraken sends zero as a DECIMAL, not a bare integer, so parse_float
+     alone would in fact have sufficed. parse_int=Decimal is retained as
+     defensive: it costs nothing and removes the assumption entirely.
+  ⚠ LIMIT: A2's saved artifact could NOT answer this — it stored the
+     POST-parse structure, so 0.00000000 had already become 0.0. Only this
+     run's RAW TEXT capture could settle it.
+
+################ §1.3 ALL THREE GROUND TRUTHS ################
+  1. DOCUMENTED (Kraken docs)  : expected 3310070434 got 3310070434
+  2. A2 LIVE SNAPSHOT          : expected 3372482100 got 3372482100
+     (A2 frames must be re-rendered because that artifact lost the wire text)
+  3. A3 LIVE, from RAW TEXT    : 1253 of 1253 incremental checksums reproduced
+     A3 snapshot checksum      : 2175437505 reproduced
+
+################ §1.5 THE 1071 vs 1070 DISCREPANCY — ACCOUNTED EXACTLY ################
+  channels among the 1071 type==update frames: {'status': 1, 'book': 1070}
+  the extra frame: {"channel": "status", "type": "update", "data": [{"version": "2.0.10", "system": "online", "api_version": "v2", "connection_id": 2881627734335658280}]
+  => 1070 book updates + 1 channel='status' update = 1071.
+     A2's report counted by TYPE alone, conflating a connection-status
+     message with book updates. The parser correctly ignored it
+     (channel != 'book'). BENIGN — no book frame was skipped.
+  ⚠ That status frame contains a connection_id (a SESSION IDENTIFIER, not a
+     credential). It is present in A2's committed raw json. A3's capture
+     REDACTS it. Reported under item 11 rather than left implicit.

@@ -1,0 +1,20 @@
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 55 files, 183 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code KEPT
+
+Contracts: 6 kept, 0 broken.
