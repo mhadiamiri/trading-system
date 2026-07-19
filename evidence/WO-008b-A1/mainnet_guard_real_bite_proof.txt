@@ -1,0 +1,73 @@
+WO-008b-A1 §3 — MAINNET GUARD REAL BITE PROOF
+Generated: 2026-07-19T15:24:21Z
+
+
+################ ARTIFACT 1 — PASS (guard intact) ################
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q ===
+
+tests\integration\test_mainnet_guard.py ......                           [100%]
+
+============================== 6 passed in 0.04s ==============================
+
+real	0m0.496s
+user	0m0.000s
+sys	0m0.000s
+
+################ ARTIFACT 2 — ACTUAL FAIL (guard deliberately disabled) ################
+  mainnet guard disabled
+=== COMMAND: git diff -- config/settings.py ===
+diff --git a/config/settings.py b/config/settings.py
+index 88dfa6c..8fc8270 100644
+--- a/config/settings.py
++++ b/config/settings.py
+@@ -75,7 +75,7 @@ class Settings:
+         # TRADING_ENV=mainnet is blocked to prevent accidental real-money orders.
+         # This guard can only be relaxed by a constitutional amendment or
+         # explicit Strategy & Roadmap decision for Phase 3.
+-        if cls.TRADING_ENV == "mainnet":
++        if False:  # BITE PROOF: guard deliberately disabled
+             raise ValueError(
+                 "TRADING_ENV=mainnet is BLOCKED by constitutional guard. "
+                 "Phase 1 scope permits paper trading only. "
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q ===
+
+tests\integration\test_mainnet_guard.py ....FF                           [100%]
+
+================================== FAILURES ===================================
+____________ TestSettingsMainnetGuard.test_mainnet_env_is_blocked _____________
+tests\integration\test_mainnet_guard.py:114: in test_mainnet_env_is_blocked
+    assert exc is not None, (
+E   AssertionError: GUARD DID NOT FIRE: TRADING_ENV=mainnet was accepted. No code path may reach a real-money venue in Phase 1.
+E   assert None is not None
+__ TestSettingsMainnetGuard.test_guard_is_not_satisfied_by_string_inspection __
+tests\integration\test_mainnet_guard.py:133: in test_guard_is_not_satisfied_by_string_inspection
+    assert isinstance(mainnet_result, ValueError)
+E   assert False
+E    +  where False = isinstance(None, ValueError)
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_guard_is_not_satisfied_by_string_inspection
+========================= 2 failed, 4 passed in 0.10s =========================
+
+real	0m0.564s
+user	0m0.000s
+sys	0m0.000s
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+=== COMMAND: git checkout -- config/settings.py ===
+  restored
+=== COMMAND: time pytest tests/integration/test_mainnet_guard.py -q ===
+
+tests\integration\test_mainnet_guard.py ......                           [100%]
+
+============================== 6 passed in 0.04s ==============================
+
+real	0m0.525s
+user	0m0.000s
+sys	0m0.000s
+
+################ ARTIFACT 4 — EMPTY GIT DIFF ################
+=== COMMAND: git diff -- config/settings.py ===
+^ EMPTY == config/settings.py byte-identical to committed state
+=== COMMAND: git status --porcelain -- config/settings.py ===
+^ EMPTY

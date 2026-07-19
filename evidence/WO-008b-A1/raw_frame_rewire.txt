@@ -1,0 +1,94 @@
+WO-008b-A1 §5 — RAW-FRAME REWIRE
+Generated: 2026-07-19T15:26:29Z
+
+################ ALL 13 QuoteUpdate SITES CONVERTED ################
+=== COMMAND: git show HEAD:<file> | grep -c 'QuoteUpdate('   (BEFORE) ===
+  tests/test_data_adapters.py     : 6
+  tests/integration/test_live_loop.py: 9
+  (each count includes 1 banner-comment line; real sites were 5 and 8 = 13)
+
+=== COMMAND: remaining QuoteUpdate CONSTRUCTION sites (AFTER) ===
+tests/test_data_adapters.py:335:        quote = QuoteUpdate(
+tests/test_data_adapters.py:354:        bad_price = QuoteUpdate(
+tests/test_data_adapters.py:361:        empty_snapshot = QuoteUpdate(
+tests/test_data_adapters.py:369:        deletion = QuoteUpdate(
+
+=== COMMAND: test_live_loop.py now imports raw frames, not QuoteUpdate ===
+28:from tests.fixtures.kraken_v2_raw_frames import (
+41:from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+800:        from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+884:        from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+975:        from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+1050:        from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+1157:        from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+################ THE DELETED TEST ################
+=== COMMAND: git show HEAD:tests/test_data_adapters.py | grep -n 'test_sequence_gap' ===
+221:    async def test_sequence_gap_triggers_resnapshot(self):
+=== COMMAND: grep -n 'test_sequence_gap' tests/   (AFTER — must be gone) ===
+  DELETED — no definition remains
+
+=== COMMAND: the deletion record left in place ===
+    # DELETED WO-008b-A1 §5: test_sequence_gap_triggers_resnapshot
+    #
+    # The Kraken v2 PUBLIC book channel transmits NO sequence number, so this
+    # test's trigger condition CANNOT OCCUR in production. Under rule 0.1d that
+    # makes it a FALSE GUARANTEE, not merely an obsolete test — it reported green
+    # for a mechanism that never existed.
+    #
+    # NOT xfailed or skipped (rule 0.1b would require escalation for that, and it
+    # would leave the false guarantee in the suite). Deleted outright.
+    # Superseded by test_no_emission_until_fresh_snapshot_validates and
+    # test_five_consecutive_failures_trigger_reconnect, which exercise checksum
+    # divergence — the detector Kraken actually provides, and a broader one.
+    # ────────────────────────────────────────────────────────────────────
+
+  NOT xfailed, NOT skipped (rule 0.1b), NOT left in the suite. Deleted.
+  Its trigger cannot occur: Kraken v2 public book sends no sequence number.
+
+################ NEW PARSE-PATH TESTS ################
+=== COMMAND: pytest tests/test_parse_path.py --collect-only -q ===
+
+=== COMMAND: qty:0 deletion and depth truncation, through the REAL parse path ===
+tests/test_parse_path.py::TestParsePathEndToEnd::test_qty_zero_deletes_the_level PASSED [ 50%]
+tests/test_parse_path.py::TestParsePathEndToEnd::test_book_truncates_to_subscribed_depth PASSED [100%]
+====================== 2 passed, 14 deselected in 0.05s =======================
+
+################ DID ANYTHING BREAK UNEXPECTEDLY? ################
+Four tests failed immediately after the QuoteUpdate redesign, ALL with the
+same cause: TypeError: QuoteUpdate.__init__() got an unexpected keyword
+argument 'bid_price'. That is an OBVIOUS WIRING CHANGE — the entity's
+signature changed — not a hidden assumption. Rewired, not weakened.
+
+ONE GENUINE FINDING did surface, and it was NOT a wiring issue:
+
+  After moving validation after application, the 5-consecutive-failure
+  threshold could never fire. _enter_resync() calls _discard_book() ->
+  reset_for_resync(), which RESET consecutive_failures to 0. The recovery
+  path was wiping the very counter that gates it.
+
+  This was pre-existing in shape (reset_for_resync always zeroed the count)
+  but previously masked, because validation-before-application meant a
+  failure did not discard the book. Making the ordering correct exposed it.
+
+  FIXED: consecutive_failures now survives the discard and is cleared ONLY
+  on a confirmed checksum match. Under rule 0.4 this is a STRENGTHENING —
+  FR-018's threshold was unreachable by construction (rule 0.1d) and now
+  actually fires. Proven by test_five_consecutive_failures_trigger_reconnect.
+
+=== COMMAND: git diff -- src/.../kraken_v2_book.py | grep -A6 reset_for_resync ===
+         self.consecutive_failures = 0
+ 
+     def reset_for_resync(self) -> None:
+-        """Reset book state for resync (discard and request fresh snapshot)."""
++        """
++        Discard book state for resync.
++
++        WO-008b-A1 §1 — consecutive_failures is DELIBERATELY PRESERVED.
++
++        It previously reset to 0 here, which meant the recovery path wiped the
++        very counter that gates it: every failure discarded the book, the discard
++        zeroed the count, and FR-018's "5 consecutive failures trigger
++        reconnection" could therefore NEVER fire. The threshold was unreachable
++        by construction (rule 0.1d).
++

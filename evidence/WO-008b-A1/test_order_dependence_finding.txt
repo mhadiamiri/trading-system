@@ -1,0 +1,68 @@
+WO-008b-A1 — TEST-ORDER DEPENDENCE: FOUND, DIAGNOSED, FIXED
+Generated: 2026-07-19T15:30:56Z
+
+################ THE SYMPTOM ################
+Two NEW tests in tests/integration/test_mainnet_guard.py passed when run in
+isolation (12 passed) but FAILED in the full suite:
+
+  test_paper_client_refuses_construction_under_mainnet            FAILED
+  test_paper_client_refuses_construction_under_test_env_when_not_paper FAILED
+  E   Failed: DID NOT RAISE ValueError
+
+Isolation-pass / suite-fail is the signature of order dependence. Reported
+here rather than resolved quietly, per §5's instruction to STOP AND REPORT
+when a break is not an obvious wiring change.
+
+################ THE ROOT CAUSE ################
+=== COMMAND: how does paper.py obtain Settings? ===
+83:        from config.settings import Settings
+
+  It is a FUNCTION-LOCAL import inside the constructor, so it resolves out
+  of sys.modules AT CALL TIME.
+
+=== COMMAND: which tests reload config.settings during a run? ===
+tests/integration/test_live_loop.py
+tests/integration/test_mainnet_guard.py
+tests/test_boundaries.py
+
+  Reloading REBINDS sys.modules['config.settings'] to a NEW Settings CLASS
+  OBJECT. My test patched the Settings imported at the top of its own
+  module — which, after any reload, is a STALE object the guard no longer
+  reads. The patch applied to something nothing consults.
+
+  ORDER MATTERS because test_boundaries.py and test_live_loop.py both
+  reload settings and both sort before test_mainnet_guard.py.
+
+################ WHAT THIS IS — AND IS NOT ################
+This is a defect in MY NEW TEST, not in the product.
+
+  The guard itself is sound. It fired correctly in isolation, and the §3
+  bite proof shows it firing with real assertion text when disabled:
+    'GUARD DID NOT FIRE: TRADING_ENV=mainnet was accepted.'
+
+  But a test that only passes in isolation is worth very little, and one
+  guarding order-placement capability is worth less than nothing if it can
+  silently stop testing anything. This is the SAME CLASS as the tautological
+  test it replaced: a proof that does not touch the mechanism it certifies.
+  Catching it here is the point of running the full suite before committing.
+
+################ THE FIX — resolve Settings the way the code does ################
+=== COMMAND: git diff -- tests/integration/test_mainnet_guard.py ===
+
+  NOT weakened, NOT xfailed, NOT skipped, and the assertions are unchanged.
+  The test now patches config.settings.Settings resolved AT CALL TIME —
+  exactly the object paper.py's function-local import will fetch.
+
+################ PROOF IT STILL BITES AFTER THE FIX ################
+Disabling the guard in paper.py must still make BOTH tests fail:
+
+  === COMMAND: (guard disabled) pytest -k refuses_construction ===
+  E   Failed: DID NOT RAISE ValueError
+  FAILED ...::test_paper_client_refuses_construction_under_mainnet
+  FAILED ...::test_paper_client_refuses_construction_under_test_env_when_not_paper
+  ======================= 2 failed, 4 deselected in 0.10s =======================
+
+  (captured live in this session; paper.py restored immediately after —
+   'git diff --stat -- src/trading/execution/paper.py' is empty)
+=== COMMAND: git diff --stat -- src/trading/execution/paper.py ===
+^ EMPTY == paper.py byte-identical to committed state

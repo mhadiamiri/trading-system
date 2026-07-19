@@ -9,22 +9,27 @@ Constitutional Principles:
 """
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DEPRECATED FIXTURES (WO-009 §2.4) — REMOVAL OWNER: WO-008b-A
+# REWIRED TO RAW v2 FRAMES — WO-008b-A1 §5
 #
-# Every `QuoteUpdate(...)` constructed in this file is a PRE-PARSED OBJECT, not
-# a raw Kraken v2 wire frame. Such fixtures never exercise the parse path, and
-# they carried a synthetic `sequence` field — a protocol element the Kraken v2
-# public book channel does not transmit (see amended FR-018a).
+# These tests previously built pre-parsed `QuoteUpdate` objects and handed them
+# straight to the adapter, bypassing the parser entirely. They now feed RAW
+# KRAKEN v2 DICT ENVELOPES through the real parse path.
 #
-# RETAINED deliberately: deleting them here would remove coverage before the
-# raw-frame consumer exists. They are superseded by
-# tests/fixtures/kraken_v2_raw_frames.py.
+# Frames come from tests/fixtures/kraken_v2_raw_frames.py. Repeating
+# SNAPSHOT_FRAME is deliberate: each repeat re-applies the same book and
+# re-validates against Kraken's PUBLISHED checksum 3310070434, so every frame in
+# these fixtures is backed by GROUND TRUTH rather than a self-generated value.
 #
-# WO-008b-A owns: building the raw-frame parse path, rewiring these tests onto
-# it, and deleting these fixtures. See evidence/WO-009/tests_requiring_rewire.txt
+# NO NETWORK — static dicts only. Transport is WO-008b-A2.
 # ═══════════════════════════════════════════════════════════════════════════
 
 import pytest
+
+from tests.fixtures.kraken_v2_raw_frames import (
+    SNAPSHOT_FRAME,
+    UPDATE_MODIFY_LEVEL,
+    HEARTBEAT_FRAME,
+)
 import asyncio
 import os
 from datetime import datetime, UTC
@@ -33,7 +38,7 @@ from decimal import Decimal
 from trading.loop.live import LiveTradingLoop
 from trading.data.adapters.simulated_feed import SimulatedMarketFeed
 from trading.data.market_state import MarketState
-from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, QuoteUpdate
+from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 
 
 class TestLiveLoopIntegration:
@@ -271,7 +276,7 @@ class TestLiveLoopPauseHandling:
         - FR-019a: Pause on book unavailable
         - T033: Pause handling integration
         """
-        # Create fixture data for testing (QuoteUpdate objects representing raw messages)
+        # Create fixture data: RAW Kraken v2 frames (WO-008b-A1 §5)
         # Initialize adapter with snapshot so checksum validation works
         adapter = KrakenV2BookAdapter()
         snapshot_bids = [
@@ -312,18 +317,10 @@ class TestLiveLoopPauseHandling:
             checksum=initial_checksum
         )
 
-        # Create fixture data with QuoteUpdate objects
+        # Create fixture data: RAW Kraken v2 frames (WO-008b-A1 §5)
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(5)
         ]
 
@@ -416,18 +413,10 @@ class TestLiveLoopPauseHandling:
             checksum=initial_checksum
         )
 
-        # Create fixture data with QuoteUpdate objects
+        # Create fixture data: RAW Kraken v2 frames (WO-008b-A1 §5)
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(3)
         ]
 
@@ -851,19 +840,11 @@ class TestThroughputInstrumentationSection2_4:
                 checksum=initial_checksum
             )
 
-            # Create fixture data with QuoteUpdate objects (raw messages)
+            # Create fixture data: RAW Kraken v2 frames (WO-008b-A1 §5) (raw messages)
             # CRITICAL: Use exact same Decimal string representation as snapshot
             # to avoid checksum changes (WO-008a-R2 parse layer requirement)
             fixture_data = [
-                QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                    bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                    bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                    ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                    ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                    checksum=initial_checksum,
-                    sequence=i + 2,
-                    timestamp=datetime.now(UTC),
-                )
+                SNAPSHOT_FRAME
                 for i in range(n)
             ]
 
@@ -946,15 +927,7 @@ class TestThroughputInstrumentationSection2_4:
         pause_after = 3  # Pause after processing 3 messages
 
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(total_messages)
         ]
 
@@ -1047,15 +1020,7 @@ class TestThroughputInstrumentationSection2_4:
         # Process some fixture data with QuoteUpdate objects
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(5)
         ]
 
@@ -1127,15 +1092,7 @@ class TestThroughputInstrumentationSection2_4:
         # Create fixture data (60 events) with QuoteUpdate objects
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(60)
         ]
 
@@ -1243,15 +1200,7 @@ class TestThroughputInstrumentationSection2_4:
         # Create and process fixture data (short window)
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(10)
         ]
 
@@ -1292,15 +1241,7 @@ class TestThroughputInstrumentationSection2_4:
         # Process some data to populate counters
         # CRITICAL: Use exact same Decimal string representation as snapshot
         fixture_data_long = [
-            QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.0"),   # Must match snapshot bid price
-                bid_size=Decimal("1.50000000"),  # Must match snapshot bid size
-                ask_price=Decimal("65005.0"),   # Must match snapshot ask price
-                ask_size=Decimal("2.00000000"),  # Must match snapshot ask size
-                checksum=initial_checksum,
-                sequence=i + 2,
-                timestamp=datetime.now(UTC),
-            )
+            SNAPSHOT_FRAME
             for i in range(10)
         ]
 

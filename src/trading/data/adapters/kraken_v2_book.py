@@ -16,14 +16,17 @@ Venue-Specific Details (must NOT leak above adapter):
 """
 
 from datetime import datetime, UTC
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict
 from dataclasses import dataclass, field
-from unittest.mock import Mock
 import enum
 import binascii
+import logging
 
 from trading.data.market_state import MarketState
+
+
+logger = logging.getLogger(__name__)
 
 
 class LocalBookState(enum.Enum):
@@ -159,8 +162,11 @@ class LocalBookData:
         self.asks = sorted(ask_levels, key=lambda x: x[0])
         self.last_sequence = sequence
         self.last_checksum = checksum
-        self.consecutive_failures = 0  # Reset on success
         self.is_paused = False
+        # WO-008b-A1 §1: consecutive_failures is NOT cleared here. Under
+        # apply-then-validate ordering, APPLYING a frame no longer means it was
+        # VALID — validation happens afterwards, over the post-update ladder.
+        # The counter is cleared only on a confirmed checksum match.
 
     def apply_incremental_update(self, bid_levels: List[tuple], ask_levels: List[tuple],
                                 sequence: int, checksum: int) -> None:
@@ -224,7 +230,7 @@ class LocalBookData:
 
         self.last_sequence = sequence
         self.last_checksum = checksum
-        self.consecutive_failures = 0  # Reset on success
+        # WO-008b-A1 §1: see apply_snapshot — applying is not validating.
 
     def record_failure(self) -> None:
         """Record a checksum validation failure."""
@@ -240,12 +246,24 @@ class LocalBookData:
         self.consecutive_failures = 0
 
     def reset_for_resync(self) -> None:
-        """Reset book state for resync (discard and request fresh snapshot)."""
+        """
+        Discard book state for resync.
+
+        WO-008b-A1 §1 — consecutive_failures is DELIBERATELY PRESERVED.
+
+        It previously reset to 0 here, which meant the recovery path wiped the
+        very counter that gates it: every failure discarded the book, the discard
+        zeroed the count, and FR-018's "5 consecutive failures trigger
+        reconnection" could therefore NEVER fire. The threshold was unreachable
+        by construction (rule 0.1d).
+
+        The counter now survives the discard and is cleared only by a confirmed
+        checksum match, which is what "consecutive" requires.
+        """
         self.bids = []
         self.asks = []
         self.last_sequence = 0
         self.last_checksum = 0
-        self.consecutive_failures = 0
 
 
 @dataclass
@@ -354,59 +372,67 @@ class QuoteUpdate:
     """
     Quote update entity (adapter-internal for Kraken v2 book adapter).
 
-    Represents a single quote update from the v2 book channel.
+    Represents ONE `data` element parsed from a raw Kraken v2 book frame.
+
+    WO-008b-A1 §5 REDESIGN. Previously this held four top-of-book scalars plus a
+    `sequence` field. Two problems:
+
+      1. `sequence` modelled a protocol element the Kraken v2 PUBLIC book channel
+         DOES NOT TRANSMIT. Fixtures supplied synthetic values, so "sequence-gap
+         detection proven" was a guarantee attached to a fiction. Removed per
+         amended FR-018a(a).
+      2. Four scalars cannot represent a book frame. Kraken sends a LADDER of
+         {price, qty} levels, and the CRC32 is computed over the top 10 per side.
+         A top-of-book-only entity made a correct checksum impossible.
 
     Fields:
-        bid_price: Best bid price
-        bid_size: Size at best bid
-        ask_price: Best ask price
-        ask_size: Size at best ask
-        checksum: CRC-32 checksum from Kraken
-        sequence: Sequence number from Kraken
-        timestamp: Update timestamp
-
-    Validation:
-        - Checksum format: CRC-32 (int)
-        - Sequence: Monotonically increasing (gaps indicate missed messages)
+        symbol: Instrument, e.g. "BTC/USD"
+        message_type: TYPE_SNAPSHOT or TYPE_UPDATE
+        bids: [(Decimal price, Decimal qty), ...] as sent
+        asks: [(Decimal price, Decimal qty), ...] as sent
+        checksum: CRC32 over the top 10 levels per side of the POST-update book
+        timestamp: SERVER-sent timestamp (never client-generated)
 
     Constitutional requirements:
-        - FR-004: Validate checksum on every update
-        - FR-018a: Track sequence numbers, detect gaps
+        - FR-004 / FR-018a(c): checksum validated on EVERY update
+        - FR-018a(b): checksum defined over the POST-update book state
     """
 
-    bid_price: Decimal
-    bid_size: Decimal
-    ask_price: Decimal
-    ask_size: Decimal
+    TYPE_SNAPSHOT = "snapshot"
+    TYPE_UPDATE = "update"
+
+    symbol: str
+    message_type: str
+    bids: List[tuple]
+    asks: List[tuple]
     checksum: int
-    sequence: int
     timestamp: datetime
+
+    @property
+    def is_snapshot(self) -> bool:
+        """True when this frame replaces the book rather than amending it."""
+        return self.message_type == self.TYPE_SNAPSHOT
 
     def validate_basic(self) -> bool:
         """
-        Basic validation (excluding checksum).
-
-        Returns:
-            True if basic constraints pass
+        Basic structural validation (excluding checksum).
 
         Validates:
-            - bid_price > 0
-            - ask_price > 0
-            - bid_price < ask_price (positive spread)
-            - sizes >= 0
-            - sequence > 0
+            - message_type is snapshot or update
+            - symbol present
+            - every price > 0 and every qty >= 0 (qty == 0 is a DELETION, legal)
+            - a snapshot carries at least one level per side
         """
-        if self.bid_price <= 0:
+        if self.message_type not in (self.TYPE_SNAPSHOT, self.TYPE_UPDATE):
             return False
-        if self.ask_price <= 0:
+        if not self.symbol:
             return False
-        if self.bid_price >= self.ask_price:
-            return False
-        if self.bid_size < 0:
-            return False
-        if self.ask_size < 0:
-            return False
-        if self.sequence <= 0:
+        for price, qty in list(self.bids) + list(self.asks):
+            if price <= 0:
+                return False
+            if qty < 0:
+                return False
+        if self.is_snapshot and (not self.bids or not self.asks):
             return False
         return True
 
@@ -442,20 +468,54 @@ class KrakenV2BookAdapter:
         - Principle VIII: Log all non-yield events with reason codes
     """
 
-    # WebSocket endpoint
-    WS_URL = "wss://ws.kraken.com"
+    # WebSocket endpoint (WO-008b-A1 §6 D4: was "wss://ws.kraken.com", the v1
+    # endpoint, in a module named kraken_v2_book. NO connection is opened here —
+    # transport is WO-008b-A2.)
+    WS_URL = "wss://ws.kraken.com/v2"
 
-    # Book subscription parameters
-    BOOK_DEPTH = 1  # Top of book only
+    # Book subscription parameters.
+    # WO-008b-A1 §1: pinned to 10 per amended FR-018a(e). Kraken accepts only
+    # 10/25/100/500/1000; the previous value of 1 was ILLEGAL at the venue and
+    # could never hold the 10 levels per side the CRC32 is computed over.
+    BOOK_DEPTH = 10
 
     # Checksum failure threshold
     CHECKSUM_FAILURE_THRESHOLD = 5
 
-    def __init__(self):
-        """Initialize adapter."""
+    # Venue-mode provenance values (WO-008b-A1 §4).
+    MODE_FIXTURE = "fixture"
+    MODE_LIVE = "live"
+    VENUE_FIXTURE = "kraken_fixture"
+    VENUE_LIVE = "kraken_mainnet"
+
+    def __init__(self, mode: str = MODE_FIXTURE):
+        """
+        Initialize adapter.
+
+        Args:
+            mode: MODE_FIXTURE (default) or MODE_LIVE. Determines the venue
+                  provenance reported to the decision log. WO-008b-A1 §4: a
+                  fixture replay and a live run MUST be distinguishable in the
+                  audit trail (Principle VIII).
+
+        Note: MODE_LIVE only labels provenance. It opens NO connection —
+        transport is WO-008b-A2.
+        """
+        if mode not in (self.MODE_FIXTURE, self.MODE_LIVE):
+            raise ValueError(
+                f"Unknown adapter mode {mode!r}. "
+                f"Expected {self.MODE_FIXTURE!r} or {self.MODE_LIVE!r}."
+            )
         self._local_book = LocalBookData()
         self._rolling_stats = RollingTradeStats()
-        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+        self._mode = mode
+        # WO-008b-A1 §1: no-emission window. True from a checksum failure until a
+        # fresh snapshot is applied AND its checksum validates (FR-018a(d)).
+        self._awaiting_resync = False
+        logger.info(
+            "[kraken_v2_book] adapter initialised mode=%s venue=%s",
+            self._mode, self.venue_name,
+        )
 
     @staticmethod
     def compute_checksum(bids: List[tuple], asks: List[tuple]) -> int:
@@ -589,72 +649,174 @@ class KrakenV2BookAdapter:
 
         return computed == expected
 
+    # ────────────────────────────────────────────────────────────────────
+    # PARSE PATH (WO-008b-A1 §5). Raw Kraken v2 wire frame -> QuoteUpdate.
+    # This code path had NEVER been under test: fixtures previously supplied
+    # pre-parsed QuoteUpdate objects, so the parser was never exercised and the
+    # fixtures drifted toward the implementation instead of the protocol.
+    # NO NETWORK: this converts an already-received dict. Transport is A2.
+    # ────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_levels(raw_levels) -> List[tuple]:
+        """
+        Convert Kraken v2 [{"price": ..., "qty": ...}, ...] into tuples.
+
+        Parsed from STRING form to preserve exact decimal precision: the checksum
+        is computed over the digits as sent, so a float round-trip would corrupt it.
+        """
+        levels = []
+        for level in raw_levels or []:
+            levels.append((Decimal(str(level["price"])), Decimal(str(level["qty"]))))
+        return levels
+
+    def _parse_book_frame(self, raw_frame: dict) -> List[QuoteUpdate]:
+        """
+        Parse a raw Kraken v2 book frame into QuoteUpdate objects.
+
+        Kraken v2 envelope:
+            {"channel": "book", "type": "snapshot"|"update",
+             "data": [{"symbol": ..., "bids": [{"price","qty"}], "asks": [...],
+                       "checksum": int, "timestamp": ...}]}
+
+        Returns an EMPTY LIST for anything that is not a book frame — subscription
+        acknowledgements, heartbeats, status messages. Transport chatter is not
+        market data and must never reach the book.
+
+        Cite: https://docs.kraken.com/api/docs/websocket-v2/book/
+        """
+        if not isinstance(raw_frame, dict):
+            logger.debug("[kraken_v2_book] ignoring non-dict frame: %s", type(raw_frame))
+            return []
+
+        if raw_frame.get("channel") != "book":
+            return []
+
+        message_type = raw_frame.get("type")
+        if message_type not in (QuoteUpdate.TYPE_SNAPSHOT, QuoteUpdate.TYPE_UPDATE):
+            logger.debug("[kraken_v2_book] book frame with unknown type: %r", message_type)
+            return []
+
+        updates: List[QuoteUpdate] = []
+        for element in raw_frame.get("data", []) or []:
+            try:
+                update = QuoteUpdate(
+                    symbol=element["symbol"],
+                    message_type=message_type,
+                    bids=self._parse_levels(element.get("bids")),
+                    asks=self._parse_levels(element.get("asks")),
+                    checksum=int(element["checksum"]),
+                    timestamp=element.get("timestamp"),
+                )
+            except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+                self._log_error(f"Malformed book frame element: {exc}")
+                continue
+
+            if not update.validate_basic():
+                self._log_error(
+                    f"Book frame element failed basic validation: "
+                    f"symbol={update.symbol!r} type={update.message_type!r}"
+                )
+                continue
+
+            updates.append(update)
+
+        return updates
+
+    def _current_ladder_strings(self) -> tuple:
+        """Return (bid_levels, ask_levels) as strings for checksum computation."""
+        bid_levels = [(str(p), str(q)) for p, q in self._local_book.bids[:10]]
+        ask_levels = [(str(p), str(q)) for p, q in self._local_book.asks[:10]]
+        return bid_levels, ask_levels
+
+    def _enter_resync(self, reason: str) -> None:
+        """
+        Begin the no-emission window (FR-018a(d)).
+
+        Discards the local book and requests a fresh snapshot. NO MarketState may
+        be emitted until that snapshot is applied AND its checksum validates. An
+        unverified book must not price anything (Principle V).
+        """
+        self._awaiting_resync = True
+        self._log_error(
+            f"CHECKSUM_RESYNC: {reason}. Book discarded; "
+            f"no MarketState until resync validates."
+        )
+        self._discard_book()
+        self._request_snapshot()
+
     async def _process_quote_update(self, quote_update: QuoteUpdate) -> Optional:
         """
-        Process a quote update with checksum validation.
+        Process a quote update, validating the checksum AFTER applying it.
 
-        Args:
-            quote_update: Quote update to process
+        WO-008b-A1 §1 — ORDERING IS THE GUARANTEE, not an implementation detail.
+        Kraken defines the CRC32 over the POST-update book state, so the update is
+        applied FIRST and the resulting ladder is what gets checksummed. The prior
+        implementation validated the PRE-update book, which would have mismatched
+        on every incremental against a real feed.
 
-        Returns:
-            MarketState if validation passes, None if rejected
+        On mismatch the APPLIED STATE is invalidated — not merely the incoming
+        message — and the no-emission window opens.
 
         Constitutional requirements:
-            - FR-004: Validate checksum on every update (using FULL 10-level ladder)
-            - FR-017: Reject and log invalid checksums
-            - FR-018: Track consecutive failures
-            - FR-018a: Detect sequence gaps
-            - WO-006 new decision: Use full depth for checksum validation
+            - FR-018a(b): validate AFTER applying; mismatch invalidates applied state
+            - FR-018a(c): validate on EVERY update, never periodically
+            - FR-018a(d): emit nothing until a fresh snapshot validates
+            - FR-017: reject AND LOG invalid checksums
         """
-        # Check for sequence gap (FR-018a)
-        if self._local_book.last_sequence > 0:
-            expected_sequence = self._local_book.last_sequence + 1
-            if quote_update.sequence != expected_sequence:
-                # Sequence gap detected - discard book and request fresh snapshot
-                self._discard_book()
-                self._request_snapshot()
-                # No MarketState emitted during gap recovery
+        if quote_update.is_snapshot:
+            self._local_book.apply_snapshot(
+                bid_levels=quote_update.bids,
+                ask_levels=quote_update.asks,
+                sequence=0,
+                checksum=quote_update.checksum,
+            )
+        else:
+            if self._awaiting_resync:
+                # FR-018a(d): the book is unverified. Incremental updates cannot
+                # be trusted to repair it, and nothing may be emitted from it.
                 return None
+            self._local_book.apply_incremental_update(
+                bid_levels=quote_update.bids,
+                ask_levels=quote_update.asks,
+                sequence=0,
+                checksum=quote_update.checksum,
+            )
 
-        # Validate checksum using the FULL ladder (top 10 levels per side)
-        # This is critical: Kraken's checksum is over 10 levels, not 1
-        top_10_bids = self._local_book.bids[:10]
-        top_10_asks = self._local_book.asks[:10]
-
-        # Convert Decimal to string for checksum computation
-        bid_levels = [(str(price), str(size)) for price, size in top_10_bids]
-        ask_levels = [(str(price), str(size)) for price, size in top_10_asks]
-
+        # FR-018a(b),(c): checksum over the POST-update ladder, on EVERY update.
+        bid_levels, ask_levels = self._current_ladder_strings()
         computed_checksum = self.compute_checksum(bid_levels, ask_levels)
 
         if computed_checksum != quote_update.checksum:
-            # Checksum validation failed (FR-017)
             self._local_book.record_failure()
             self._log_error(
-                f"Checksum validation failed: seq={quote_update.sequence}, "
+                f"Checksum validation failed: symbol={quote_update.symbol} "
+                f"type={quote_update.message_type} "
                 f"expected={quote_update.checksum}, computed={computed_checksum}"
             )
-
-            # Check if we've reached the failure threshold (FR-018)
             if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
                 self._reconnect()
-                self._request_snapshot()
-
-            # Return None to indicate rejection
+            self._enter_resync("post-update checksum mismatch")
             return None
 
-        # Checksum validated - apply incremental update to the ladder
-        self._local_book.apply_incremental_update(
-            bid_levels=[(quote_update.bid_price, quote_update.bid_size)],
-            ask_levels=[(quote_update.ask_price, quote_update.ask_size)],
-            sequence=quote_update.sequence,
-            checksum=quote_update.checksum,
-        )
+        # Confirmed valid: this is the ONLY place the failure streak is cleared.
+        self._local_book.consecutive_failures = 0
 
-        # Emit MarketState with top-of-book data (level 0 of ladder) and rolling stats
-        market_state = MarketState(
-            timestamp=quote_update.timestamp,
-            symbol="BTC/USD",  # Fixed symbol for now
+        # A validated SNAPSHOT is the only thing that closes the window.
+        if quote_update.is_snapshot and self._awaiting_resync:
+            self._awaiting_resync = False
+            logger.info(
+                "[kraken_v2_book] resync complete: fresh snapshot validated; "
+                "emission resumed"
+            )
+
+        return MarketState(
+            timestamp=(
+                quote_update.timestamp
+                if isinstance(quote_update.timestamp, datetime)
+                else datetime.now(UTC)
+            ),
+            symbol=quote_update.symbol,
             best_bid=self._local_book.best_bid_price,
             best_ask=self._local_book.best_ask_price,
             best_bid_size=self._local_book.best_bid_size,
@@ -664,7 +826,19 @@ class KrakenV2BookAdapter:
             last_price=self._rolling_stats.last_price or self._local_book.best_bid_price,
         )
 
-        return market_state
+    async def process_raw_frame(self, raw_frame: dict) -> List:
+        """
+        Full parse path: raw Kraken v2 frame -> MarketStates.
+
+        This is the shared entry point A2's WebSocket transport will hand frames
+        to. Non-book frames yield an empty list rather than an error.
+        """
+        states = []
+        for update in self._parse_book_frame(raw_frame):
+            market_state = await self._process_quote_update(update)
+            if market_state is not None:
+                states.append(market_state)
+        return states
 
     def _discard_book(self) -> None:
         """Discard local book state (for sequence gap recovery)."""
@@ -683,10 +857,17 @@ class KrakenV2BookAdapter:
         pass
 
     def _log_error(self, message: str) -> None:
-        """Log an error message."""
-        # For now, use print as placeholder
-        # In production, this would use the DecisionLogger
-        print(f"ERROR: {message}")
+        """
+        Log an error message.
+
+        WO-008b-A1 §2: this was shadowed by `self._log_error = Mock()` in
+        __init__ from commit 71eb901 through 43ca600, so every checksum-failure
+        log was swallowed by a test double — in FIXTURE mode as well as live.
+        FR-017 ("reject AND LOG invalid checksums") was unfulfilled in the
+        shipped system for that entire period. The Mock is gone; this is now the
+        only definition and it writes to the real logger.
+        """
+        logger.error("[kraken_v2_book] %s", message)
 
     def _process_trade(self, price: Decimal, size: Decimal, volume: Decimal,
                        timestamp: datetime) -> None:
@@ -711,140 +892,63 @@ class KrakenV2BookAdapter:
 
     async def get_market_data(self, fixture_data: List = None) -> AsyncIterator[MarketState]:
         """
-        Stream market data updates (fixture-based for WO-008a FIXTURES ONLY).
+        Stream market data updates from RAW KRAKEN v2 FRAMES.
+
+        WO-008b-A1 §5: `fixture_data` is now a list of RAW v2 dict envelopes —
+        what the WebSocket actually delivers — not pre-parsed QuoteUpdate objects.
+        Every frame goes through the real parse path, so the parser is under test.
+
+        NO NETWORK. Frames are supplied by the caller; transport is WO-008b-A2.
 
         Args:
-            fixture_data: Optional list of QuoteUpdate objects representing raw book messages
+            fixture_data: list of raw Kraken v2 frames (dicts).
 
         Yields:
-            MarketState objects with quote-centric data
+            MarketState objects with quote-centric data.
+
+        Counters (WO-008a-R2 §2.4, semantics preserved):
+            - raw_messages_received: incremented at the feed boundary for EVERY
+              raw frame, before any filtering, validation or pause check
+            - market_states_emitted: incremented only at the yield boundary
+            - the two sit at different layers so divergence is observable
 
         Constitutional requirements:
-            - WO-008a: FIXTURES ONLY - no live WebSocket connections
-            - FR-019a: Pause on book unavailable
-            - §2.4: Diagnostic counters at different layers (WO-008a-R2 BLOCKER 1 fix)
-
-        Counters (WO-008a-R2 fix):
-            - raw_messages_received: Incremented at feed/parse boundary for EACH raw message
-            - market_states_emitted: Incremented only when MarketState is yielded
-            - These MUST be at different layers to allow divergence detection
-
-        Parse path (WO-008a-R2):
-            - Fixtures supply QuoteUpdate objects (representing raw book messages)
-            - Each QuoteUpdate is parsed through _process_quote_update()
-            - Only successful parses produce MarketState (checksum validation, sequence check)
-            - Rejected updates (checksum fail, sequence gap) return None, not emitted
+            - FR-019a: pause emits no MarketStates
+            - FR-018a(d): an unverified book emits nothing until resync validates
         """
         import asyncio
-        from datetime import timedelta
         import time
 
-        # Diagnostic counters (WO-008a-R2: separated at different layers)
         self._raw_received = 0
         self._market_states_emitted = 0
-        self._start_time = time.time()  # Track start time for rate reporting
+        self._start_time = time.time()
 
-        if fixture_data:
-            # Replay fixture data (FIXTURES ONLY mode)
-            # Each item in fixture_data is a QuoteUpdate representing a raw book message
-            for raw_message in fixture_data:
-                # LAYER 1: Feed/Parse boundary - count EVERY raw message received
-                self._raw_received += 1
-
-                # LAYER 2: Check if adapter can process this message
-                # If paused/unavailable, raw message is received but no MarketState emitted
-                if self._local_book.is_paused:
-                    # Raw message was received (counter already incremented above)
-                    # But no MarketState emitted due to pause (FR-019a)
-                    # This creates the divergence: raw_received > market_states_emitted
-                    await asyncio.sleep(0.01)
-                    continue
-
-                # LAYER 3: Parse boundary - process raw message through quote update pipeline
-                # This performs checksum validation, sequence gap check, and book update
-                # Returns MarketState on success, None on rejection
-                market_state = await self._process_quote_update(raw_message)
-
-                # LAYER 4: Yield boundary - only emit when parsing succeeded
-                if market_state is not None:
-                    self._market_states_emitted += 1
-                    yield market_state
-                # Note: If market_state is None (rejected), raw_received incremented but emitted not
-                # This creates divergence for rejected updates
-
-                await asyncio.sleep(0.01)  # Small delay between events
-        else:
-            # Placeholder: Would connect to WebSocket in WO-008b
-            # For now, generate minimal test data using QuoteUpdate format
-            from datetime import datetime, UTC
-            from decimal import Decimal
-
-            # Initialize book with a snapshot so checksum validation works
-            snapshot_bids = [
-                ('65000.0', '1.50000000'),
-                ('64999.0', '1.00000000'),
-                ('64998.0', '1.00000000'),
-                ('64997.0', '1.00000000'),
-                ('64996.0', '1.00000000'),
-                ('64995.0', '1.00000000'),
-                ('64994.0', '1.00000000'),
-                ('64993.0', '1.00000000'),
-                ('64992.0', '1.00000000'),
-                ('64991.0', '1.00000000'),
-            ]
-            snapshot_asks = [
-                ('65005.0', '2.00000000'),
-                ('65006.0', '1.00000000'),
-                ('65007.0', '1.00000000'),
-                ('65008.0', '1.00000000'),
-                ('65009.0', '1.00000000'),
-                ('65010.0', '1.00000000'),
-                ('65011.0', '1.00000000'),
-                ('65012.0', '1.00000000'),
-                ('65013.0', '1.00000000'),
-                ('65014.0', '1.00000000'),
-            ]
-
-            # Compute checksum for this snapshot
-            bid_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_bids]]
-            ask_levels = [(str(p), str(s)) for p, s in [(Decimal(p), Decimal(s)) for p, s in snapshot_asks]]
-            initial_checksum = self.compute_checksum(bid_levels, ask_levels)
-
-            # Apply snapshot to initialize the book
-            self._local_book.apply_snapshot(
-                [(Decimal(p), Decimal(s)) for p, s in snapshot_bids],
-                [(Decimal(p), Decimal(s)) for p, s in snapshot_asks],
-                sequence=1,
-                checksum=initial_checksum
+        if fixture_data is None:
+            raise ValueError(
+                "get_market_data requires fixture_data (raw Kraken v2 frames). "
+                "Live transport is WO-008b-A2 and is deliberately not implemented "
+                "here — this adapter will NOT silently fabricate market data."
             )
 
-            for i in range(10):
-                # LAYER 1: Count raw message at feed boundary
-                self._raw_received += 1
+        for raw_frame in fixture_data:
+            # LAYER 1: feed boundary — count EVERY raw frame received.
+            self._raw_received += 1
 
-                # LAYER 2: Check pause state
-                if self._local_book.is_paused:
-                    await asyncio.sleep(0.01)
-                    continue
+            # LAYER 2: pause check (FR-019a). The frame was received and counted,
+            # but nothing is emitted while paused — this is the divergence.
+            if self._local_book.is_paused:
+                await asyncio.sleep(0.01)
+                continue
 
-                # LAYER 3: Create QuoteUpdate and process through parse path
-                quote_update = QuoteUpdate(
-                    bid_price=Decimal("65000.00"),
-                    bid_size=Decimal("1.5"),
-                    ask_price=Decimal("65005.00"),
-                    ask_size=Decimal("2.0"),
-                    checksum=initial_checksum,  # Use same checksum (simulating no change)
-                    sequence=2 + i,
-                    timestamp=datetime.now(UTC),
-                )
-                market_state = await self._process_quote_update(quote_update)
+            # LAYER 3: parse boundary — raw frame through the REAL parse path.
+            market_states = await self.process_raw_frame(raw_frame)
 
-                # LAYER 4: Yield only when parsing succeeded
-                if market_state is not None:
-                    self._market_states_emitted += 1
-                    yield market_state
+            # LAYER 4: yield boundary.
+            for market_state in market_states:
+                self._market_states_emitted += 1
+                yield market_state
 
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
 
     def pause(self) -> None:
         """Pause the adapter (book unavailable)."""
@@ -860,9 +964,21 @@ class KrakenV2BookAdapter:
         return self._local_book.is_paused
 
     @property
+    def mode(self) -> str:
+        """Return the adapter mode (fixture or live)."""
+        return self._mode
+
+    @property
     def venue_name(self) -> str:
-        """Return venue name."""
-        return "kraken_v2"
+        """
+        Return venue name, distinguishing LIVE from FIXTURE provenance.
+
+        WO-008b-A1 §4: this previously returned the constant "kraken_v2" for both
+        modes, so a live mainnet run and a fixture replay were INDISTINGUISHABLE
+        in the decision log. Captured data whose provenance cannot be established
+        is not honest evidence (Principle VIII).
+        """
+        return self.VENUE_LIVE if self._mode == self.MODE_LIVE else self.VENUE_FIXTURE
 
     def get_diagnostic_counters(self) -> dict:
         """

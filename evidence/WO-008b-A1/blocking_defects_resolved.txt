@@ -1,0 +1,72 @@
+WO-008b-A1 §6 — THE FIVE BLOCKING DEFECTS: DISPOSITION
+Generated: 2026-07-19T15:26:01Z
+Enumerated in evidence/WO-009b/blocking_defects.txt against tree 170f264.
+
+═══════ D1 — CHECKSUM VALIDATED AGAINST THE PRE-UPDATE BOOK ═══════
+WAS: kraken_v2_book.py:621-628 (read+compute) vs :647 (apply)
+DISPOSITION: **FIXED**
+  Update applied first; CRC32 computed over the POST-update ladder.
+  Mismatch invalidates the APPLIED state and opens the no-emission window.
+  Evidence: evidence/WO-008b-A1/checksum_ordering.txt
+  HONEST LIMIT: the incremental ordering is unverifiable by fixture; only
+  first live contact (A2) can confirm it. Stated, not papered over.
+
+═══════ D2 — NO PARSE PATH EXISTED AT ALL ═══════
+WAS: :777 placeholder; no _parse_book_frame anywhere; raw frames had no consumer
+DISPOSITION: **FIXED** — parse path built (NO network; it converts a dict)
+661:    def _parse_levels(raw_levels) -> List[tuple]:
+673:    def _parse_book_frame(self, raw_frame: dict) -> List[QuoteUpdate]:
+829:    async def process_raw_frame(self, raw_frame: dict) -> List:
+  16 parse-path tests added in tests/test_parse_path.py covering snapshot,
+  update, qty:0 deletion, depth truncation, non-book frames, malformed input.
+  Evidence: evidence/WO-008b-A1/raw_frame_rewire.txt
+
+═══════ D3 — BOOK_DEPTH = 1 (ILLEGAL AT THE VENUE) ═══════
+DISPOSITION: **FIXED** — pinned to 10 per amended FR-018a(e)
+  was: 449:    BOOK_DEPTH = 1  # Top of book only
+  now: 480:    BOOK_DEPTH = 10
+
+═══════ D4 — WS_URL WAS THE v1 ENDPOINT ═══════
+DISPOSITION: **FIXED (constant only)**
+  was: 446:    WS_URL = "wss://ws.kraken.com"
+  now: 474:    WS_URL = "wss://ws.kraken.com/v2"
+  This is a STRING CONSTANT correction. NOTHING CONNECTS TO IT — no socket
+  is opened anywhere in this work order. Actually USING it is A2's job.
+  Fixed here because leaving a known-wrong constant in place invites A2 to
+  inherit the defect; it is local, inert, and verifiable by inspection.
+
+═══════ D5 — QuoteUpdate.sequence AND THE SEQUENCE-GAP BRANCH ═══════
+DISPOSITION: **FIXED**
+=== COMMAND: any 'sequence' left on the entity or its processing? ===
+64:        last_sequence: Last processed sequence number
+76:        SYNCHRONIZED → RESYNC_REQUIRED: After 5 checksum failures or sequence gap
+98:    last_sequence: int = 0
+108:        elif self.last_sequence == 0:
+148:                       sequence: int, checksum: int) -> None:
+155:            sequence: Sequence number from snapshot
+163:        self.last_sequence = sequence
+172:                                sequence: int, checksum: int) -> None:
+179:            sequence: Sequence number from update
+231:        self.last_sequence = sequence
+
+  QuoteUpdate now carries symbol / message_type / bids / asks / checksum /
+  timestamp. NO sequence field. The gap branch is gone from
+  _process_quote_update. The 'sequence=0' arguments that remain are
+  positional parameters of LocalBookData.apply_snapshot/apply_incremental_update,
+  which are internal bookkeeping fields, NOT protocol data — they are
+  vestigial and flagged for removal in a later cleanup rather than churned
+  through a signature change here (rule 0.1a).
+  test_sequence_gap_triggers_resnapshot DELETED (see §5 evidence).
+
+═══════ ALSO RESOLVED — was listed separately, not among the five ═══════
+  Mock() in production __init__: **REMOVED** (§2). import-linter
+  'No test doubles in production code' is now KEPT — 6 kept / 0 broken.
+
+═══════ SUMMARY ═══════
+  D1 checksum ordering ........ FIXED (verification limit stated)
+  D2 no parse path ............ FIXED (no network)
+  D3 BOOK_DEPTH = 1 ........... FIXED (pinned 10)
+  D4 v1 endpoint constant ..... FIXED (constant only; nothing connects)
+  D5 sequence field + branch .. FIXED
+  NONE required network work. NOTHING was deferred to A2 except the
+  transport itself and the live verification of D1.

@@ -1,0 +1,65 @@
+WO-008b-A1 §4 — VENUE-MODE OBSERVABILITY BITE PROOF
+Generated: 2026-07-19T15:24:23Z
+
+
+################ ARTIFACT 1 — PASS (modes distinguishable) ################
+=== COMMAND: time pytest tests/integration/test_venue_mode_observability.py -q ===
+
+tests\integration\test_venue_mode_observability.py ......                [100%]
+
+============================== 6 passed in 0.03s ==============================
+
+real	0m0.501s
+user	0m0.000s
+sys	0m0.000s
+=== COMMAND: the two venue names, at runtime ===
+  fixture mode -> kraken_fixture
+  live mode    -> kraken_mainnet
+
+################ ARTIFACT 2 — ACTUAL FAIL (restore the ambiguous constant) ################
+Reverting venue_name to the old constant, which is what made a fixture
+replay indistinguishable from a live mainnet capture.
+  venue_name made ambiguous again
+=== COMMAND: grep -n 'BITE PROOF: ambiguous constant restored' <adapter> ===
+981:        return "kraken_v2"  # BITE PROOF: ambiguous constant restored
+=== COMMAND: time pytest tests/integration/test_venue_mode_observability.py -q ===
+E    +  where False = any(<generator object TestVenueModeProvenance.test_mode_is_logged_at_startup.<locals>.<genexpr> at 0x000001E3D172BE00>)
+------------------------------ Captured log call ------------------------------
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:515 [kraken_v2_book] adapter initialised mode=live venue=kraken_v2
+_ TestVenueModeProvenance.test_venue_provenance_accompanies_emitted_market_states _
+tests\integration\test_venue_mode_observability.py:90: in test_venue_provenance_accompanies_emitted_market_states
+    assert adapter.venue_name == expected_venue, (
+E   AssertionError: mode=fixture must report venue=kraken_fixture
+E   assert 'kraken_v2' == 'kraken_fixture'
+E     
+E     - kraken_fixture
+E     + kraken_v2
+=========================== short test summary info ===========================
+FAILED tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_fixture_mode_reports_fixture_venue
+FAILED tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_live_mode_reports_mainnet_venue
+FAILED tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_fixture_run_can_never_be_recorded_as_live
+FAILED tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_mode_is_logged_at_startup
+FAILED tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_venue_provenance_accompanies_emitted_market_states
+========================= 5 failed, 1 passed in 0.09s =========================
+
+real	0m0.571s
+user	0m0.015s
+sys	0m0.000s
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+  venue_name restored
+=== COMMAND: time pytest tests/integration/test_venue_mode_observability.py -q ===
+
+tests\integration\test_venue_mode_observability.py ......                [100%]
+
+============================== 6 passed in 0.03s ==============================
+
+real	0m0.506s
+user	0m0.000s
+sys	0m0.000s
+
+################ ARTIFACT 4 — RESTORATION VERIFIED ################
+=== COMMAND: grep -c 'BITE PROOF' <adapter>   (must be 0) ===
+0
+=== COMMAND: the restored line ===
+981:        return self.VENUE_LIVE if self._mode == self.MODE_LIVE else self.VENUE_FIXTURE

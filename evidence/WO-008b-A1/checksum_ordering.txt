@@ -1,0 +1,157 @@
+WO-008b-A1 §1 — CHECKSUM ORDERING FIX
+Generated: 2026-07-19T15:25:29Z
+
+################ BEFORE (committed at 170f264) ################
+=== COMMAND: git show HEAD:<adapter> | sed -n '619,650p' ===
+        # Validate checksum using the FULL ladder (top 10 levels per side)
+        # This is critical: Kraken's checksum is over 10 levels, not 1
+        top_10_bids = self._local_book.bids[:10]
+        top_10_asks = self._local_book.asks[:10]
+
+        # Convert Decimal to string for checksum computation
+        bid_levels = [(str(price), str(size)) for price, size in top_10_bids]
+        ask_levels = [(str(price), str(size)) for price, size in top_10_asks]
+
+        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+        if computed_checksum != quote_update.checksum:
+            # Checksum validation failed (FR-017)
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: seq={quote_update.sequence}, "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+
+            # Check if we've reached the failure threshold (FR-018)
+            if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+                self._reconnect()
+                self._request_snapshot()
+
+            # Return None to indicate rejection
+            return None
+
+        # Checksum validated - apply incremental update to the ladder
+        self._local_book.apply_incremental_update(
+            bid_levels=[(quote_update.bid_price, quote_update.bid_size)],
+            ask_levels=[(quote_update.ask_price, quote_update.ask_size)],
+            sequence=quote_update.sequence,
+
+  ^ the ladder is READ at :621-622 and CHECKSUMMED at :628, then
+    apply_incremental_update() runs at :647 — validation BEFORE application.
+
+################ AFTER ################
+=== COMMAND: sed -n '/FR-018a(b),(c): checksum over the POST-update/,+22p' <adapter> ===
+        # apply-then-validate ordering, APPLYING a frame no longer means it was
+        # VALID — validation happens afterwards, over the post-update ladder.
+        # The counter is cleared only on a confirmed checksum match.
+
+        if quote_update.is_snapshot:
+            self._local_book.apply_snapshot(
+                bid_levels=quote_update.bids,
+                ask_levels=quote_update.asks,
+                sequence=0,
+                checksum=quote_update.checksum,
+            )
+        else:
+            if self._awaiting_resync:
+                # FR-018a(d): the book is unverified. Incremental updates cannot
+                # be trusted to repair it, and nothing may be emitted from it.
+                return None
+            self._local_book.apply_incremental_update(
+                bid_levels=quote_update.bids,
+                ask_levels=quote_update.asks,
+                sequence=0,
+                checksum=quote_update.checksum,
+            )
+
+        # FR-018a(b),(c): checksum over the POST-update ladder, on EVERY update.
+        bid_levels, ask_levels = self._current_ladder_strings()
+        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+################ THE THREE MANDATED PROPERTIES ################
+
+1. POST-UPDATE VALIDATION — the update is applied FIRST:
+147:    def apply_snapshot(self, bid_levels: List[tuple], ask_levels: List[tuple],
+171:    def apply_incremental_update(self, bid_levels: List[tuple], ask_levels: List[tuple],
+768:            self._local_book.apply_snapshot(
+779:            self._local_book.apply_incremental_update(
+   ^ both apply_* calls precede compute_checksum. Ordering inverted.
+
+2. MISMATCH INVALIDATES THE APPLIED STATE (not merely the message):
+        if computed_checksum != quote_update.checksum:
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: symbol={quote_update.symbol} "
+                f"type={quote_update.message_type} "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+            if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+                self._reconnect()
+            self._enter_resync("post-update checksum mismatch")
+            return None
+
+3. EVERY UPDATE, NEVER PERIODIC — there is exactly one validation site and
+   no sampling/skip branch anywhere:
+3
+521:    def compute_checksum(bids: List[tuple], asks: List[tuple]) -> int:
+647:        computed = KrakenV2BookAdapter.compute_checksum(bids, asks)
+788:        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+################ NO-EMISSION WINDOW (FR-018a(d)) ################
+=== COMMAND: sed -n '/def _enter_resync/,/self._request_snapshot()/p' <adapter> ===
+    def _enter_resync(self, reason: str) -> None:
+        """
+        Begin the no-emission window (FR-018a(d)).
+
+        Discards the local book and requests a fresh snapshot. NO MarketState may
+        be emitted until that snapshot is applied AND its checksum validates. An
+        unverified book must not price anything (Principle V).
+        """
+        self._awaiting_resync = True
+        self._log_error(
+            f"CHECKSUM_RESYNC: {reason}. Book discarded; "
+            f"no MarketState until resync validates."
+        )
+        self._discard_book()
+        self._request_snapshot()
+=== COMMAND: the gate that suppresses emission while unverified ===
+775:            if self._awaiting_resync:
+776-                # FR-018a(d): the book is unverified. Incremental updates cannot
+777-                # be trusted to repair it, and nothing may be emitted from it.
+778-                return None
+779-            self._local_book.apply_incremental_update(
+=== COMMAND: the ONLY thing that reopens emission ===
+806:        if quote_update.is_snapshot and self._awaiting_resync:
+807-            self._awaiting_resync = False
+808-            logger.info(
+809-                "[kraken_v2_book] resync complete: fresh snapshot validated; "
+
+################ BOOK_DEPTH ################
+=== COMMAND: git show HEAD:<adapter> | grep -n 'BOOK_DEPTH =' ===
+449:    BOOK_DEPTH = 1  # Top of book only
+=== COMMAND: grep -n 'BOOK_DEPTH =' <adapter>   (now) ===
+480:    BOOK_DEPTH = 10
+
+################ ⚠ HONEST LIMIT — STATED PLAINLY AS REQUIRED ################
+
+THE SNAPSHOT PATH IS INDEPENDENTLY VERIFIED. Kraken publishes checksum
+3310070434 for a documented 10-level book, and our implementation reproduces
+it. The expected value originates with Kraken, not with us.
+
+THE INCREMENTAL POST-UPDATE ORDERING IS **NOT** VERIFIED, AND CANNOT BE BY
+ANY FIXTURE. Kraken publishes no incremental example with a checksum. Any
+fixture we build encodes OUR OWN ordering assumption on both sides of the
+comparison — we compute the expected value with the same code under test, so
+a shared misunderstanding would agree with itself and pass.
+
+NO FIXTURE WAS MANUFACTURED TO APPEAR TO VERIFY IT. What the new test
+test_checksum_is_validated_after_applying_not_before DOES establish is
+narrower and is labelled as such in its own docstring: that the pre-update
+and post-update ladders yield DIFFERENT checksums, and that the declared
+value matches the POST-update one. That demonstrates which ordering is in
+force. It does not prove that ordering is what Kraken means.
+
+THIS FIX IS VERIFIABLE ONLY AT FIRST LIVE CONTACT — WO-008b-A2.
+If it is wrong, the symptom will be immediate and loud: every incremental
+mismatches, consecutive_failures climbs, and the adapter enters a reconnect
+loop emitting nothing. That is a legible failure, not a silent one.

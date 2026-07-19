@@ -1,0 +1,90 @@
+WO-008b-A1 §2 — FR-017 BITE PROOF (checksum rejection is LOGGED)
+Generated: 2026-07-19T15:24:19Z
+
+The Mock at kraken_v2_book.py:458 swallowed every checksum-failure log from
+commit 71eb901 through 43ca600 — in FIXTURE mode as well as live. FR-017
+('reject AND LOG invalid checksums') was unfulfilled in the shipped system.
+
+
+################ ARTIFACT 1 — PASS (Mock removed, real logger wired) ################
+=== COMMAND: time pytest tests/test_data_adapters.py -q -k corrupted_checksum ===
+
+tests\test_data_adapters.py .                                            [100%]
+
+====================== 1 passed, 14 deselected in 0.03s =======================
+
+real	0m0.502s
+user	0m0.015s
+sys	0m0.000s
+
+################ ARTIFACT 2 — ACTUAL FAIL (break the logging) ################
+Breaking _log_error so the rejection is silently discarded — i.e. restoring
+the exact behaviour the Mock produced.
+  _log_error silenced
+=== COMMAND: grep -n 'BITE PROOF: logging deliberately disabled' <adapter> ===
+870:        pass  # BITE PROOF: logging deliberately disabled
+=== COMMAND: time pytest tests/test_data_adapters.py -q -k corrupted_checksum ===
+collected 15 items / 14 deselected / 1 selected
+
+tests\test_data_adapters.py F                                            [100%]
+
+================================== FAILURES ===================================
+____ TestKrakenV2BookChecksum.test_corrupted_checksum_rejected_and_logged _____
+tests\test_data_adapters.py:187: in test_corrupted_checksum_rejected_and_logged
+    assert any("Checksum validation failed" in r.getMessage() for r in records), (
+E   AssertionError: FR-017 requires the rejection to be logged; captured records: []
+E   assert False
+E    +  where False = any(<generator object TestKrakenV2BookChecksum.test_corrupted_checksum_rejected_and_logged.<locals>.<genexpr> at 0x000001F5B49B3CA0>)
+=========================== short test summary info ===========================
+FAILED tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_corrupted_checksum_rejected_and_logged
+====================== 1 failed, 14 deselected in 0.09s =======================
+
+real	0m0.556s
+user	0m0.015s
+sys	0m0.015s
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+=== COMMAND: git checkout -- src/trading/data/adapters/kraken_v2_book.py  is NOT used (adapter has uncommitted WO-008b-A1 work) ===
+  _log_error restored
+=== COMMAND: time pytest tests/test_data_adapters.py -q -k corrupted_checksum ===
+
+tests\test_data_adapters.py .                                            [100%]
+
+====================== 1 passed, 14 deselected in 0.03s =======================
+
+real	0m0.493s
+user	0m0.031s
+sys	0m0.000s
+
+################ ARTIFACT 4 — RESTORATION IS BYTE-IDENTICAL ################
+=== COMMAND: grep -c 'BITE PROOF' <adapter>   (must be 0) ===
+0
+=== COMMAND: grep -n 'logger.error' <adapter> ===
+870:        logger.error("[kraken_v2_book] %s", message)
+(The adapter carries uncommitted WO-008b-A1 work, so 'git diff' cannot be
+ empty here. The bite-proof-specific mutation is proven reverted by the
+ zero count above plus the restored line.)
+
+################ RETROACTIVE RE-CERTIFICATION (ruled) ################
+Re-running the FULL checksum test class against a WORKING alarm.
+=== COMMAND: time pytest tests/test_data_adapters.py -v -k TestKrakenV2BookChecksum ===
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 15 items / 11 deselected / 4 selected
+
+tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_valid_checksum_passes_and_updates_book PASSED [ 25%]
+tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_corrupted_checksum_rejected_and_logged PASSED [ 50%]
+tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_five_consecutive_failures_trigger_reconnect PASSED [ 75%]
+tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_no_emission_until_fresh_snapshot_validates PASSED [100%]
+
+====================== 4 passed, 11 deselected in 0.03s =======================
+
+real	0m0.499s
+user	0m0.000s
+sys	0m0.000s

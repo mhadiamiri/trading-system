@@ -1,134 +1,188 @@
-# WORK ORDER — WO-009b: Complete the FR-018a Amendment Across Sibling Artifacts
+# WORK ORDER — WO-008b-A1: Local Defect Remediation + Raw-Frame Rewire (NO NETWORK)
 
-**Status:** ACTIVE. WO-008b-A remains HELD.
+**Status:** ACTIVE once WO-009b clears review. Precedes WO-008b-A2 (WebSocket + smoke test).
 **Authority:** `.specify/memory/constitution.md` governs. Conflict → STOP and escalate.
-**Baseline:** `03b7460` — 81 collected, 73 passed, 8 xfailed, 0 failed, 0 xpassed.
-import-linter 5 kept / 1 broken (mock rule, expected red). Contract count 6/6.
-**Standing rules 0.1–0.9 apply in full, unchanged.**
+**Baseline:** state it from WO-009b's closing commit.
 
-## WHY THIS EXISTS
-WO-009 amended `spec.md` correctly, but Ops scoped §1 to that file alone. Six
-sibling artifacts still mandate sequence tracking — the "half-amended spec is its
-own fictional reality" condition §1.3 exists to detect. Refusing to expand scope
-and escalating was correct. This completes the amendment.
+═══════════════════════════════════════════════════════════════
+STANDING RULES — permanent
+═══════════════════════════════════════════════════════════════
+- **0.1** Unspecified → STOP and ask.
+- **0.1a** Any change to a public interface signature, any use of
+  `object.__setattr__`, `# type: ignore`, monkey-patching, or any mechanism whose
+  purpose is to bypass a declared constraint is a STOP-and-ask event.
+- **0.1b** No test in a constitutional enforcement class may be marked `xfail`,
+  `skip`, or conditionally excluded without escalation.
+- **0.1c** No `Mock`, stub, fake, or test double in production code paths.
+- **0.1d** An enforcement test whose trigger condition cannot occur in production
+  is a false guarantee. A bite proof must INTERACT with the mechanism it certifies.
+- **0.1e** Research artifacts are load-bearing: any claim about an external
+  protocol, API, or venue behavior must cite vendor documentation at the point of
+  claim. Uncited protocol claims may not flow into requirements.
+- **0.2** Blockers escalate, never work around.
+- **0.4** Never weaken a guard, invariant, assertion, or threshold.
+- **0.5** Never print `.env` or any credential.
+- **0.6a** Evidence is redirected output, never typed or reconstructed. Prose may
+  ANNOTATE evidence, never CONSTITUTE it.
+- **0.6b** Every bite proof includes the unedited summary line WITH DURATION.
+- **0.6c** Preflight gate: `git status --porcelain` with every line classified
+  exempt-(a) work-order file / exempt-(b) current evidence dir / UNEXPECTED;
+  `git worktree list` showing ONLY the main tree; package path proven inside repo;
+  baseline stated against its SHA; both preflight guards reporting OK.
+- **0.6d** Any evidence later found fabricated invalidates the ENTIRE work order.
+- **0.7** Bite proofs EXECUTED: PASS, ACTUAL FAIL with real assertion text, PASS
+  after restore, empty `git diff`, durations pasted.
+- **0.8** Do not tune to green.
+- **0.9** "I could not complete X" is a successful outcome.
+═══════════════════════════════════════════════════════════════
 
-Scope error was Ops's, for the third time: scoping to the file in mind rather
-than the change's actual footprint.
+## SCOPE NOTE
+The project lead released WO-008b-A as one unit. Ops has split it: A1 is all
+local work with NO network; A2 is the WebSocket and first mainnet contact. This
+follows the standing principle from the original 008a/008b split — first live
+venue contact gets its own gate, not a bundle. Same total scope, one extra gate.
 
-## 1. AMEND THE SIX SIBLINGS
+## OUT OF SCOPE — A2, not here
+- **ANY NETWORK CONNECTION.** No WebSocket implementation, no socket to any
+  venue, not "just to check." If something appears to require it, STOP and report
+  BLOCKED — that is a success.
+- Cost-unification (`backtest/costs.py`), Phase 9, Phase 10.
+- CI config. (The CI error capture is Hadi's browser action, ruled for this week.)
 
-Bring each into agreement with the amended FR-018a (CRC32 sole mechanism,
-post-update ordering, every-update validation, no-emission window, depth 10):
+## 1. FIX THE CHECKSUM ORDERING DEFECT
 
-- **`research.md:23`** — "v2 provides snapshot/sequence numbers for gap
-  detection." This is FACTUALLY UNTRUE of the public book channel and is the
-  ORIGIN of the entire defect class. Correct it, and add an inline note recording
-  that it was the origin — do NOT silently fix it. Cite Kraken's docs.
-- **`data-model.md`** — remove `LocalBookState.last_sequence` and
-  `QuoteUpdate.sequence`; replace the state-machine edge
-  `SYNCHRONIZED --sequence_gap_detected--> RESYNC_REQUIRED` with a
-  checksum-divergence edge matching the amended recovery semantics, including the
-  no-emission window.
-- **`plan.md`**, **`quickstart.md` (Scenario 4)**, **`tasks.md` (T008/T011/T015/T018)**
-  — bring into agreement.
-- **`contracts/data-adapter.yml`** — see §2, handle separately.
+The implementation validates the checksum BEFORE applying the update (lines
+~874-881); the update is applied at ~901. Per amended FR-018a, Kraken defines the
+CRC32 over the **post-update book state**.
 
-Preserve superseded text by strike-through rather than deletion, per WO-009's
-established pattern. History is annotated, not laundered.
+- Move validation to AFTER the update is applied.
+- On mismatch, the **applied state is invalidated** — not merely the message.
+- Implement the full ruled recovery: discard local book → resubscribe / request
+  fresh snapshot → **emit NO MarketState from the moment of failure until a fresh
+  snapshot is applied and its checksum validates.**
+- Validate on **EVERY update**, never periodically.
+- Set `BOOK_DEPTH` to the pinned value from the amended spec (10). `BOOK_DEPTH = 1`
+  is not a legal Kraken depth and cannot hold the 10 levels the checksum requires.
 
-## 2. THE CONTRACT CHANGE — flag prominently for ratification
+**HONEST LIMIT — state this plainly in your report:** the snapshot checksum has
+genuine Kraken ground truth (3310070434), but no fixture can verify the
+INCREMENTAL post-update ordering, because a self-generated fixture encodes our
+own ordering assumption on both sides of the comparison. This fix is verifiable
+only at first live contact in A2. Do NOT manufacture a fixture that appears to
+verify it.
 
-`contracts/data-adapter.yml` defines `class SequenceGapError` and reason code
-`SEQUENCE_GAP_RESNAPSHOT` — an error type and reason code for an event that
-CANNOT OCCUR on this channel (rule 0.1d: a false guarantee).
+Evidence → `evidence/WO-008b-A1/checksum_ordering.txt`
 
-Ops reads their removal as a direct consequence of the ruled amendment rather
-than a new decision, so proceed. BUT this touches the adapter contract surface,
-which rule 0.1a treats as interface. Therefore:
-- Make the change.
-- Report it SEPARATELY and PROMINENTLY in the final report as an interface change
-  requiring project-lead ratification, with before/after pasted.
-- If the project lead vetoes, it reverts. Do not bury it in a file list.
-- State what replaces them: is there a checksum-divergence error type and reason
-  code, and does it follow the existing reason-code convention? If none exists,
-  say so — creating one may belong to WO-008b-A.
+## 2. REMOVE THE Mock() — with retroactive re-certification
 
-## 3. FIX THE F811 DUPLICATE
-`tests/test_boundaries.py` — `import importlib` appears twice. F811 flagged it
-legitimately. Fix it now (it is a genuine defect the new rule caught, and rule
-0.8's "don't tune to green" does not apply to fixing a real duplicate the rule
-correctly identified). Paste F811 clean afterward.
+`kraken_v2_book.py:22` (`from unittest.mock import Mock`) and `:458`
+(`self._log_error = Mock()`), committed `71eb901`, shipped through `43ca600`.
+Every checksum-failure log has gone into a Mock and been discarded since — in
+FIXTURE mode as well as live. FR-017 is unfulfilled in the shipped system.
 
-## 4. DETAIL THE FIVE BLOCKING DEFECTS
-`tests_requiring_rewire.txt` mentions "5 implementation defects that block the
-rewire" without enumerating them here. List each: what it is, which file and line,
-and why it blocks. These scope WO-008b-A, so I need them explicit.
-Evidence → `evidence/WO-009b/blocking_defects.txt`
+- Remove the Mock; wire `_log_error` to the real logger at `:983`.
+- **FR-017 bite proof (four artifacts):** force a checksum failure, show the log
+  record is actually WRITTEN. Break the logging, show the test FAIL with real
+  assertion text, restore, PASS, empty diff.
+- **RETROACTIVE RE-CERTIFICATION (ruled):** re-run the FULL checksum-failure test
+  class and show the log records now exist. This is the moment the Phases 1–3
+  "proven to bite" claims get re-certified against a working alarm rather than a
+  silenced one. Report whether any previously-passing test now behaves
+  differently — if detection behavior was fine and only the evidence trail was
+  dark, say so; if anything changed, that is a finding.
+- The `no-test-doubles` import-linter contract should now go GREEN. Confirm
+  6 kept / 0 broken and that `EXPECTED_CONTRACT_COUNT` remains 6.
 
-## 5. DECISION LOG — one entry
-"A single false sentence in `research.md:23` — 'v2 provides sequence numbers for
-gap detection' — propagated into a spec requirement, a data model, a contract
-error class, a task list, and a fixture, and from there into six work orders of
-'proven' claims. Research artifacts are load-bearing: an unverified factual claim
-about an external protocol is a defect at the same severity as a code defect.
-Standing consequence: protocol claims in research artifacts must cite vendor
-documentation."
+Evidence → `evidence/WO-008b-A1/mock_removal_fr017.txt`
 
-## 6. VERIFY, COMMIT, PUSH
-Preflight gate per rule 0.6c (status classified, worktree list showing only main,
-package path inside repo, baseline stated against `03b7460`).
+## 3. REPLACE THE TAUTOLOGICAL MAINNET-GUARD TEST
+
+`test_settings_validate_blocks_mainnet` asserts substrings of its own local string
+literal — it would pass against an empty repository, and it was the bite proof for
+the single most safety-critical invariant in the codebase. Nothing has ever tested
+that guard.
+
+- Replace with a real bite proof: set `TRADING_ENV=paper`, attempt to construct an
+  order-capable path, show it FAILS. Then set the mainnet condition and show
+  `Settings.validate()` raises.
+- Prove it bites: deliberately disable the guard → **PASTE THE ACTUAL FAILING
+  OUTPUT** with real assertion text → restore → PASS → empty diff.
+- The quarantined `test_order_guard_bite_proof.py` was identified as the better
+  salvage candidate — use or adapt it if it helps; state what you reused.
+
+Evidence → `evidence/WO-008b-A1/mainnet_guard_real_bite_proof.txt`
+
+## 4. VENUE-MODE OBSERVABILITY
+
+`venue_name` returns `"kraken_v2"` for `live_mode=True` and `False` alike, so a
+LIVE RUN AND A FIXTURE REPLAY ARE INDISTINGUISHABLE IN THE DECISION LOG. That is a
+Principle VIII defect: captured data whose provenance cannot be established is not
+honest evidence.
+
+- `venue_name` (or an accompanying provenance field) must distinguish live from
+  fixture unambiguously — e.g. `kraken_mainnet` vs `kraken_fixture`.
+- Mode must be logged at startup and carried into the decision log for every
+  MarketState and every fill.
+- **Bite proof (four artifacts):** a test asserting a fixture-mode run can never
+  be recorded as live. Break it, show FAIL, restore, PASS, empty diff.
+
+Evidence → `evidence/WO-008b-A1/venue_mode_observability.txt`
+
+## 5. REWIRE FIXTURES TO RAW FRAMES
+
+Per WO-009's rewire list: 13 `QuoteUpdate` construction sites (5 + 8), 5+
+parse-path tests to add, 1 test to delete.
+
+- Rewire all 13 sites to the raw v2 dict envelopes built in WO-009.
+- **DELETE `test_sequence_gap_triggers_resnapshot`** — its trigger cannot occur
+  (rule 0.1d: a false guarantee, not merely obsolete). Record the deletion in the
+  report; do not xfail it.
+- Add the parse-path tests: raw frame → parse → book application → MarketState.
+  This is the code path that has never been under test.
+- Remove the deprecated `QuoteUpdate` fixtures once nothing references them.
+- **Exercise `qty: 0` deletion and depth truncation through the real parse path.**
+- **DO NOT** xfail, skip, or weaken any test to accommodate the rewire. If a test
+  breaks and the cause isn't an obvious wiring change, STOP AND REPORT — it may
+  mean the test only ever passed because fixtures were shaped to it.
+
+Evidence → `evidence/WO-008b-A1/raw_frame_rewire.txt`
+
+## 6. RESOLVE THE FIVE BLOCKING IMPLEMENTATION DEFECTS
+
+WO-009 identified five implementation defects blocking the rewire. Enumerate each
+(file, line, what it is), then fix or report BLOCKED with reasoning. If any turns
+out to require network work, that belongs to A2 — say so rather than reaching for it.
+
+Evidence → `evidence/WO-008b-A1/blocking_defects_resolved.txt`
+
+## 7. VERIFY, COMMIT, PUSH
     pytest tests/ -rX
     import-linter lint
     python tools/contract_count_check.py
     ruff check .
-Required: baseline unchanged (81/73/8); import-linter 5 kept / 1 broken (expected);
-contract count 6/6; F811 clean. Secret scan, push, paste local vs remote HEAD.
+Expected: 6 kept / 0 broken (mock rule now green); contract count 6/6; F811 clean;
+0 failed; 0 xpassed. Test count WILL change (deletion + new parse-path tests) —
+state the new count, explain every delta against the prior baseline SHA, and
+confirm no test was weakened to reach it. Secret scan, push, local vs remote HEAD.
 
-## 7. FINAL REPORT — then STOP
-1. Paste each amended sibling's changed section. Confirm all six agree with
-   FR-018a.
-2. **§2 CONTRACT CHANGE — paste before/after prominently.** What replaces
-   `SequenceGapError` / `SEQUENCE_GAP_RESNAPSHOT`, if anything?
-3. Paste the `research.md:23` correction with its origin note.
-4. Paste F811 clean after fixing the duplicate.
-5. **Enumerate the five blocking implementation defects** — file, line, why blocking.
-6. Paste the decision log entry.
-7. Paste §6 verification, all four commands, plus local/remote HEAD.
-8. **Any residual sequence references anywhere in `specs/002-quote-level-data/`?**
-   Paste the grep. YES/NO.
-9. **Is any file in `evidence/WO-009b/` prose standing in for output?** YES/NO.
+## 8. FINAL REPORT — then STOP
+1. **Checksum ordering** — paste before/after. Confirm post-update validation,
+   every-update, and the no-emission window. State the honest limit: incremental
+   ordering is unverifiable until A2's live contact.
+2. **Mock removal** — paste the FR-017 bite proof (four artifacts) and the
+   retroactive re-certification. Did any previously-passing test behave
+   differently once the alarm worked? Confirm import-linter 6 kept / 0 broken.
+3. **Mainnet guard** — paste the real bite proof, four artifacts. What did you
+   reuse from the quarantined test?
+4. **Venue mode** — paste the bite proof. Can a fixture run ever be recorded as
+   live? Show the decision-log entry for each mode.
+5. **Rewire** — all 13 sites converted? Paste the deleted test's removal. List the
+   new parse-path tests. Did anything break unexpectedly?
+6. **Five blocking defects** — enumerate each with disposition.
+7. Paste §7 verification, all four commands, with the test-count delta explained.
+8. **Did you open ANY network connection to any venue?** YES/NO explicitly.
+9. **Is any file in `evidence/WO-008b-A1/` prose standing in for output?** YES/NO.
 10. **What did you change that you were not asked to change?** Every file, or "none."
 11. **What could not be completed, and why?**
 
-Do NOT implement the WebSocket. Mock(), FR-017, venue-mode observability, and the
-mainnet-guard test remain WO-008b-A. STOP for human review.
-
---------------------------------------------------------------------------
-
-ADDENDUM TO WO-009b — §2 completeness check (project lead ruling)
-
-Veto DECLINED — the SequenceGapError / SEQUENCE_GAP_RESNAPSHOT removal is
-ratified. Proceed as written, plus this:
-
-A contract purge that leaves consumers referencing the purged vocabulary just
-relocates the fiction. Before declaring §2 done, grep the FULL tree for both
-identifiers and report every hit:
-
-    grep -rn "SequenceGapError\|SEQUENCE_GAP_RESNAPSHOT" . \
-        > evidence/WO-009b/purge_completeness.txt 2>&1
-    cat evidence/WO-009b/purge_completeness.txt
-
-Cover specifically: reason-code enums, log-parsing helpers, docs, and any test
-asserting the code's EXISTENCE (a test asserting a dead reason code exists is
-rule 0.1d again). Report each hit and its disposition, or confirm zero remain.
-
-ALSO — new standing rule, add to the boilerplate for all future work orders:
-
-**0.1e RESEARCH ARTIFACTS ARE LOAD-BEARING.** Any claim about an external
-protocol, API, or venue behavior must cite the vendor's documentation at the
-point of claim. Uncited protocol claims may not flow into requirements.
-`/speckit-analyze` should treat an uncited protocol claim in a spec as a blocking
-finding, same class as a principle violation.
-
-Apply 0.1e while amending research.md in §1: every protocol claim you touch gets
-a citation, not just the one you're correcting.
+Do NOT implement the WebSocket. Do NOT connect to anything. STOP for human review.

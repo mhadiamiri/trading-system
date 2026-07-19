@@ -26,6 +26,40 @@ Constitutional Principles:
 # ═══════════════════════════════════════════════════════════════════════════
 
 import pytest
+import copy
+import logging
+from contextlib import contextmanager
+
+from tests.fixtures.kraken_v2_raw_frames import (
+    SNAPSHOT_FRAME,
+    UPDATE_MODIFY_LEVEL,
+    UPDATE_DELETE_LEVEL_QTY_ZERO,
+    UPDATE_NEW_LEVEL_CAUSES_TRUNCATION,
+    SUBSCRIPTION_ACK_FRAME,
+    HEARTBEAT_FRAME,
+    TRUNCATED_OUT_BID_PRICE,
+)
+
+
+@contextmanager
+def caplog_at_error():
+    """Capture ERROR records emitted by the adapter's real logger (FR-017)."""
+    records = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    adapter_logger = logging.getLogger("trading.data.adapters.kraken_v2_book")
+    handler = _Collector(level=logging.ERROR)
+    adapter_logger.addHandler(handler)
+    previous = adapter_logger.level
+    adapter_logger.setLevel(logging.ERROR)
+    try:
+        yield records
+    finally:
+        adapter_logger.removeHandler(handler)
+        adapter_logger.setLevel(previous)
 from datetime import datetime, UTC
 from decimal import Decimal
 from unittest.mock import Mock, AsyncMock, patch
@@ -118,154 +152,125 @@ class TestKrakenV2BookChecksum:
     @pytest.mark.asyncio
     async def test_corrupted_checksum_rejected_and_logged(self):
         """
-        Test: Corrupted checksum is rejected and logged.
+        Test: a corrupted book frame is rejected AND the rejection is logged.
+
+        REWIRED WO-008b-A1 §5: drives the REAL PARSE PATH with a raw v2 frame
+        instead of a pre-parsed QuoteUpdate. The parser was previously never
+        exercised by any test.
 
         Constitutional requirements:
-        - FR-017: Reject updates with invalid checksums and log rejection
-        - FR-004: Validate checksums on every update
-
-        CRITICAL: This is the fail-then-pass proof that checksum validation bites.
-        A corrupted update (price altered, checksum unchanged) must be rejected.
-
-        This test should FAIL initially (adapter doesn't exist),
-        then PASS after T014 implementation.
+        - FR-017: reject updates with invalid checksums AND log the rejection
+        - FR-018a(b): checksum is validated over the POST-update book
+        - FR-018a(d): no MarketState emitted once the book is unverified
         """
-        # Create adapter with mock logger
         adapter = KrakenV2BookAdapter()
-        adapter._log_error = Mock()
 
-        # Create update with CORRUPTED checksum
-        # Valid checksum for bid=65000, ask=65005 is 388076886
-        # But we use that checksum with corrupted ask price (65100)
-        quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-            bid_price=Decimal("65000.00"),
-            bid_size=Decimal("1.5"),
-            ask_price=Decimal("65100.00"),  # CORRUPTED: price changed
-            ask_size=Decimal("2.0"),
-            checksum=388076886,  # Checksum for original data, NOT updated for new price
-            sequence=1,
-            timestamp=datetime.now(UTC),
+        # Establish a book from Kraken's GROUND-TRUTH snapshot.
+        states = await adapter.process_raw_frame(SNAPSHOT_FRAME)
+        assert len(states) == 1, "ground-truth snapshot must validate and emit"
+
+        # Corrupt an update: alter the price but keep the original checksum.
+        corrupted = copy.deepcopy(UPDATE_MODIFY_LEVEL)
+        corrupted["data"][0]["bids"][0]["price"] = "45283.7"
+
+        with caplog_at_error() as records:
+            out = await adapter.process_raw_frame(corrupted)
+
+        assert out == [], "corrupted update must NOT emit a MarketState"
+        assert adapter._local_book.consecutive_failures == 1
+        assert adapter._awaiting_resync is True, (
+            "FR-018a(d): a failed checksum must open the no-emission window"
         )
 
-        # Process the update
-        market_state = await adapter._process_quote_update(quote_update)
-
-        # Verify update was REJECTED
-        assert market_state is None, "Corrupted checksum should cause rejection"
-
-        # Verify error was logged
-        adapter._log_error.assert_called_once()
-        assert "checksum validation failed" in str(adapter._log_error.call_args).lower()
-
-        # Verify consecutive_failures incremented
-        assert adapter._local_book.consecutive_failures == 1
+        # FR-017: the rejection must actually be LOGGED. Before WO-008b-A1 this
+        # went into a Mock in __init__ and was silently discarded.
+        assert any("Checksum validation failed" in r.getMessage() for r in records), (
+            "FR-017 requires the rejection to be logged; "
+            f"captured records: {[r.getMessage() for r in records]}"
+        )
 
     @pytest.mark.asyncio
-    async def test_five_consecutive_failures_trigger_resync(self):
+    async def test_five_consecutive_failures_trigger_reconnect(self):
         """
-        Test: 5 consecutive checksum failures trigger resync/reconnect.
+        Test: 5 consecutive checksum failures trigger reconnection.
+
+        REWIRED WO-008b-A1 §5, and the SEMANTICS CHANGED as a direct consequence
+        of amended FR-018a(d):
+
+          BEFORE: a failure left the book in place; failures accumulated on
+                  incremental updates until 5 triggered resync.
+          NOW:    the FIRST failure immediately discards the book and opens the
+                  no-emission window (resync is instant, not deferred to 5).
+                  Incremental updates are then refused outright, so failures can
+                  only continue accumulating on SNAPSHOTS — and the 5-failure
+                  threshold now governs the stronger action, RECONNECT.
+
+        This is a strengthening, not a weakening: recovery starts sooner, and the
+        threshold still gates the heavier remedy.
 
         Constitutional requirements:
-        - FR-018: After 5 consecutive checksum failures, initiate reconnection
-        - FR-018: Reset counter on successful resync
-
-        This test should FAIL initially (adapter doesn't exist),
-        then PASS after T016 implementation.
+        - FR-018: 5 consecutive failures initiate reconnection
+        - FR-018a(d): unverified book emits nothing
         """
-        # Create adapter with mock connection
         adapter = KrakenV2BookAdapter()
         adapter._reconnect = Mock()
-        adapter._request_snapshot = Mock()
 
-        # Simulate 5 consecutive checksum failures
-        for i in range(5):
-            quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.00"),
-                bid_size=Decimal("1.5"),
-                ask_price=Decimal("65100.00"),  # Corrupted
-                ask_size=Decimal("2.0"),
-                checksum=388076886,  # Wrong checksum (original data checksum)
-                sequence=i + 1,
-                timestamp=datetime.now(UTC),
-            )
-            await adapter._process_quote_update(quote_update)
+        bad_snapshot = copy.deepcopy(SNAPSHOT_FRAME)
+        bad_snapshot["data"][0]["checksum"] = 1  # never valid for this ladder
 
-        # Verify resync was triggered
+        for attempt in range(1, 5):
+            out = await adapter.process_raw_frame(bad_snapshot)
+            assert out == [], "an unvalidated snapshot must not emit"
+            assert adapter._local_book.consecutive_failures == attempt
+            adapter._reconnect.assert_not_called()
+
+        # Fifth consecutive failure crosses the threshold.
+        await adapter.process_raw_frame(bad_snapshot)
         assert adapter._local_book.consecutive_failures == 5
         adapter._reconnect.assert_called_once()
-        adapter._request_snapshot.assert_called_once()
-
-        # Verify < 5 failures does NOT trigger resync
-        adapter._local_book.consecutive_failures = 0
-        adapter._reconnect.reset_mock()
-        adapter._request_snapshot.reset_mock()
-
-        for i in range(4):  # Only 4 failures
-            quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-                bid_price=Decimal("65000.00"),
-                bid_size=Decimal("1.5"),
-                ask_price=Decimal("65100.00"),
-                ask_size=Decimal("2.0"),
-                checksum=12345,
-                sequence=i + 1,
-                timestamp=datetime.now(UTC),
-            )
-            await adapter._process_quote_update(quote_update)
-
-        # Verify resync NOT triggered
-        assert adapter._local_book.consecutive_failures == 4
-        adapter._reconnect.assert_not_called()
-        adapter._request_snapshot.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_sequence_gap_triggers_resnapshot(self):
+    async def test_no_emission_until_fresh_snapshot_validates(self):
         """
-        Test: Sequence gap triggers discard book + request fresh snapshot.
+        Test FR-018a(d): the no-emission window.
 
-        Constitutional requirements:
-        - FR-018a: On sequence gap, discard local book and request fresh snapshot
-        - FR-018a: No continue-on-gap path
-
-        This test should FAIL initially (adapter doesn't exist),
-        then PASS after T015 implementation.
+        NEW in WO-008b-A1 §1. From a checksum failure until a fresh snapshot is
+        applied AND validates, NO MarketState may be emitted. A book in an
+        unverified state must not price anything (Principle V).
         """
-        # Create adapter with mock snapshot request
         adapter = KrakenV2BookAdapter()
-        adapter._request_snapshot = Mock()
-        adapter._discard_book = Mock()
+        assert len(await adapter.process_raw_frame(SNAPSHOT_FRAME)) == 1
 
-        # Establish synchronized book (sequence 100)
-        # Use apply_snapshot to initialize with bid/ask levels (LocalBookData API)
-        adapter._local_book.apply_snapshot(
-            bid_levels=[(Decimal("65000.00"), Decimal("1.5"))],
-            ask_levels=[(Decimal("65005.00"), Decimal("2.0"))],
-            sequence=100,
-            checksum=12345,
+        corrupted = copy.deepcopy(UPDATE_MODIFY_LEVEL)
+        corrupted["data"][0]["checksum"] = 999
+        assert await adapter.process_raw_frame(corrupted) == []
+        assert adapter._awaiting_resync is True
+
+        # A well-formed incremental must STILL be refused: the book is unverified.
+        assert await adapter.process_raw_frame(UPDATE_MODIFY_LEVEL) == [], (
+            "incremental updates must not be trusted to repair an unverified book"
         )
+        assert adapter._awaiting_resync is True
 
-        # Receive update with sequence 105 (GAP: missing 101-104)
-        quote_update = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-            bid_price=Decimal("65001.00"),
-            bid_size=Decimal("1.6"),
-            ask_price=Decimal("65006.00"),
-            ask_size=Decimal("2.1"),
-            checksum=12346,  # Valid checksum for this data
-            sequence=105,  # GAP!
-            timestamp=datetime.now(UTC),
-        )
+        # Only a VALIDATING snapshot reopens emission.
+        states = await adapter.process_raw_frame(SNAPSHOT_FRAME)
+        assert len(states) == 1, "a validated snapshot must close the window"
+        assert adapter._awaiting_resync is False
 
-        # Process the update
-        market_state = await adapter._process_quote_update(quote_update)
-
-        # Verify book was discarded due to gap
-        adapter._discard_book.assert_called_once()
-        adapter._request_snapshot.assert_called_once()
-
-        # Verify no market state emitted during gap recovery
-        assert market_state is None
-
-        # Verify sequence gap detection (last_sequence + 1 != incoming)
-        assert adapter._local_book.last_sequence == 100  # Not updated
+    # ────────────────────────────────────────────────────────────────────
+    # DELETED WO-008b-A1 §5: test_sequence_gap_triggers_resnapshot
+    #
+    # The Kraken v2 PUBLIC book channel transmits NO sequence number, so this
+    # test's trigger condition CANNOT OCCUR in production. Under rule 0.1d that
+    # makes it a FALSE GUARANTEE, not merely an obsolete test — it reported green
+    # for a mechanism that never existed.
+    #
+    # NOT xfailed or skipped (rule 0.1b would require escalation for that, and it
+    # would leave the false guarantee in the suite). Deleted outright.
+    # Superseded by test_no_emission_until_fresh_snapshot_validates and
+    # test_five_consecutive_failures_trigger_reconnect, which exercise checksum
+    # divergence — the detector Kraken actually provides, and a broader one.
+    # ────────────────────────────────────────────────────────────────────
 
 
 class TestLocalBookState:
@@ -322,24 +327,51 @@ class TestQuoteUpdate:
 
     def test_quote_update_validation(self):
         """
-        Test QuoteUpdate validation.
+        Test QuoteUpdate structural validation.
 
-        This test should FAIL initially (entity doesn't exist),
-        then PASS after T010 implementation.
+        REWIRED WO-008b-A1 §5 for the redesigned ladder-carrying entity. The
+        `sequence` field is GONE — Kraken's public book channel never sent it.
         """
-        quote = QuoteUpdate(  # DEPRECATED fixture (WO-009 §2.4) — pre-parsed object, not a raw v2 frame; removal owner WO-008b-A
-            bid_price=Decimal("65000.00"),
-            bid_size=Decimal("1.5"),
-            ask_price=Decimal("65005.00"),
-            ask_size=Decimal("2.0"),
+        quote = QuoteUpdate(
+            symbol="BTC/USD",
+            message_type=QuoteUpdate.TYPE_SNAPSHOT,
+            bids=[(Decimal("65000.00"), Decimal("1.5"))],
+            asks=[(Decimal("65005.00"), Decimal("2.0"))],
             checksum=12345,
-            sequence=1,
             timestamp=datetime.now(UTC),
         )
 
-        assert quote.bid_price == Decimal("65000.00")
-        assert quote.ask_price == Decimal("65005.00")
-        assert quote.sequence == 1
+        assert quote.validate_basic() is True
+        assert quote.is_snapshot is True
+        assert quote.bids[0][0] == Decimal("65000.00")
+        assert quote.asks[0][0] == Decimal("65005.00")
+        assert not hasattr(quote, "sequence"), (
+            "sequence must not exist: Kraken v2 public book transmits no such field"
+        )
+
+    def test_quote_update_rejects_malformed(self):
+        """A non-positive price or an empty snapshot side must fail validation."""
+        bad_price = QuoteUpdate(
+            symbol="BTC/USD", message_type=QuoteUpdate.TYPE_UPDATE,
+            bids=[(Decimal("0"), Decimal("1.0"))], asks=[],
+            checksum=1, timestamp=datetime.now(UTC),
+        )
+        assert bad_price.validate_basic() is False
+
+        empty_snapshot = QuoteUpdate(
+            symbol="BTC/USD", message_type=QuoteUpdate.TYPE_SNAPSHOT,
+            bids=[], asks=[], checksum=1, timestamp=datetime.now(UTC),
+        )
+        assert empty_snapshot.validate_basic() is False
+
+    def test_quote_update_accepts_qty_zero_as_deletion(self):
+        """qty == 0 is Kraken's level-DELETION marker and must remain legal."""
+        deletion = QuoteUpdate(
+            symbol="BTC/USD", message_type=QuoteUpdate.TYPE_UPDATE,
+            bids=[(Decimal("45283.5"), Decimal("0"))], asks=[],
+            checksum=1, timestamp=datetime.now(UTC),
+        )
+        assert deletion.validate_basic() is True
 
 
 class TestRollingTradeStats:

@@ -1,0 +1,58 @@
+WO-008b-A1 §7 — TEST COUNT DELTA, EXPLAINED LINE BY LINE
+Generated: 2026-07-19T15:28:04Z
+Prior baseline SHA: 170f264 — 81 collected / 73 passed / 8 xfailed
+
+################ ⚠ A MISCOUNT I MADE AND CORRECTED ################
+My first reconciliation attempt produced 109 against an actual 111 and I
+reported MATCH: False rather than adjusting the total to fit. The error was
+in my labelling: I recorded test_data_adapters.py as '+1 net new' when the
+true movement is one DELETION, one RENAME, and THREE additions. Corrected
+below from an AST diff of the two file versions rather than from memory.
+
+=== COMMAND: AST diff of test_data_adapters.py, HEAD vs now ===
+  HEAD: 13  NOW: 15
+  REMOVED:
+     - test_five_consecutive_failures_trigger_resync
+     - test_sequence_gap_triggers_resnapshot
+  ADDED:
+     + test_five_consecutive_failures_trigger_reconnect
+     + test_no_emission_until_fresh_snapshot_validates
+     + test_quote_update_accepts_qty_zero_as_deletion
+     + test_quote_update_rejects_malformed
+
+################ THE ARITHMETIC ################
+  baseline at 170f264                                                   +81
+  DELETED test_sequence_gap_triggers_resnapshot (trigger cannot occur)   -1
+  RENAMED ..._trigger_resync -> ..._trigger_reconnect (no count change)   +0
+  NEW test_no_emission_until_fresh_snapshot_validates (FR-018a(d))       +1
+  NEW test_quote_update_rejects_malformed                                +1
+  NEW test_quote_update_accepts_qty_zero_as_deletion                     +1
+  NEW tests/test_parse_path.py (parse path, never previously tested)    +16
+  NEW tests/integration/test_mainnet_guard.py (replaces tautology)       +6
+  NEW tests/integration/test_venue_mode_observability.py                 +6
+  --------------------------------------------------------------------------
+  EXPECTED TOTAL                                                        111
+  ACTUALLY COLLECTED                                                    111
+
+  MATCH: True
+
+################ WAS ANY TEST WEAKENED TO REACH THIS? ################
+=== COMMAND: any xfail / skip introduced anywhere? ===
+tests/test_backtest_costs.py:19:@pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:27:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:48:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:68:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:94:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:122:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:140:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:160:    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+tests/test_backtest_costs.py:200:    @pytest.mark.xfail(reason="T028: get_fill_price() deprecated - use calculate_costs_from_market_state()")
+tests/test_data_adapters.py:268:    # NOT xfailed or skipped (rule 0.1b would require escalation for that, and it
+
+  The 8 pre-existing xfailed tests live in tests/test_backtest_costs.py
+  (old Sprint 1 cost model) and are untouched by this work order.
+
+  ONE test was DELETED, not weakened: its trigger condition cannot occur in
+  production (rule 0.1d). Deleting a false guarantee is not weakening — the
+  guarantee was never real. It is replaced by two checksum-divergence tests
+  that exercise the detector Kraken actually provides.
