@@ -8,7 +8,7 @@
 
 ## Summary
 
-Replace the trades feed with quote-level (order book) data from Kraken WebSocket v2 so the cost model uses **REAL observed spread** instead of an assumption. The data adapter migrates to Kraken v2 book channel (top-of-book: best bid/ask) as primary, with trades channel as secondary enrichment for rolling statistics. All v2-specific detail (protocol, checksum algorithm, sequence tracking, resync logic) is confined to a single adapter module. MarketState becomes quote-centric, and the backtest cost model computes spread cost from actual observed bid/ask only — no synthetic or fallback spreads anywhere.
+Replace the trades feed with quote-level (order book) data from Kraken WebSocket v2 so the cost model uses **REAL observed spread** instead of an assumption. The data adapter migrates to Kraken v2 book channel (top-of-book: best bid/ask) as primary, with trades channel as secondary enrichment for rolling statistics. All v2-specific detail (protocol, checksum algorithm, ~~sequence tracking~~ **post-update checksum validation**, subscription depth, resync logic) is confined to a single adapter module. *(CORRECTED 2026-07-19, WO-009b: no sequence numbers on the v2 public book channel; checksum divergence is the detector.)* MarketState becomes quote-centric, and the backtest cost model computes spread cost from actual observed bid/ask only — no synthetic or fallback spreads anywhere.
 
 ## Technical Context
 
@@ -84,7 +84,7 @@ Three load-bearing items verified intact in spec and must remain intact in desig
 2. **v2 book checksum validation on every update** (FR-004, FR-016 through FR-019, SC-003, QG-003)
    - CRC checksum validated on every update
    - 5 consecutive failures → reconnect and resync
-   - Sequence gap → discard book + resnapshot
+   - ~~Sequence gap~~ **Checksum divergence (post-update)** → discard applied state + resnapshot, emitting no MarketState until the fresh snapshot validates *(CORRECTED 2026-07-19, WO-009b)*
 
 3. **Strategy logic/interface unchanged** (FR-023 through FR-026, SC-006, QG-002)
    - `decide(market_state) -> DesiredPosition` signature unchanged
@@ -115,7 +115,7 @@ src/trading/
 │   ├── adapters/
 │   │   ├── __init__.py
 │   │   ├── kraken_public.py         # EXISTING: v1 trades feed (to be deprecated)
-│   │   ├── kraken_v2_book.py        # NEW: v2 book adapter (checksum, sequence, resync)
+│   │   ├── kraken_v2_book.py        # NEW: v2 book adapter (checksum, depth, resync)
 │   │   └── simulated_feed.py        # EXISTING: Simulated feed (no changes)
 │   ├── fixtures.py                  # EXISTING: Test data
 │   ├── market_state.py             # MODIFY: Add quote-centric fields (bid/ask/size)
@@ -147,7 +147,7 @@ src/trading/
     └── live.py                      # MODIFY: Use new adapter; handle book-unavailable pause
 
 tests/
-├── test_data_adapters.py            # NEW: Adapter tests (checksum, sequence, resync)
+├── test_data_adapters.py            # NEW: Adapter tests (checksum, depth, resync)
 ├── test_market_state.py             # MODIFY: Add quote-centric field tests
 ├── test_backtest_costs.py           # MODIFY: Add observed-spread cost tests
 ├── test_boundaries.py               # MODIFY: Verify adapter boundary contracts
@@ -161,7 +161,7 @@ tests/
 
 **Key Structure Points**:
 
-1. **NEW adapter module**: `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/sequence/resync detail lives here
+1. **NEW adapter module**: `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/depth/resync detail lives here *(CORRECTED 2026-07-19, WO-009b: no sequence numbers on the v2 public book channel; checksum divergence is the detector.)*
 2. **MODIFIED files**: MarketState schema, backtest runner, costs, decision log, live loop
 3. **NO changes to**: Strategy, risk, execution interfaces or logic (except reading new MarketState fields)
 4. **Import-linter contract update**: New contract preventing v2/book/checksum imports above `data/adapters/`
@@ -175,7 +175,7 @@ tests/
 **Principle IV (Layered Architecture) & Principle VII (Venue Independence)**:
 
 1. **Adapter module path explicitly specified**:
-   - `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/sequence/resync detail lives here
+   - `src/trading/data/adapters/kraken_v2_book.py` — ALL v2/book/checksum/depth/resync detail lives here
    - Documented in [Project Structure](#project-structure) and [data-model.md](./data-model.md)
 
 2. **Import-linter contract specified**:
@@ -190,7 +190,7 @@ tests/
 
 3. **No v2 detail appears above adapter**:
    - Data consumers (`strategy/`, `risk/`, `execution/`, `backtest/`, `loop/`) see only `MarketFeed` interface and `MarketState` objects
-   - v2 protocol, checksum algorithm, sequence numbers, resync logic are adapter-internal
+   - v2 protocol, checksum algorithm, ~~sequence numbers~~ subscription depth, resync logic are adapter-internal *(CORRECTED 2026-07-19, WO-009b: no sequence numbers on the v2 public book channel; checksum divergence is the detector.)*
    - Documented in [data-model.md](./data-model.md): "All v2/book-specific detail is internal to the adapter. Above the adapter (`data/` consumers), only the standard `MarketState` interface is visible."
 
 ### Post-Design Evaluation

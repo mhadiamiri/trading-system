@@ -25,7 +25,7 @@ This document defines the data entities for the Quote-Level Data feature. The co
 | `best_bid_size` | `Decimal` | Required, >0 | Size at best bid |
 | `best_ask_price` | `Decimal` | Required, >0 | Best ask price from exchange |
 | `best_ask_size` | `Decimal` | Required, >0 | Size at best ask |
-| `last_sequence` | `int` | Required, >=0 | Last sequence number received |
+| ~~`last_sequence`~~ | ~~`int`~~ | ~~Required, >=0~~ | ~~Last sequence number received~~ **REMOVED 2026-07-19 (WO-009b): the Kraken v2 public book channel transmits no sequence number. See amended FR-018a(a).** |
 | `last_checksum` | `str` | Required | Last checksum string from exchange |
 | `consecutive_failures` | `int` | Required, >=0, <=5 | Count of consecutive checksum failures |
 | `is_paused` | `bool` | Required | True when book channel unavailable (no MarketStates emitted) |
@@ -37,7 +37,8 @@ INITIAL ──snapshot_received──> SYNCHRONIZED
 SYNCHRONIZED ──incremental_update_valid──> SYNCHRONIZED
 SYNCHRONIZED ──incremental_update_invalid_checksum──> SYNCHRONIZED (consecutive_failures++)
 SYNCHRONIZED ──consecutive_failures==5──> RESYNC_REQUIRED
-SYNCHRONIZED ──sequence_gap_detected──> RESYNC_REQUIRED
+SYNCHRONIZED ──checksum_mismatch_on_applied_state──> RESYNC_REQUIRED
+RESYNC_REQUIRED ──(NO MarketState emitted while in this state)──> RESYNC_REQUIRED
 RESYNC_REQUIRED ──reconnect_snapshot──> SYNCHRONIZED
 ANY ──book_channel_lost──> PAUSED
 PAUSED ──book_channel_recovered──> SYNCHRONIZED
@@ -45,8 +46,8 @@ PAUSED ──book_channel_recovered──> SYNCHRONIZED
 
 ### Validation Rules
 
-1. **Checksum validation**: On every incremental update, compute CRC-32 over current bid/ask and compare to exchange checksum. Reject on mismatch.
-2. **Sequence gap detection**: If incoming sequence != last_sequence + 1, discard book and request fresh snapshot.
+1. **Checksum validation**: On **every** incremental update, apply the update to the local book **first**, then compute CRC-32 over the **post-update** top-10-per-side ladder and compare to the exchange checksum. On mismatch, discard the **applied** state. (FR-018a(b),(c) — validating the pre-update book is a defect.)
+2. ~~**Sequence gap detection**: If incoming sequence != last_sequence + 1, discard book and request fresh snapshot.~~ **REPLACED 2026-07-19 (WO-009b) by checksum-divergence recovery**: on checksum mismatch, discard the local book, request a fresh snapshot, and **emit NO MarketState until that snapshot is applied and its checksum validates** (FR-018a(d)). Checksum divergence is the broader detector — it catches misapplied updates and our own book-maintenance bugs, which a sequence counter cannot.
 3. **Consecutive failure threshold**: After 5 consecutive checksum failures, reconnect and resync.
 4. **Bid/Ask sanity**: Reject updates where bid >= ask (negative spread).
 
@@ -157,13 +158,13 @@ PAUSED ──book_channel_recovered──> SYNCHRONIZED
 | `ask_price` | `Decimal` | Required, >0 | Best ask price |
 | `ask_size` | `Decimal` | Required, >=0 | Size at best ask |
 | `checksum` | `str` | Required | CRC checksum from exchange |
-| `sequence` | `int` | Required, >=0 | Sequence number |
+| ~~`sequence`~~ | ~~`int`~~ | ~~Required, >=0~~ | ~~Sequence number~~ **REMOVED 2026-07-19 (WO-009b): not transmitted by the venue.** |
 | `timestamp` | `datetime` | Required, UTC | Update timestamp |
 
 ### Validation Rules
 
-1. **Checksum format**: Must be valid CRC-32 string per Kraken docs
-2. **Sequence monotonic**: sequence should increase (gap = resync)
+1. **Checksum format**: Must be valid CRC-32 per Kraken docs, computed over the post-update top-10-per-side ladder
+2. ~~**Sequence monotonic**: sequence should increase (gap = resync)~~ **REMOVED 2026-07-19 (WO-009b): no sequence field exists.**
 
 ### Relationships
 
@@ -181,8 +182,8 @@ Kraken v2 WebSocket
     │
     └─> Incremental Message ──> QuoteUpdate ──> LocalBookState (update)
                                                │
-                                               ├─> Checksum Validation
-                                               ├─> Sequence Gap Check
+                                               ├─> Apply update to local book
+                                               ├─> Checksum Validation (post-update)
                                                └─> MarketState (on success)
                                                       │
                                                       └─> Strategy.decide()
@@ -278,10 +279,10 @@ class MarketState:
 
 | Entity | Key Validations |
 |--------|----------------|
-| LocalBookState | Checksum match, sequence continuity, bid/ask sanity |
+| LocalBookState | Post-update checksum match, bid/ask sanity (~~sequence continuity~~ removed WO-009b) |
 | MarketState | bid > 0, ask > 0, bid < ask, derived fields computed correctly |
 | RollingTradeStats | Window pruning, count/time caps applied |
-| QuoteUpdate | Checksum format, sequence monotonic |
+| QuoteUpdate | Checksum format (~~sequence monotonic~~ removed WO-009b) |
 
 ---
 

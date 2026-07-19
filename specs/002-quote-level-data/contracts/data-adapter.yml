@@ -86,9 +86,18 @@ class ChecksumValidationError(FeedError):
     """Checksum validation failed. Update rejected; recovery triggered."""
     pass
 
-class SequenceGapError(FeedError):
-    """Sequence gap detected. Book discarded; resnapshot triggered."""
-    pass
+# REMOVED 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting project-lead ratification
+# class SequenceGapError(FeedError):
+#     """Sequence gap detected. Book discarded; resnapshot triggered."""
+#     pass
+#
+# Rationale: the Kraken v2 PUBLIC book channel transmits no sequence number, so
+# this error's trigger condition CANNOT OCCUR. Under rule 0.1d an enforcement
+# construct whose trigger cannot occur in production is a FALSE GUARANTEE.
+# REPLACED BY: ChecksumValidationError (above), which already exists and covers
+# the real detector. Checksum divergence is strictly broader — it catches missed
+# messages, misapplied updates, and our own book-maintenance bugs.
+# Preserved commented-out rather than deleted: history is annotated, not laundered.
 ```
 
 ---
@@ -167,15 +176,19 @@ yield MarketState(best_bid=0, best_ask=estimated_spread, ...)
 
 **Responsibilities**:
 - Subscribe to v2 book and trades channels
-- Maintain local book state with checksum validation
-- Detect sequence gaps and trigger resnapshot
+- Maintain local book state with checksum validation on EVERY update, computed
+  over the POST-update ladder (FR-018a(b),(c))
+- ~~Detect sequence gaps and trigger resnapshot~~ **CORRECTED 2026-07-19 (WO-009b):**
+  detect CHECKSUM DIVERGENCE and trigger resnapshot, emitting NO MarketState
+  until the fresh snapshot applies and validates (FR-018a(d))
 - Pause on book unavailability
 - Emit MarketState per contract above
 
 **Venue-Specific Details** (must NOT leak):
 - v2 protocol (snapshot/incremental format)
-- CRC checksum algorithm
-- Sequence number tracking
+- CRC checksum algorithm (post-update, top 10 per side)
+- ~~Sequence number tracking~~ **REMOVED 2026-07-19 (WO-009b): not transmitted**
+- Subscription depth (pinned at 10; legal values 10/25/100/500/1000)
 - Resync/resnapshot logic
 
 **External Interface** (exposed above adapter):
@@ -326,7 +339,7 @@ These codes MUST be emitted for non-yield events:
 |-----|---------|-----------|
 | `PAUSE_ON_BOOK_UNAVAILABLE` | Book channel lost | System paused; no MarketStates until recovery |
 | `CHECKSUM_RESYNC` | 5 consecutive failures | Reconnecting and resyncing book |
-| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
 | `ABNORMAL_SPREAD_REJECT` | Spread zero/negative/wide | Trade rejected by cost model |
 
 **Implementation**: Add to `LAYER_VERB_DETAIL` in `trading/logkit/decision.py`

@@ -165,7 +165,6 @@ class TestImportBoundaries:
         Note: The kill switch has its own separate test. This test does NOT test the kill switch.
         """
         import os
-        import importlib
         from trading.execution.paper import PaperExecutionClient
 
         # Save original values

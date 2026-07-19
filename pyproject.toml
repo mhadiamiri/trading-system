@@ -33,6 +33,13 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 
+# WO-009b §3: the quarantine directory holds FROZEN EVIDENCE — the fabricated
+# WO-008b-A artifacts and the three spike test files, preserved verbatim because
+# "the record of a false proof is itself evidence". They are not maintained code
+# and MUST NOT be edited to satisfy a linter. Excluded from lint rather than
+# corrected, which would destroy the record.
+extend-exclude = ["evidence/QUARANTINE-WO-008b-A-FABRICATED"]
+
 # WO-009 §4: redefinition detection via static analysis.
 # `venue_name` and `get_diagnostic_counters` were each defined twice on
 # KrakenV2BookAdapter, the later definition silently winning — so a live run and

@@ -20,7 +20,22 @@ This document consolidates research findings for the Quote-Level Data feature. A
 - v1 trades-only feed provides ~14 events/min, too sparse for meaningful signals
 - v2 book channel provides hundreds to thousands of quote updates per minute
 - v2 provides CRC checksum validation for book integrity (load-bearing for data honesty)
-- v2 provides snapshot/incremental protocol with sequence numbers for gap detection
+- ~~v2 provides snapshot/incremental protocol with sequence numbers for gap detection~~
+  **CORRECTED 2026-07-19 (WO-009b): THIS SENTENCE WAS FALSE.** The Kraken v2
+  **public** book channel provides a snapshot/incremental protocol with a **CRC32
+  checksum only — it transmits NO sequence numbers.** Sequence numbers exist in
+  Kraken v2 only on private/execution channels.
+  Source: <https://docs.kraken.com/api/docs/websocket-v2/book/> and
+  <https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/> — book messages carry
+  `channel`, `type`, `symbol`, `bids`, `asks`, `checksum`, `timestamp`; there is no
+  sequence, update-id, or ordering field.
+  **ORIGIN NOTE — this line is the origin of the entire defect class.** An
+  unverified factual claim about an external protocol, written here, propagated
+  into FR-018a, `data-model.md`, `contracts/data-adapter.yml`, `tasks.md`, and the
+  test fixtures — and from there into six work orders of "sequence-gap detection
+  proven" claims that were attached to a protocol element that does not exist.
+  Preserved by strike-through rather than deleted: the record of a false premise
+  is itself evidence. See `docs/decisions/2026-07-19-research-claims-are-load-bearing.md`.
 
 **Alternatives Considered**:
 - **Stay on v1 trades feed**: Rejected — insufficient data density; violates Principle V (honest costs require observed spread)
@@ -40,14 +55,26 @@ This document consolidates research findings for the Quote-Level Data feature. A
 
 **Rationale**:
 - Top-of-book (best bid/ask) is sufficient for cost model — full depth not required
-- Checksum validation on every update prevents silent book drift
-- Sequence-number tracking enables gap detection → resnapshot on gap
+- Checksum validation on **every** update prevents silent book drift (Kraken permits
+  periodic validation; permitted and honest are different standards — FR-018a(c))
+- ~~Sequence-number tracking enables gap detection → resnapshot on gap~~
+  **CORRECTED 2026-07-19 (WO-009b):** no sequence numbers exist on this channel.
+  **Checksum divergence** is the sole detector — and it is the *broader* one: a
+  sequence gap detects only a MISSING message, whereas a checksum mismatch detects
+  ANY divergence, including misapplied updates and our own book-maintenance bugs.
+- Checksum is defined over the **post-update** book, so validation must occur
+  **after** applying each update (FR-018a(b))
 - 5-consecutive-failure threshold tolerates transient glitches while catching real corruption
+- No MarketState may be emitted from checksum failure until a fresh snapshot
+  applies and validates (FR-018a(d))
 
 **Alternatives Considered**:
 - **Trust updates without checksum**: Rejected — violates Principle V (dishonest data = dishonest backtest)
 - **Resync on every failure**: Rejected — too aggressive; transient glitches are common
-- **Continue on sequence gap**: Rejected — violates checksum discipline; corrupted state untrustworthy
+- ~~**Continue on sequence gap**: Rejected — violates checksum discipline; corrupted state untrustworthy~~
+  **SUPERSEDED 2026-07-19 (WO-009b):** reframed as **continue on checksum failure**,
+  which is rejected for the same reason. The no-continue principle survives; only its
+  trigger changes.
 
 **Evidence**:
 - Kraken v2 docs specify checksum algorithm
@@ -205,7 +232,15 @@ This document consolidates research findings for the Quote-Level Data feature. A
 
 ## Decision 10: Reason Code Vocabulary Additions
 
-**Decision**: Add reason codes to LAYER_VERB_DETAIL for: abnormal-spread reject, pause-on-book-unavailable, checksum-resync, sequence-gap resnapshot.
+**Decision**: Add reason codes to LAYER_VERB_DETAIL for: abnormal-spread reject, pause-on-book-unavailable, checksum-resync, ~~sequence-gap resnapshot~~.
+
+**CORRECTED 2026-07-19 (WO-009b):** `SEQUENCE_GAP_RESNAPSHOT` is **withdrawn** — it
+named an event that cannot occur on this channel (rule 0.1d: a reason code that can
+never legitimately fire is a false guarantee). `CHECKSUM_RESYNC` already covers the
+real detector and is retained. Whether a distinct code is needed for the
+FR-018a(d) **no-emission window** (book unverified, awaiting fresh snapshot) is
+**not decided here** — that is WO-008b-A's call, made against a working
+implementation. See WO-009b §2.
 
 **Rationale**:
 - Principle VIII requires total observability
@@ -232,7 +267,7 @@ All technical unknowns were resolved during spec clarification (WO-003):
 | Checksum failure threshold | 5 consecutive failures trigger reconnection/resync | Q1 in spec clarifications |
 | Abnormal spread handling | REJECT trade (log + skip); no fallback | Q2 in spec clarifications |
 | Rolling trade window default | 100 trades AND 60 seconds (whichever first), configurable | Q3 in spec clarifications |
-| Sequence gap detection | Track sequence; on gap, discard book + resnapshot | Q4 in spec clarifications |
+| ~~Sequence gap detection~~ **Checksum divergence detection** *(CORRECTED 2026-07-19, WO-009b)* | ~~Track sequence; on gap, discard book + resnapshot~~ **Validate CRC32 on every update against the post-update book; on mismatch discard book + resnapshot, emitting no MarketState until the fresh snapshot validates** | Q4 (superseded) → amended FR-018a |
 | Book unavailable behavior | PAUSE, emit no MarketStates | Q5 in spec clarifications |
 
 **No NEEDS CLARIFICATION items remain** — all resolved in spec.
@@ -243,13 +278,37 @@ All technical unknowns were resolved during spec clarification (WO-003):
 
 ### Kraken WebSocket v2 API
 
-**Documentation**: https://docs.kraken.com/websockets/
+**Documentation**: ~~https://docs.kraken.com/websockets/~~
+**CORRECTED 2026-07-19 (WO-009b):** that URL is the **v1** documentation. Correct v2
+references: <https://docs.kraken.com/api/docs/websocket-v2/book/> and
+<https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/>
 
-**Key Points**:
-- Connection endpoint: `wss://ws.kraken.com`
-- Book channel subscription: `{"name":"book","subscription":{"depth":1}}`
-- Checksum algorithm: CRC-32 over bid/ask prices/sizes
-- Sequence numbers in message headers
+**Key Points** *(every line below was wrong; ALL CORRECTED 2026-07-19, WO-009b)*:
+- Connection endpoint: ~~`wss://ws.kraken.com`~~ → **`wss://ws.kraken.com/v2`**
+  The struck value is the **v1** endpoint. This line is the origin of
+  `WS_URL = "wss://ws.kraken.com"` in `kraken_v2_book.py`.
+- Book channel subscription: ~~`{"name":"book","subscription":{"depth":1}}`~~ →
+  **`{"method":"subscribe","params":{"channel":"book","symbol":["BTC/USD"],"depth":10}}`**
+  The struck form is **v1 framing** *and* carries an **illegal depth**. Kraken
+  accepts depth ∈ {10, 25, 100, 500, 1000} only. This line is the origin of
+  `BOOK_DEPTH = 1` in `kraken_v2_book.py`, an unsubscribable value.
+- Checksum algorithm: CRC-32 over the **top 10 levels per side of the POST-update
+  book**, regardless of subscribed depth. (Retained and made precise: the original
+  line was correct but underspecified, and the missing "post-update" is a live
+  defect — the implementation validates the pre-update book.)
+- ~~Sequence numbers in message headers~~ → **NO sequence numbers are transmitted
+  on the public book channel.** Messages carry `channel`, `type`, `symbol`, `bids`,
+  `asks`, `checksum`, `timestamp`.
+- Message envelope: a **dict** `{"channel":"book","type":"snapshot"|"update","data":[…]}`
+  with levels as `{"price": …, "qty": …}` objects — **not** positional arrays.
+- `qty: 0` **removes** a price level; it does not set its size to zero.
+- After applying an update the book must be **truncated to the subscribed depth**;
+  Kraken does not send `qty: 0` for levels falling out of scope.
+
+**ORIGIN NOTE:** three of the five defects blocking the WO-008b-A rewrite
+(v1 endpoint, `depth: 1`, sequence field) trace directly to this block. The
+implementation faithfully built what this research artifact specified. See
+`evidence/WO-009b/blocking_defects.txt`.
 
 ### Checksum Validation Best Practice
 

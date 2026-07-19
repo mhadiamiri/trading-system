@@ -92,24 +92,26 @@
   - Test: Simulate 5 consecutive checksum failures; verify resync triggered (reconnection + fresh snapshot request)
   - Verify: Test FAILS (adapter doesn't exist yet)
 
-- [ ] **T008 [P] [US3]** Test: Sequence gap triggers resnapshot
+- [ ] **T008 [P] [US3]** ~~Test: Sequence gap triggers resnapshot~~ **Test: Checksum divergence triggers resnapshot** *(AMENDED 2026-07-19, WO-009b)*
   - Path: `tests/test_data_adapters.py`
-  - Test: Establish synchronized book (sequence 100); receive update with sequence 105 (gap); verify book discarded; verify snapshot requested
+  - ~~Test: Establish synchronized book (sequence 100); receive update with sequence 105 (gap); verify book discarded; verify snapshot requested~~
+  - **Test: establish book from the ground-truth snapshot fixture; apply an update whose checksum does not match the POST-update ladder; verify the APPLIED state is discarded, a snapshot is requested, and NO MarketState is emitted until that snapshot validates (FR-018a(b),(d))**
+  - **WO-008b-A must also DELETE `test_sequence_gap_triggers_resnapshot` — its trigger cannot occur (rule 0.1d).**
   - Verify: Test FAILS (adapter doesn't exist yet)
 
 ### Implementation for US3
 
 - [ ] **T009 [US3]** Create LocalBookState entity (adapter-internal)
   - Path: `src/trading/data/adapters/kraken_v2_book.py`
-  - Fields: best_bid_price, best_bid_size, best_ask_price, best_ask_size, last_sequence, last_checksum, consecutive_failures, is_paused
+  - Fields: best_bid_price, best_bid_size, best_ask_price, best_ask_size, ~~last_sequence~~, last_checksum, consecutive_failures, is_paused *(last_sequence removed WO-009b)*
   - State transitions: INITIAL → SYNCHRONIZED → RESYNC_REQUIRED → PAUSED → SYNCHRONIZED
-  - Validation rules: Checksum validation on every update; sequence gap detection; 5-failure threshold
+  - Validation rules: Checksum validation on EVERY update computed over the POST-update ladder; ~~sequence gap detection~~; 5-failure threshold; no-emission window until resync validates *(WO-009b)*
   - Verify: Unit tests for state transitions pass
 
 - [ ] **T010 [US3]** Create QuoteUpdate entity (adapter-internal)
   - Path: `src/trading/data/adapters/kraken_v2_book.py`
-  - Fields: bid_price, bid_size, ask_price, ask_size, checksum, sequence, timestamp
-  - Validation: Checksum format (CRC-32); sequence monotonic
+  - Fields: bid_price, bid_size, ask_price, ask_size, checksum, ~~sequence~~, timestamp *(sequence removed WO-009b — not transmitted)*
+  - Validation: Checksum format (CRC-32); ~~sequence monotonic~~ *(WO-009b)*
   - Verify: Unit tests pass
 
 - [ ] **T011 [US3]** Implement CRC-32 checksum validation algorithm
@@ -143,11 +145,12 @@
   - Emit MarketState on successful update
   - Verify: Tests T005, T006, T007, T008 now PASS
 
-- [ ] **T015 [US3]** Implement KrakenV2BookAdapter: Sequence gap detection and resnapshot
+- [ ] **T015 [US3]** ~~Implement KrakenV2BookAdapter: Sequence gap detection and resnapshot~~ **Implement checksum-divergence detection and resnapshot** *(AMENDED 2026-07-19, WO-009b)*
   - Path: `src/trading/data/adapters/kraken_v2_book.py`
-  - Track sequence numbers
-  - On gap (incoming sequence != last_sequence + 1): discard local book; request fresh snapshot
-  - No continue-on-gap path
+  - ~~Track sequence numbers~~ **Apply each update, THEN validate CRC32 over the post-update top-10-per-side ladder**
+  - ~~On gap (incoming sequence != last_sequence + 1): discard local book; request fresh snapshot~~ **On mismatch: discard the APPLIED state; request fresh snapshot**
+  - **Emit NO MarketState until the fresh snapshot is applied and validates (FR-018a(d))**
+  - ~~No continue-on-gap path~~ **No continue-on-checksum-failure path**
   - Verify: Test T008 now PASS
 
 - [ ] **T016 [US3]** Implement KrakenV2BookAdapter: Recovery logic (resync after 5 failures)
@@ -165,9 +168,10 @@
   - No trades-only fallback mode
   - Verify: Unit tests for pause/resume pass
 
-- [ ] **T018 [US3]** Add reason codes for checksum/resync/sequence-gap/pause events
+- [ ] **T018 [US3]** Add reason codes for checksum/resync/~~sequence-gap~~/pause events *(AMENDED 2026-07-19, WO-009b)*
   - Path: `src/trading/logkit/decision.py`
-  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, PAUSE_ON_BOOK_UNAVAILABLE
+  - Add to LAYER_VERB_DETAIL: CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(WITHDRAWN — trigger cannot occur; see WO-009b §2)*, PAUSE_ON_BOOK_UNAVAILABLE
+  - **Open for WO-008b-A: whether the FR-018a(d) no-emission window needs its own code**
   - Verify: Import-linter still passes; reason codes defined
 
 - [ ] **T019 [US3]** Update import-linter: Verify no v2/book/checksum leaks
@@ -366,7 +370,7 @@
 - [ ] **T039 [P] [FOUND]** Run quickstart.md validation scenarios
   - Path: Root directory
   - Run all 10 quickstart scenarios
-  - Verify: Scenario 1 (quotes), Scenario 2 (checksum), Scenario 3 (recovery), Scenario 4 (sequence gap), Scenario 5 (pause), Scenario 6 (abnormal spread), Scenario 7 (observed spread only), Scenario 8 (backtest honesty), Scenario 9 (import boundaries), Scenario 10 (end-to-end)
+  - Verify: Scenario 1 (quotes), Scenario 2 (checksum), Scenario 3 (recovery), Scenario 4 (~~sequence gap~~ checksum divergence, WO-009b), Scenario 5 (pause), Scenario 6 (abnormal spread), Scenario 7 (observed spread only), Scenario 8 (backtest honesty), Scenario 9 (import boundaries), Scenario 10 (end-to-end)
   - Verify: All scenarios pass
 
 **Checkpoint**: Feature complete; all validations pass; ready for review
@@ -377,7 +381,7 @@
 
 - [ ] **T040 [P] [FOUND]** Update decision log reason codes documentation
   - Path: `src/trading/logkit/decision.py`
-  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, SEQUENCE_GAP_RESNAPSHOT, ABNORMAL_SPREAD_REJECT
+  - Document new reason codes: PAUSE_ON_BOOK_UNAVAILABLE, CHECKSUM_RESYNC, ~~SEQUENCE_GAP_RESNAPSHOT~~ *(withdrawn WO-009b)*, ABNORMAL_SPREAD_REJECT
   - Verify: Documentation matches implementation
 
 - [ ] **T041 [P] [FOUND]** Mark KrakenPublicFeed as deprecated
@@ -452,7 +456,7 @@ Per instructions.md WO-005-B, the following constraints are honored:
 - ✅ T005-T008 (tests) + T009-T019 (implementation) — all in Phase 3
 - Tests written FIRST, fail-then-pass pattern enforced
 - Corrupted book must fail validation (T006)
-- Recovery must fire (T007 resync, T008 sequence gap)
+- Recovery must fire (T007 resync, T008 ~~sequence gap~~ **checksum divergence**, WO-009b)
 
 ### (c) Explicit no-synthetic-spread tests exist
 - ✅ T025: Cost model uses observed spread only (no synthetic path)

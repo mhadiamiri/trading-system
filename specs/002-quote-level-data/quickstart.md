@@ -76,7 +76,7 @@ timeout 60 python -m trading.loop.live
 
 **Expected Output**:
 - Quote updates logged (hundreds to thousands per minute)
-- No "checksum failure" or "sequence gap" errors under normal conditions
+- No "checksum failure" errors under normal conditions *(CORRECTED 2026-07-19, WO-009b: no sequence numbers on the v2 public book channel; checksum divergence is the detector.)*
 - MarketStates emitted with all quote fields populated
 
 ---
@@ -131,28 +131,44 @@ pytest tests/test_data_adapters.py -v -k "test_resync_after_failures"
 
 ---
 
-### Scenario 4: Sequence Gap → Resnapshot
+### Scenario 4: ~~Sequence Gap → Resnapshot~~ Checksum Divergence → Resnapshot
 
-**Objective**: Verify sequence gap detection triggers resnapshot.
+**REPLACED 2026-07-19 (WO-009b).** The original scenario validated a mechanism that
+cannot occur: the Kraken v2 public book channel transmits no sequence numbers. Under
+rule 0.1d a scenario whose trigger cannot occur in production is a false guarantee.
+Original text preserved by strike-through below; history is annotated, not laundered.
+
+~~**Objective**: Verify sequence gap detection triggers resnapshot.~~
+~~pytest tests/test_data_adapters.py -v -k "test_sequence_gap_resnapshot"~~
+~~1. Establishes synchronized book (sequence 100); 2. Receives update with sequence 105 (gap); 3. Verifies book discarded and snapshot requested~~
+
+**Objective**: Verify checksum divergence triggers resnapshot, with no MarketState
+emitted until the fresh snapshot validates.
 
 **Steps**:
 
 ```bash
-# Run sequence gap test
-pytest tests/test_data_adapters.py -v -k "test_sequence_gap_resnapshot"
+# Run checksum divergence test (to be written in WO-008b-A)
+pytest tests/test_data_adapters.py -v -k "checksum_divergence"
 ```
 
 **Expected Outcome**:
-- Test passes
-- Out-of-order sequence detected (gap)
-- Local book discarded
+- Update applied to the local book, then CRC32 computed over the POST-update
+  top-10-per-side ladder (FR-018a(b))
+- Mismatch detected; the APPLIED state discarded (not merely the message)
 - Fresh snapshot requested
-- No updates applied during gap
+- **NO MarketState emitted from the moment of failure until the fresh snapshot is
+  applied and its checksum validates** (FR-018a(d))
 
-**What the test does**:
-1. Establishes synchronized book (sequence 100)
-2. Receives update with sequence 105 (gap)
-3. Verifies book discarded and snapshot requested
+**What the test must do**:
+1. Establish a synchronized book from the ground-truth snapshot fixture
+2. Apply an update whose checksum does not match the resulting book
+3. Verify the applied state is discarded, a snapshot is requested, and nothing is
+   emitted until that snapshot validates
+
+**Status**: this test does not exist yet. Owned by WO-008b-A, which must also delete
+`test_sequence_gap_triggers_resnapshot`. Fixtures are ready in
+`tests/fixtures/kraken_v2_raw_frames.py`.
 
 ---
 
@@ -327,7 +343,7 @@ pytest -v
 **Diagnosis**:
 1. Check network connectivity to Kraken
 2. Verify checksum algorithm implementation matches Kraken docs
-3. Check for sequence gaps (may indicate message loss)
+3. Check for checksum failures (may indicate message loss, misapplied updates, or a book-maintenance bug) *(CORRECTED 2026-07-19, WO-009b: no sequence numbers on the v2 public book channel; checksum divergence is the detector.)*
 
 **Resolution**:
 - If transient: 5-failure threshold tolerates glitches
@@ -368,7 +384,7 @@ Before declaring feature complete, verify:
 - [ ] Scenario 1: Quote processing happy path passes
 - [ ] Scenario 2: Checksum validation bites
 - [ ] Scenario 3: Recovery fires (5 failures → resync)
-- [ ] Scenario 4: Sequence gap → resnapshot
+- [ ] Scenario 4: ~~Sequence gap~~ **Checksum divergence** → resnapshot *(WO-009b)*
 - [ ] Scenario 5: Book unavailable → pause (no fallback)
 - [ ] Scenario 6: Abnormal spread → reject trade
 - [ ] Scenario 7: Observed spread only (no synthetic path)

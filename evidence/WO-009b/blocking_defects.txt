@@ -1,0 +1,132 @@
+WO-009b §4 — THE BLOCKING IMPLEMENTATION DEFECTS, ENUMERATED
+Generated: 2026-07-19T14:33:44Z
+Tree: 03b7460123eb3adfce12d5ac6c4975bd48daf164   file: src/trading/data/adapters/kraken_v2_book.py
+These scope WO-008b-A. NONE is fixed here.
+
+################ ⚠ CORRECTION TO WO-009 EVIDENCE — READ FIRST ################
+evidence/WO-009/tests_requiring_rewire.txt §4 listed defects (b) and (c) as:
+  (b) '_parse_book_message expects a LIST envelope [seq, bids, asks, checksum]'
+  (c) 'Levels expected as positional pairs, not {price, qty} dicts'
+
+BOTH DESCRIBE CODE THAT NO LONGER EXISTS. They were written from the
+UNCOMMITTED WEBSOCKET SPIKE, which WO-010 §4 reverted. Verified:
+=== COMMAND: grep -n '_parse_book_message' <adapter> ===
+  (NO MATCHES — the method does not exist in the committed tree)
+
+The true defect is not a WRONG parser — it is NO parser. Corrected below.
+Recorded rather than silently restated (rule 0.6a/0.6d).
+
+═══════════════════════════════════════════════════════════════
+DEFECT 1 — CHECKSUM VALIDATED AGAINST THE PRE-UPDATE BOOK
+═══════════════════════════════════════════════════════════════
+FILE/LINES: kraken_v2_book.py:621-628 (read+compute) vs :647 (apply)
+=== COMMAND: sed -n '619,630p;646,648p' <adapter> ===
+        # Validate checksum using the FULL ladder (top 10 levels per side)
+        # This is critical: Kraken's checksum is over 10 levels, not 1
+        top_10_bids = self._local_book.bids[:10]
+        top_10_asks = self._local_book.asks[:10]
+
+        # Convert Decimal to string for checksum computation
+        bid_levels = [(str(price), str(size)) for price, size in top_10_bids]
+        ask_levels = [(str(price), str(size)) for price, size in top_10_asks]
+
+        computed_checksum = self.compute_checksum(bid_levels, ask_levels)
+
+        if computed_checksum != quote_update.checksum:
+        ...
+        # Checksum validated - apply incremental update to the ladder
+        self._local_book.apply_incremental_update(
+            bid_levels=[(quote_update.bid_price, quote_update.bid_size)],
+
+WHAT: the ladder is read at :621-622 and the checksum computed at :628,
+  BEFORE apply_incremental_update() runs at :647.
+WHY BLOCKING: Kraken defines the CRC32 over the POST-update book.
+  Against a real feed EVERY incremental checksum mismatches, driving
+  consecutive_failures to the threshold and producing a reconnect loop
+  with zero MarketStates emitted. Now a stated requirement: FR-018a(b).
+  No self-generated fixture can catch this — our code would make the same
+  mistake on both sides of the comparison.
+
+═══════════════════════════════════════════════════════════════
+DEFECT 2 — NO PARSE PATH EXISTS AT ALL
+═══════════════════════════════════════════════════════════════
+FILE/LINE: kraken_v2_book.py:777 (the placeholder), and absence of any parser
+=== COMMAND: sed -n '775,779p' <adapter> ===
+                await asyncio.sleep(0.01)  # Small delay between events
+        else:
+            # Placeholder: Would connect to WebSocket in WO-008b
+            # For now, generate minimal test data using QuoteUpdate format
+            from datetime import datetime, UTC
+=== COMMAND: grep -n 'json.loads\|def _parse' <adapter> ===
+  (NO MATCHES — nothing converts a wire frame into a QuoteUpdate)
+
+WHAT: get_market_data() consumes pre-built QuoteUpdate objects. There is no
+  code path from a raw Kraken frame to a QuoteUpdate.
+WHY BLOCKING: tests/fixtures/kraken_v2_raw_frames.py has no consumer. The
+  raw-frame fixtures cannot be exercised until this is built. This is the
+  single largest piece of WO-008b-A.
+
+═══════════════════════════════════════════════════════════════
+DEFECT 3 — BOOK_DEPTH = 1 IS ILLEGAL AT THE VENUE
+═══════════════════════════════════════════════════════════════
+FILE/LINE: kraken_v2_book.py:449
+=== COMMAND: sed -n '449p' <adapter> ===
+    BOOK_DEPTH = 1  # Top of book only
+
+WHAT: Kraken accepts depth in {10, 25, 100, 500, 1000}. 1 is not legal.
+WHY BLOCKING: the subscription is rejected, so no data arrives at all.
+  Independently, a 1-level ladder can never satisfy a checksum computed
+  over 10 levels per side. Amended FR-018a(e) pins depth 10.
+
+═══════════════════════════════════════════════════════════════
+DEFECT 4 — WS_URL IS THE v1 ENDPOINT
+═══════════════════════════════════════════════════════════════
+FILE/LINE: kraken_v2_book.py:446
+=== COMMAND: sed -n '445,449p' <adapter> ===
+    # WebSocket endpoint
+    WS_URL = "wss://ws.kraken.com"
+
+    # Book subscription parameters
+    BOOK_DEPTH = 1  # Top of book only
+=== COMMAND: grep -c '/v2' <adapter> ===
+0
+
+WHAT: 'wss://ws.kraken.com' is the v1 endpoint. v2 book requires
+  'wss://ws.kraken.com/v2'. The string '/v2' appears 0 times in the file,
+  despite the module being named kraken_v2_book.
+WHY BLOCKING: connecting to v1 yields v1 framing, which the v2 book
+  protocol, checksum semantics and {price,qty} schema do not match.
+
+═══════════════════════════════════════════════════════════════
+DEFECT 5 — QuoteUpdate.sequence AND THE SEQUENCE-GAP BRANCH
+═══════════════════════════════════════════════════════════════
+FILE/LINES: QuoteUpdate.sequence field; gap branch in _process_quote_update
+=== COMMAND: grep -n 'sequence' <adapter> | head -12 ===
+61:        last_sequence: Last processed sequence number
+73:        SYNCHRONIZED → RESYNC_REQUIRED: After 5 checksum failures or sequence gap
+95:    last_sequence: int = 0
+105:        elif self.last_sequence == 0:
+145:                       sequence: int, checksum: int) -> None:
+152:            sequence: Sequence number from snapshot
+160:        self.last_sequence = sequence
+166:                                sequence: int, checksum: int) -> None:
+173:            sequence: Sequence number from update
+225:        self.last_sequence = sequence
+246:        self.last_sequence = 0
+365:        sequence: Sequence number from Kraken
+
+WHAT: a required field modeling a protocol element Kraken's public book
+  channel never sends, plus control flow branching on it.
+WHY BLOCKING: amended FR-018a(a) forbids relying on sequence numbers and
+  the amended Key Entities schema removes the field. Raw frames carry no
+  sequence, so QuoteUpdate cannot be constructed from one until removed.
+  The gap branch is unreachable-by-construction: rule 0.1d false guarantee.
+
+═══════════════════════════════════════════════════════════════
+ALSO PRESENT — already owned by WO-008b-A, not counted among the five
+═══════════════════════════════════════════════════════════════
+=== COMMAND: grep -n 'Mock' <adapter> ===
+22:from unittest.mock import Mock
+458:        self._log_error = Mock()  # Placeholder - will be implemented with real logger
+  self._log_error = Mock() shadows the real method, so every checksum
+  failure log is discarded and FR-017 is unfulfilled. Committed defect.

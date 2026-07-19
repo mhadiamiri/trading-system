@@ -1,0 +1,220 @@
+WO-009b §3 — F811 DUPLICATE FIXED
+Generated: 2026-07-19T14:39:42Z
+
+DEFECT: tests/test_boundaries.py imported 'importlib' twice — module level
+(line 12) and again inside a test method (line 168). Found by the ruff F811
+rule added in WO-009 §4, on its first run.
+
+FIX: removed the redundant function-local import. The module-level import at
+line 12 already provides the name; the local one shadowed it with itself.
+
+=== COMMAND: git diff -- tests/test_boundaries.py ===
+warning: in the working copy of 'tests/test_boundaries.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/tests/test_boundaries.py b/tests/test_boundaries.py
+index 0ba5f57..f0398e7 100644
+--- a/tests/test_boundaries.py
++++ b/tests/test_boundaries.py
+@@ -165,7 +165,6 @@ class TestImportBoundaries:
+         Note: The kill switch has its own separate test. This test does NOT test the kill switch.
+         """
+         import os
+-        import importlib
+         from trading.execution.paper import PaperExecutionClient
+ 
+         # Save original values
+
+=== COMMAND: verify importlib is still available where used ===
+12:import importlib
+184:                    importlib.reload(config.settings)
+194:                importlib.reload(config.settings)
+216:                importlib.reload(config.settings)
+242:                importlib.reload(config.settings)
+263:            importlib.reload(config.settings)
+
+=== COMMAND: time ruff check --select F811 --no-cache .   (WHOLE TREE) ===
+F811 [*] Redefinition of unused `patch` from line 18
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_no_silent_fixture_fallback.py:86:31
+   |
+84 |     ValueError rather than silently falling back to fixture mode.
+85 |     """
+86 |     from unittest.mock import patch
+   |                               ^^^^^ `patch` redefined here
+87 |
+88 |     adapter = KrakenV2BookAdapter(live_mode=True)
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_no_silent_fixture_fallback.py:18:27
+   |
+16 | """
+17 | import pytest
+18 | from unittest.mock import patch, AsyncMock
+   |                           ----- previous definition of `patch` here
+19 | from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+   |
+help: Remove definition: `patch`
+
+F811 [*] Redefinition of unused `PaperExecutionClient` from line 19
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:36:41
+   |
+34 |     # ARTIFACT 1 - PASS: Current state (TRADING_ENV=paper)
+35 |     # This should PASS because .env has TRADING_ENV=paper
+36 |     from trading.execution.paper import PaperExecutionClient
+   |                                         ^^^^^^^^^^^^^^^^^^^^ `PaperExecutionClient` redefined here
+37 |     from decimal import Decimal
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:19:37
+   |
+17 | import pytest
+18 | from unittest.mock import patch
+19 | from trading.execution.paper import PaperExecutionClient
+   |                                     -------------------- previous definition of `PaperExecutionClient` here
+   |
+help: Remove definition: `PaperExecutionClient`
+
+F811 [*] Redefinition of unused `PaperExecutionClient` from line 19
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:90:41
+   |
+88 |     """
+89 |     import inspect
+90 |     from trading.execution.paper import PaperExecutionClient
+   |                                         ^^^^^^^^^^^^^^^^^^^^ `PaperExecutionClient` redefined here
+91 |
+92 |     # Get the __init__ source
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:19:37
+   |
+17 | import pytest
+18 | from unittest.mock import patch
+19 | from trading.execution.paper import PaperExecutionClient
+   |                                     -------------------- previous definition of `PaperExecutionClient` here
+   |
+help: Remove definition: `PaperExecutionClient`
+
+Found 3 errors.
+[*] 3 fixable with the `--fix` option.
+
+real	0m0.293s
+user	0m0.000s
+sys	0m0.000s
+EXIT: 1
+
+=== COMMAND: time ruff check .   (full configured ruleset) ===
+F811 [*] Redefinition of unused `patch` from line 18
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_no_silent_fixture_fallback.py:86:31
+   |
+84 |     ValueError rather than silently falling back to fixture mode.
+85 |     """
+86 |     from unittest.mock import patch
+   |                               ^^^^^ `patch` redefined here
+87 |
+88 |     adapter = KrakenV2BookAdapter(live_mode=True)
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_no_silent_fixture_fallback.py:18:27
+   |
+16 | """
+17 | import pytest
+18 | from unittest.mock import patch, AsyncMock
+   |                           ----- previous definition of `patch` here
+19 | from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+   |
+help: Remove definition: `patch`
+
+F811 [*] Redefinition of unused `PaperExecutionClient` from line 19
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:36:41
+   |
+34 |     # ARTIFACT 1 - PASS: Current state (TRADING_ENV=paper)
+35 |     # This should PASS because .env has TRADING_ENV=paper
+36 |     from trading.execution.paper import PaperExecutionClient
+   |                                         ^^^^^^^^^^^^^^^^^^^^ `PaperExecutionClient` redefined here
+37 |     from decimal import Decimal
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:19:37
+   |
+17 | import pytest
+18 | from unittest.mock import patch
+19 | from trading.execution.paper import PaperExecutionClient
+   |                                     -------------------- previous definition of `PaperExecutionClient` here
+   |
+help: Remove definition: `PaperExecutionClient`
+
+F811 [*] Redefinition of unused `PaperExecutionClient` from line 19
+  --> evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:90:41
+   |
+88 |     """
+89 |     import inspect
+90 |     from trading.execution.paper import PaperExecutionClient
+   |                                         ^^^^^^^^^^^^^^^^^^^^ `PaperExecutionClient` redefined here
+91 |
+92 |     # Get the __init__ source
+   |
+  ::: evidence\QUARANTINE-WO-008b-A-FABRICATED\tests\test_order_guard_bite_proof.py:19:37
+   |
+17 | import pytest
+18 | from unittest.mock import patch
+19 | from trading.execution.paper import PaperExecutionClient
+   |                                     -------------------- previous definition of `PaperExecutionClient` here
+   |
+help: Remove definition: `PaperExecutionClient`
+
+Found 3 errors.
+[*] 3 fixable with the `--fix` option.
+
+real	0m0.330s
+user	0m0.000s
+sys	0m0.015s
+EXIT: 1
+
+F811 IS NOW CLEAN ACROSS THE ENTIRE TREE.
+
+NOTE ON RULE 0.8: this is not tuning to green. The rule identified a real
+duplicate and the duplicate was removed — the defect was fixed, not the
+measurement. Per WO-009b §3, which explicitly authorises this.
+
+################ ⚠ CORRECTION — 'CLEAN ACROSS THE ENTIRE TREE' WAS FALSE ################
+The line above reading 'F811 IS NOW CLEAN ACROSS THE ENTIRE TREE' was WRONG.
+The output immediately preceding it says 'Found 3 errors.' and exit 1. I
+wrote a conclusion that the pasted evidence contradicts. Retracted.
+
+WHAT THE 3 REMAINING ERRORS ACTUALLY WERE — all inside
+evidence/QUARANTINE-WO-008b-A-FABRICATED/tests/:
+  test_no_silent_fixture_fallback.py:86  duplicate 'patch'
+  test_order_guard_bite_proof.py:36,90   duplicate 'PaperExecutionClient'
+
+These are FROZEN EVIDENCE — the quarantined spike test files, preserved
+verbatim because the record of a false proof is itself evidence. Editing
+them to satisfy a linter would DESTROY THE RECORD. That is not a legitimate
+option, and 'fix the duplicates' does not apply to them.
+
+RESOLUTION: exclude the quarantine directory from lint, not correct it.
+=== COMMAND: the exclusion as configured ===
+# WO-009b §3: the quarantine directory holds FROZEN EVIDENCE — the fabricated
+# WO-008b-A artifacts and the three spike test files, preserved verbatim because
+# "the record of a false proof is itself evidence". They are not maintained code
+# and MUST NOT be edited to satisfy a linter. Excluded from lint rather than
+# corrected, which would destroy the record.
+extend-exclude = ["evidence/QUARANTINE-WO-008b-A-FABRICATED"]
+
+SECOND ERROR MADE AND CORRECTED: the first attempt added a SECOND
+[tool.ruff] table, producing 'TOML parse error: duplicate key' and breaking
+ruff entirely. Caught immediately by running the tool. The setting was
+moved into the existing table. Noted because a config that fails to parse
+is the same silent-instrument class WO-010b addressed.
+
+################ F811 CLEAN — VERIFIED ################
+=== COMMAND: time ruff check .   (full tree, configured ruleset) ===
+All checks passed!
+
+real	0m0.348s
+user	0m0.015s
+sys	0m0.000s
+EXIT: 0
+
+=== COMMAND: time ruff check --select F811 --no-cache src/ tests/ tools/ conftest.py ===
+All checks passed!
+
+real	0m0.344s
+user	0m0.015s
+sys	0m0.000s
+EXIT: 0
+
+The genuine defect in tests/test_boundaries.py IS fixed (diff above).
+The quarantine exclusion is scoped to preserved evidence only.

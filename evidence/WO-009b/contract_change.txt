@@ -1,0 +1,182 @@
+WO-009b §2 — ADAPTER CONTRACT CHANGE — REQUIRES PROJECT-LEAD RATIFICATION
+Generated: 2026-07-19T14:36:09Z
+File: specs/002-quote-level-data/contracts/data-adapter.yml
+
+RULE 0.1a treats the adapter contract surface as an INTERFACE. Ops ruled this
+change a direct consequence of the ratified FR-018a amendment rather than a new
+decision, and authorised proceeding — but flagged it for separate, prominent
+reporting. If the project lead vetoes, it reverts.
+
+################ BEFORE ################
+=== COMMAND: sed -n '84,95p' contracts/data-adapter.yml   (error class) ===
+
+class ChecksumValidationError(FeedError):
+    """Checksum validation failed. Update rejected; recovery triggered."""
+    pass
+
+class SequenceGapError(FeedError):
+    """Sequence gap detected. Book discarded; resnapshot triggered."""
+    pass
+```
+
+---
+
+
+=== COMMAND: sed -n '165,182p' contracts/data-adapter.yml   (responsibilities) ===
+
+**Secondary Channel**: Trades (enrichment: rolling stats)
+
+**Responsibilities**:
+- Subscribe to v2 book and trades channels
+- Maintain local book state with checksum validation
+- Detect sequence gaps and trigger resnapshot
+- Pause on book unavailability
+- Emit MarketState per contract above
+
+**Venue-Specific Details** (must NOT leak):
+- v2 protocol (snapshot/incremental format)
+- CRC checksum algorithm
+- Sequence number tracking
+- Resync/resnapshot logic
+
+**External Interface** (exposed above adapter):
+```python
+
+=== COMMAND: sed -n '322,333p' contracts/data-adapter.yml   (reason codes) ===
+
+These codes MUST be emitted for non-yield events:
+
+| Code | Context | Semantics |
+|-----|---------|-----------|
+| `PAUSE_ON_BOOK_UNAVAILABLE` | Book channel lost | System paused; no MarketStates until recovery |
+| `CHECKSUM_RESYNC` | 5 consecutive failures | Reconnecting and resyncing book |
+| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
+| `ABNORMAL_SPREAD_REJECT` | Spread zero/negative/wide | Trade rejected by cost model |
+
+**Implementation**: Add to `LAYER_VERB_DETAIL` in `trading/logkit/decision.py`
+
+
+################ AFTER ################
+=== COMMAND: sed -n '84,100p' contracts/data-adapter.yml   (error class) ===
+
+class ChecksumValidationError(FeedError):
+    """Checksum validation failed. Update rejected; recovery triggered."""
+    pass
+
+# REMOVED 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting project-lead ratification
+# class SequenceGapError(FeedError):
+#     """Sequence gap detected. Book discarded; resnapshot triggered."""
+#     pass
+#
+# Rationale: the Kraken v2 PUBLIC book channel transmits no sequence number, so
+# this error's trigger condition CANNOT OCCUR. Under rule 0.1d an enforcement
+# construct whose trigger cannot occur in production is a FALSE GUARANTEE.
+# REPLACED BY: ChecksumValidationError (above), which already exists and covers
+# the real detector. Checksum divergence is strictly broader — it catches missed
+# messages, misapplied updates, and our own book-maintenance bugs.
+# Preserved commented-out rather than deleted: history is annotated, not laundered.
+
+=== COMMAND: git diff -- contracts/data-adapter.yml ===
+diff --git a/specs/002-quote-level-data/contracts/data-adapter.yml b/specs/002-quote-level-data/contracts/data-adapter.yml
+index d087b95..98655ef 100644
+--- a/specs/002-quote-level-data/contracts/data-adapter.yml
++++ b/specs/002-quote-level-data/contracts/data-adapter.yml
+@@ -86,9 +86,18 @@ class ChecksumValidationError(FeedError):
+     """Checksum validation failed. Update rejected; recovery triggered."""
+     pass
+ 
+-class SequenceGapError(FeedError):
+-    """Sequence gap detected. Book discarded; resnapshot triggered."""
+-    pass
++# REMOVED 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting project-lead ratification
++# class SequenceGapError(FeedError):
++#     """Sequence gap detected. Book discarded; resnapshot triggered."""
++#     pass
++#
++# Rationale: the Kraken v2 PUBLIC book channel transmits no sequence number, so
++# this error's trigger condition CANNOT OCCUR. Under rule 0.1d an enforcement
++# construct whose trigger cannot occur in production is a FALSE GUARANTEE.
++# REPLACED BY: ChecksumValidationError (above), which already exists and covers
++# the real detector. Checksum divergence is strictly broader — it catches missed
++# messages, misapplied updates, and our own book-maintenance bugs.
++# Preserved commented-out rather than deleted: history is annotated, not laundered.
+ ```
+ 
+ ---
+@@ -167,15 +176,19 @@ yield MarketState(best_bid=0, best_ask=estimated_spread, ...)
+ 
+ **Responsibilities**:
+ - Subscribe to v2 book and trades channels
+-- Maintain local book state with checksum validation
+-- Detect sequence gaps and trigger resnapshot
++- Maintain local book state with checksum validation on EVERY update, computed
++  over the POST-update ladder (FR-018a(b),(c))
++- ~~Detect sequence gaps and trigger resnapshot~~ **CORRECTED 2026-07-19 (WO-009b):**
++  detect CHECKSUM DIVERGENCE and trigger resnapshot, emitting NO MarketState
++  until the fresh snapshot applies and validates (FR-018a(d))
+ - Pause on book unavailability
+ - Emit MarketState per contract above
+ 
+ **Venue-Specific Details** (must NOT leak):
+ - v2 protocol (snapshot/incremental format)
+-- CRC checksum algorithm
+-- Sequence number tracking
++- CRC checksum algorithm (post-update, top 10 per side)
++- ~~Sequence number tracking~~ **REMOVED 2026-07-19 (WO-009b): not transmitted**
++- Subscription depth (pinned at 10; legal values 10/25/100/500/1000)
+ - Resync/resnapshot logic
+ 
+ **External Interface** (exposed above adapter):
+@@ -326,7 +339,7 @@ These codes MUST be emitted for non-yield events:
+ |-----|---------|-----------|
+ | `PAUSE_ON_BOOK_UNAVAILABLE` | Book channel lost | System paused; no MarketStates until recovery |
+ | `CHECKSUM_RESYNC` | 5 consecutive failures | Reconnecting and resyncing book |
+-| `SEQUENCE_GAP_RESNAPSHOT` | Gap in sequence numbers | Discarding book; requesting fresh snapshot |
++| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+ | `ABNORMAL_SPREAD_REJECT` | Spread zero/negative/wide | Trade rejected by cost model |
+ 
+ **Implementation**: Add to `LAYER_VERB_DETAIL` in `trading/logkit/decision.py`
+
+################ WHAT REPLACES THEM — §2's EXPLICIT QUESTION ################
+
+Q: is there a checksum-divergence error type and reason code, and does it
+   follow the existing convention?
+
+A: YES — BOTH ALREADY EXISTED. Nothing new had to be invented.
+
+  SequenceGapError        -> ChecksumValidationError   (pre-existing, same file)
+  SEQUENCE_GAP_RESNAPSHOT -> CHECKSUM_RESYNC           (pre-existing, same table)
+
+=== COMMAND: the replacement error class, unchanged ===
+85:class ChecksumValidationError(FeedError):
+86-    """Checksum validation failed. Update rejected; recovery triggered."""
+87-    pass
+
+=== COMMAND: the replacement reason code, unchanged ===
+341:| `CHECKSUM_RESYNC` | 5 consecutive failures | Reconnecting and resyncing book |
+342:| ~~`SEQUENCE_GAP_RESNAPSHOT`~~ | ~~Gap in sequence numbers~~ | **WITHDRAWN 2026-07-19 (WO-009b) — INTERFACE CHANGE, awaiting ratification.** Trigger cannot occur: no sequence numbers on this channel (rule 0.1d). Superseded by `CHECKSUM_RESYNC`. |
+
+CONVENTION CHECK: CHECKSUM_RESYNC matches the established
+SUBJECT_VERB / SUBJECT_DETAIL shape of PAUSE_ON_BOOK_UNAVAILABLE and
+ABNORMAL_SPREAD_REJECT, and is already listed in the same table. No new
+code is introduced by this change.
+
+################ ONE THING DELIBERATELY NOT DECIDED ################
+Amended FR-018a(d) introduces a NO-EMISSION WINDOW: from checksum failure
+until the fresh snapshot applies and validates, no MarketState may be
+emitted. Whether that window warrants its OWN reason code — distinct from
+both CHECKSUM_RESYNC and PAUSE_ON_BOOK_UNAVAILABLE — is NOT decided here.
+
+Reason: it is an observability decision that should be made against a
+working implementation, and creating a reason code for a state no code can
+yet enter would repeat the exact error being corrected (rule 0.1d).
+FLAGGED FOR WO-008b-A.
+
+################ RATIFICATION REQUEST ################
+This is an INTERFACE CHANGE under rule 0.1a. It is reported separately and
+prominently, not buried in a file list. If the project lead vetoes, revert:
+    git checkout <SHA>~1 -- specs/002-quote-level-data/contracts/data-adapter.yml
+The removal is a direct consequence of the already-ratified FR-018a
+amendment: an error class and reason code whose trigger cannot occur are a
+false guarantee under rule 0.1d. But the surface is contract, so the call
+belongs to the project lead, not to Ops and not to me.
