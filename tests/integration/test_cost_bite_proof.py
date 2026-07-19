@@ -1,8 +1,11 @@
 """
-Cost bite proof test (WO-008a-R4 §1.3).
+Cost bite proof test (WO-008a-R4 §1.3, WO-008a-R6 §1.4).
 
 This test proves that a filled order MUST have strictly positive total cost
 and executed quantity > 0. If costs are zero, the test fails.
+
+WO-008a-R6 UPDATE: Total cost now equals fees + slippage only (spread is
+attribution, included in executed price, NOT additive).
 
 FAIL-THEN-PASS proof pattern:
 1. Run with correct implementation → PASS
@@ -82,16 +85,17 @@ async def test_filled_order_has_strictly_positive_costs():
     assert pnl["total_slippage_cost"] > 0, \
         f"Slippage cost MUST be strictly positive, got {pnl['total_slippage_cost']}"
 
-    # VERIFY: Cost components sum to total
-    expected_total = pnl["total_fees"] + pnl["total_spread_cost"] + pnl["total_slippage_cost"]
+    # VERIFY: Cost components sum to total (WO-008a-R6: spread is attribution, NOT additive)
+    # Total cost = fees + slippage only (spread is included in executed price)
+    expected_total = pnl["total_fees"] + pnl["total_slippage_cost"]
     assert abs(pnl["total_costs"] - expected_total) < Decimal("0.0001"), \
-        f"Total cost ({pnl['total_costs']}) MUST equal sum of components ({expected_total})"
+        f"Total cost ({pnl['total_costs']}) MUST equal fees + slippage ({expected_total})"
 
     print(f"\n[COST BITE PROOF - PASS]")
     print(f"  Total Fees: ${pnl['total_fees']:.4f}")
-    print(f"  Total Spread: ${pnl['total_spread_cost']:.4f}")
+    print(f"  Total Spread: ${pnl['total_spread_cost']:.4f} (attribution, included in executed price)")
     print(f"  Total Slippage: ${pnl['total_slippage_cost']:.4f}")
-    print(f"  Total Cost: ${pnl['total_costs']:.4f}")
+    print(f"  Total Cost: ${pnl['total_costs']:.4f} (fees + slippage only)")
     print(f"  All costs strictly positive [PASS]")
 
 

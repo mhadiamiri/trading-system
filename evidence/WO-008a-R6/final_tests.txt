@@ -1,0 +1,23 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 84 items
+
+tests\integration\test_backtest.py ........                              [  9%]
+tests\integration\test_cost_bite_proof.py ..                             [ 11%]
+tests\integration\test_double_count_bite_proof.py .                      [ 13%]
+tests\integration\test_double_count_bite_proof_FAIL.py .                 [ 14%]
+tests\integration\test_frozen_invariant.py ..                            [ 16%]
+tests\integration\test_full_cycle_visible.py .                           [ 17%]
+tests\integration\test_live_loop.py ....................                 [ 41%]
+tests\integration\test_staleness_guard_bite_proof.py ...                 [ 45%]
+tests\integration\test_staleness_guard_bite_proof_WEAKENED.py FF         [ 47%]
+tests\test_backtest_costs.py xxxxxxxx.......                             [ 65%]
+tests\test_boundaries.py ......                                          [ 72%]
+tests\test_data_adapters.py .............                                [ 88%]
+tests\test_risk.py ..........                                            [100%]
+
+============= 2 failed, 74 passed, 8 xfailed in 238.59s (0:03:58) =============
