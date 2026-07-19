@@ -1,0 +1,231 @@
+WO-010b — CONTRACT-COUNT ASSERTION: BITE PROOF (EXECUTED)
+Generated: 2026-07-19T13:54:00Z
+Implementation: tools/contract_count_check.py, wired into conftest.py
+               alongside the WO-010 §2 preflight path assertion.
+
+WHAT THIS CLOSES: a malformed import-linter config aborts the run having
+evaluated ZERO contracts while still appearing configured. The §2 path
+assertion cannot catch it — the path is correct and the COUNT is zero.
+
+PINNED EXPECTED COUNT (explicit, stated):
+45:EXPECTED_CONTRACT_COUNT = 6
+  6 = ML-in-risk, execution-adapters, v2-book-checksum, loop-adapters,
+      registry-sole-path, no-test-doubles
+
+NOTE: BROKEN contracts are not a failure for this guard. One contract is
+intentionally red (no-test-doubles, pending WO-008b-A). This measures HOW
+MANY contracts RAN, not whether they passed. import-linter's non-zero exit
+on broken contracts is deliberately ignored.
+
+################ ARTIFACT 1 — PASS (valid config) ################
+=== COMMAND: time python tools/contract_count_check.py ===
+PASS: import-linter evaluated 6 contracts (expected 6)
+
+real	0m0.255s
+user	0m0.000s
+sys	0m0.030s
+EXIT: 0
+
+=== COMMAND: time pytest tests/test_risk.py -q   (both guards) ===
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+
+real	0m0.554s
+user	0m0.030s
+sys	0m0.015s
+
+=== the contract state this PASS was measured against ===
+Contracts: 5 kept, 1 broken.
+
+################ ARTIFACT 2 — ACTUAL FAIL (config deliberately broken) ################
+BREAKING THE CONFIG: reintroduce the invalid form discovered in WO-010 §4,
+forbidden_modules = ["unittest.mock"] (subpackage of an external package).
+
+=== COMMAND: sed -i 's/"unittest"/"unittest.mock"/' pyproject.toml ===
+=== COMMAND: git diff -- pyproject.toml   (proving the config IS broken now) ===
+warning: in the working copy of 'pyproject.toml', LF will be replaced by CRLF the next time Git touches it
+-    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest"] }
++    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest.mock"] }
+
+=== COMMAND: import-linter lint   (raw — shows it evaluates NOTHING) ===
+Import Linter
+=============
+
+
+Invalid forbidden module unittest.mock: subpackages of external packages are 
+not valid.
+  ^ NO 'Contracts: N kept, M broken' line. ZERO contracts evaluated.
+    This is the silent-green state: config present, nothing checked.
+
+=== COMMAND: time python tools/contract_count_check.py   (THE GUARD FIRING) ===
+FAIL: CONTRACT COUNT ASSERTION FAILED: import-linter produced NO contract summary line.
+  ZERO contracts were evaluated � the instrument reported nothing while appearing configured.
+  expected contracts: 6
+  This usually means the [tool.importlinter] config is malformed.
+  ----- import-linter output -----
+  | =============
+  | Import Linter
+  | =============
+  | 
+  | 
+  | Invalid forbidden module unittest.mock: subpackages of external packages are 
+  | not valid.
+
+real	0m0.228s
+user	0m0.000s
+sys	0m0.015s
+EXIT: 1
+
+=== COMMAND: time pytest tests/test_risk.py -q   (session must ABORT) ===
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+! _pytest.outcomes.Exit: 
+CONTRACT COUNT ASSERTION FAILED: import-linter produced NO contract summary line.
+  ZERO contracts were evaluated � the instrument reported nothing while appearing configured.
+  expected contracts: 6
+  This usually means the [tool.importlinter] config is malformed.
+  ----- import-linter output -----
+  | =============
+  | Import Linter
+  | =============
+  | 
+  | 
+  | Invalid forbidden module unittest.mock: subpackages of external packages are 
+  | not valid. !
+
+real	0m0.583s
+user	0m0.000s
+sys	0m0.031s
+
+################ ARTIFACT 3 — PASS AFTER RESTORE ################
+=== COMMAND: git checkout -- pyproject.toml   (restore to committed 07acfe5) ===
+restored
+
+=== COMMAND: grep the restored contract line ===
+63:    { type = "forbidden", name = "No test doubles in production code", source_modules = ["trading"], forbidden_modules = ["unittest"] }
+
+=== COMMAND: import-linter lint   (summary line is back) ===
+Contracts: 5 kept, 1 broken.
+
+=== COMMAND: time python tools/contract_count_check.py ===
+PASS: import-linter evaluated 6 contracts (expected 6)
+
+real	0m0.237s
+user	0m0.000s
+sys	0m0.015s
+EXIT: 0
+
+=== COMMAND: time pytest tests/test_risk.py -q   (both guards pass, tests run) ===
+collected 10 items
+
+tests\test_risk.py ..........                                            [100%]
+
+============================= 10 passed in 0.04s ==============================
+
+real	0m0.514s
+user	0m0.000s
+sys	0m0.047s
+
+################ ARTIFACT 4 — EMPTY GIT DIFF ################
+=== COMMAND: git diff -- pyproject.toml ===
+^ EMPTY == restoration is byte-identical to the committed state
+
+=== COMMAND: git status --porcelain -- pyproject.toml ===
+^ EMPTY == pyproject.toml is unmodified
+
+=== COMMAND: git diff --stat  (only the NEW guard files should be untracked) ===
+warning: in the working copy of 'conftest.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'instructions.md', LF will be replaced by CRLF the next time Git touches it
+ conftest.py     |  30 +++++-
+ instructions.md | 278 +++++++-------------------------------------------------
+ 2 files changed, 60 insertions(+), 248 deletions(-)
+^ EMPTY == no tracked file left modified by this bite proof
+
+=== COMMAND: git status --porcelain  (new files are additions, not weakenings) ===
+ M conftest.py
+ M instructions.md
+?? .claude/worktrees/
+?? evidence/WO-010b/
+?? tools/contract_count_check.py
+
+################ CORRECTION TO ARTIFACT 4 ################
+The line '^ EMPTY == no tracked file left modified by this bite proof' was
+printed immediately after 'git diff --stat', whose output is NOT empty:
+it lists conftest.py and instructions.md. The label was written as a
+template expectation and does not describe the output above it.
+Retracted and corrected here rather than edited away (rule 0.6a/0.6d).
+
+WHAT IS ACTUALLY TRUE:
+
+  1. The BITE-PROOF TARGET is byte-identical to committed state. This is
+     the artifact-4 claim that matters, and it holds exactly:
+        git diff -- pyproject.toml            -> EMPTY
+        git status --porcelain -- pyproject.toml -> EMPTY
+     The only file mutated to produce the failure was pyproject.toml, and
+     it is fully restored.
+
+  2. Two tracked files ARE modified, NEITHER from this bite proof:
+        conftest.py     - the WO-010b wiring itself (guard 2 added). This
+                          is the deliverable, not a weakening.
+        instructions.md - rewritten by the project lead with the WO-010b
+                          work order. Not authored by me.
+
+  3. Untracked additions: tools/contract_count_check.py (the new guard),
+     evidence/WO-010b/ (this file), .claude/worktrees/ (pre-existing
+     tooling artifact, deliberately not committed).
+
+=== RE-RUN, SCOPED CORRECTLY: was anything OTHER than the guard touched? ===
+=== COMMAND: git diff --stat -- pyproject.toml src/ tests/ pytest.ini ===
+^ EMPTY (no output above) == no config, source, or test file was left
+  modified by this bite proof.
+
+################ FOUR-ARTIFACT SUMMARY ################
+  1 PASS ............. 6/6 contracts evaluated, exit 0, 0.255s
+  2 ACTUAL FAIL ...... real assertion text, exit 1, 0.228s standalone /
+                       0.583s pytest session aborted before collection
+  3 PASS AFTER RESTORE 6/6 evaluated, exit 0, 0.237s; 10 passed in 0.04s
+  4 EMPTY GIT DIFF ... pyproject.toml byte-identical to 07acfe5
+
+################ SUPPLEMENTARY — THE SECOND FAILURE BRANCH (COUNT MISMATCH) ################
+The requirement is hard-fail if the count is ZERO **or does not match**.
+Artifact 2 proved the ZERO branch. This proves the MISMATCH branch.
+
+=== COMMAND: delete one contract line (registry-sole-path) from pyproject.toml ===
+removed 1 contract line(s); config remains VALID
+
+=== COMMAND: import-linter lint   (valid config, but only 5 contracts) ===
+Contracts: 4 kept, 1 broken.
+  ^ config is VALID and reports a summary — the zero-branch guard would NOT fire.
+
+=== COMMAND: time python tools/contract_count_check.py   (MISMATCH GUARD FIRING) ===
+FAIL: CONTRACT COUNT ASSERTION FAILED: wrong number of contracts evaluated.
+  expected : 6
+  evaluated: 5  (4 kept, 1 broken)
+  A contract was added or removed without updating EXPECTED_CONTRACT_COUNT in tools/contract_count_check.py,
+  or part of the config failed to load.
+  contracts seen:
+    - Forbidden ML in Risk Layer [KEPT]
+    - Forbidden Execution Adapters Imports [KEPT]
+    - Forbidden v2-book-checksum imports above adapter [KEPT]
+    - Forbid loop from importing adapters directly [KEPT]
+    - No test doubles in production code [BROKEN]
+
+real	0m0.245s
+user	0m0.015s
+sys	0m0.015s
+EXIT: 1
+
+=== COMMAND: git checkout -- pyproject.toml   (restore) ===
+restored
+=== COMMAND: python tools/contract_count_check.py   (PASS again) ===
+PASS: import-linter evaluated 6 contracts (expected 6)
+EXIT: 0
+=== COMMAND: git diff -- pyproject.toml   (must be empty) ===
+^ EMPTY
+
+BOTH FAILURE BRANCHES PROVEN:
+  zero evaluated  -> fires (malformed config, artifact 2)
+  count mismatch  -> fires (valid config, contract silently dropped)
+The second branch matters because a dropped contract leaves a VALID config
+that still reports a healthy-looking 'Contracts: N kept, 0 broken'.

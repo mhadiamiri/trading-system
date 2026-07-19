@@ -1,0 +1,34 @@
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 56 files, 181 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code BROKEN
+
+Contracts: 5 kept, 1 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+No test doubles in production code
+----------------------------------
+
+trading is not allowed to import unittest:
+
+-   trading.data.adapters.kraken_v2_book -> unittest (l.22)
+
+
