@@ -1,0 +1,112 @@
+WO-008b-A1b §3 — RANDOMIZED TEST ORDERING: MECHANICAL ORDER-DEPENDENCE SCAN
+Generated: 2026-07-19T15:53:57Z
+
+WHY: Finding 2 of WO-008b-A1 was rule 0.1d in a new costume — a test that
+never touched the mechanism it certified, hidden by fixed test ordering.
+Noticing it was luck. This makes the detection mechanical.
+
+################ TOOL ################
+=== COMMAND: pip show pytest-randomly ===
+Name: pytest-randomly
+Version: 4.1.0
+
+NOTE: installed as a DEV TOOL only. It is NOT added to pytest.ini addopts
+and NOT declared in pyproject dependencies — that would change the default
+test invocation and CI behaviour, which is out of scope here. It is invoked
+explicitly via -p randomly --randomly-seed=N.
+
+################ THREE RUNS, THREE SEEDS ################
+--- seed 12345 ---
+Using --randomly-seed=12345
+collecting ... collected 111 items
+================= 103 passed, 8 xfailed in 237.22s (0:03:57) ==================
+  FAILED lines: 0
+--- seed 24680 ---
+Using --randomly-seed=24680
+collecting ... collected 111 items
+================= 103 passed, 8 xfailed in 237.64s (0:03:57) ==================
+  FAILED lines: 0
+--- seed 97531 ---
+Using --randomly-seed=97531
+collecting ... collected 111 items
+================= 103 passed, 8 xfailed in 237.81s (0:03:57) ==================
+  FAILED lines: 0
+
+################ ⚠ DID THE ORDER ACTUALLY CHANGE? ################
+Three green runs prove NOTHING if the order was identical each time — that
+would be a guard that does not guard, the exact class under investigation.
+So the orders are compared directly.
+
+=== COMMAND: first test executed under each seed ===
+  seed 12345  tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_mode_is_logged_at_startup
+  seed 24680  tests/test_parse_path.py::TestParsePathEndToEnd::test_incremental_update_modifies_level
+  seed 97531  tests/integration/test_double_count_bite_proof.py::test_no_spread_double_count_in_total_cost
+
+=== COMMAND: pairwise diff of collection orders ===
+  12345 vs 24680: DIFFER (178 differing lines)
+  12345 vs 97531: DIFFER (186 differing lines)
+  24680 vs 97531: DIFFER (190 differing lines)
+
+=== COMMAND: same 111 tests in every run? (sorted hash must match) ===
+  seed 12345  count=111  sorted-sha256=1628e60e507b3468
+  seed 24680  count=111  sorted-sha256=1628e60e507b3468
+  seed 97531  count=111  sorted-sha256=1628e60e507b3468
+  ^ identical hashes == same test SET, genuinely different ORDER.
+
+################ ⚠ WOULD THE SCAN CATCH ORDER DEPENDENCE? — PROVEN ################
+A scan that has never caught anything is an unproven instrument. So the
+known defect was deliberately REINTRODUCED and the scan checked against it.
+
+REVERTED the WO-008b-A1 fix (patch the stale module-level Settings again):
+
+  === run mainnet_guard ALONE — the bug HIDES ===
+    tests/integration/test_mainnet_guard.py ......      [100%]
+    ============================== 6 passed in 0.05s ==============================
+
+  === run AFTER a settings-reloading file — the bug SURFACES ===
+    E   Failed: DID NOT RAISE ValueError
+    FAILED ...::test_paper_client_refuses_construction_under_mainnet
+    FAILED ...::test_paper_client_refuses_construction_under_test_env_when_not_paper
+    ======================== 2 failed, 10 passed in 0.11s =========================
+
+  (captured live this session; the file was then restored from HEAD)
+=== COMMAND: fix restored? ===
+  _live_settings call sites: 3
+=== COMMAND: same combination after restore ===
+
+============================= 12 passed in 0.05s ==============================
+=== COMMAND: git diff --stat -- tests/integration/test_mainnet_guard.py ===
+^ EMPTY == restored byte-identical
+
+################ RESULT: TESTS BEHAVING DIFFERENTLY UNDER REORDERING ################
+
+  **NONE.** Zero tests behaved differently across three distinct orderings.
+  103 passed / 8 xfailed / 0 failed / 0 xpassed in all three runs.
+
+  No cluster to enumerate, so no follow-up work order is warranted.
+  Nothing was fixed under this section because nothing needed fixing.
+
+################ HONEST LIMITS OF THIS SCAN ################
+1. THREE SEEDS IS A SAMPLE, NOT A PROOF. 111 tests have 111! orderings.
+   Three draws can only refute order-independence, never establish it.
+   What is established: no order dependence was detected across three
+   genuinely different orderings, one of which was checked to catch the
+   one known instance of the defect.
+
+2. THE SCAN IS NOT WIRED INTO THE DEFAULT INVOCATION. It is a manual
+   dev-tool run. It will not catch a regression introduced next week
+   unless someone runs it again.
+
+   RECOMMENDATION (not actioned — out of scope, and it changes CI):
+   add pytest-randomly to dev dependencies and run ONE randomized job
+   in CI alongside the deterministic one. Cost is a single extra ~4min
+   job; benefit is that this class stops depending on anyone remembering.
+   Flagged for a future work order rather than taken unilaterally.
+
+3. RUNTIME IS THE REAL CONSTRAINT, and it is worth stating plainly since
+   the work order anticipated it: each run is ~237s, dominated by
+   test_live_loop.py's 1-second-per-update SimulatedMarketFeed sleeps.
+   Three runs cost ~12 minutes. That was affordable here. Ten seeds would
+   cost 40 minutes and start to be a genuine friction cost — which is an
+   argument for making the SLEEPS configurable before making the SCAN
+   routine, not an argument against the scan.

@@ -1,0 +1,115 @@
+WO-008b-A1b §2 — WAS THE 5-FAILURE THRESHOLD REACHABLE BEFORE THE FIX?
+Generated: 2026-07-19T15:43:11Z
+
+################ THE ANSWER: (a) ################
+
+  (a) REACHABLE BEFORE the ordering fix. The Phases 1-3 claim
+      '5-consecutive-failure recovery fires' was TRUE WHEN MADE.
+      My ordering fix would have BROKEN it, and I caught a
+      FIX-INDUCED REGRESSION before it shipped.
+
+  NOT (b). This is NOT another false 'proven' claim. Nothing in the
+  historical record needs annotating for this.
+
+################ THE CODE PATH THAT PROVES IT ################
+=== COMMAND: git show HEAD~1:<adapter> — the OLD failure branch ===
+        if computed_checksum != quote_update.checksum:
+            # Checksum validation failed (FR-017)
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: seq={quote_update.sequence}, "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+
+            # Check if we've reached the failure threshold (FR-018)
+            if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+                self._reconnect()
+                self._request_snapshot()
+
+            # Return None to indicate rejection
+            return None
+
+THE DECISIVE LINE IS THE ONE THAT ISN'T THERE: no _discard_book() call.
+=== COMMAND: count _discard_book in the OLD failure branch ===
+0
+  ^ 0.
+
+OLD control flow on checksum failure:
+  record_failure() -> counter++ ; log ; check threshold ; return None
+  The book was LEFT IN PLACE. reset_for_resync() was never called.
+  consecutive_failures therefore SURVIVED and accumulated 1,2,3,4,5.
+
+And the counter was correctly CLEARED on success, because under the old
+check-then-apply ordering apply_incremental_update() ran ONLY after a
+passing checksum — and that method reset the counter. 'Consecutive'
+semantics were intact.
+
+################ EMPIRICAL PROOF — the old test RUN at HEAD~1 ################
+Not inferred from reading. Executed in a detached worktree at HEAD~1.
+=== COMMAND: git worktree add --detach <wt> HEAD~1 ===
+17167a4
+=== COMMAND: pytest tests/test_data_adapters.py -v -k five_consecutive ===
+collecting ... collected 13 items / 12 deselected / 1 selected
+
+tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_five_consecutive_failures_trigger_resync PASSED [100%]
+
+====================== 1 passed, 12 deselected in 0.03s =======================
+
+The historical test asserted BOTH directions — that 5 failures trigger
+reconnect AND that 4 do not:
+          # Verify resync was triggered
+          assert adapter._local_book.consecutive_failures == 5
+          adapter._reconnect.assert_called_once()
+          # Verify resync NOT triggered
+          assert adapter._local_book.consecutive_failures == 4
+          adapter._reconnect.assert_not_called()
+
+It passed in the committed baseline (73 passed / 0 failed at 170f264) and
+passes on demand now. The threshold was genuinely exercised.
+
+################ THE COUNTERFACTUAL — what my fix would have done ################
+Demonstrated, not asserted: temporarily restore the counter-wiping
+behaviour on top of the NEW ordering and watch the threshold die.
+  counter-wiping restored (simulating the fix WITHOUT the counter correction)
+=== COMMAND: pytest -k five_consecutive_failures_trigger_reconnect ===
+    assert adapter._local_book.consecutive_failures == attempt
+E   assert 0 == 1
+E    +  where 0 = LocalBookData(bids=[], asks=[], last_sequence=0, last_checksum=0, consecutive_failures=0, is_paused=False).consecutive_failures
+E    +    where LocalBookData(bids=[], asks=[], last_sequence=0, last_checksum=0, consecutive_failures=0, is_paused=False) = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x0000024AC27E6A50>._local_book
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:871 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+====================== 1 failed, 14 deselected in 0.11s =======================
+  restored
+=== COMMAND: pytest -k five_consecutive (after restore) ===
+tests\test_data_adapters.py .                                            [100%]
+
+====================== 1 passed, 14 deselected in 0.04s =======================
+=== COMMAND: git diff --stat -- <adapter>  (counterfactual left no residue) ===
+
+################ WHY MY EARLIER WORDING WAS AMBIGUOUS ################
+I wrote both 'pre-existing in shape but masked' and 'unreachable by
+construction'. Both describe something true, but of DIFFERENT things, and
+putting them side by side implied a single history that never existed:
+
+  'pre-existing in shape'  -> TRUE of reset_for_resync(). That method always
+                              zeroed the counter, from the day it was written.
+  'unreachable'            -> TRUE only of the POST-FIX code, and only for
+                              the window between applying the ordering fix
+                              and applying the counter fix.
+
+The dangerous combination — a discard on the failure path AND a counter
+wipe inside the discard — did not exist until MY ordering change created
+it. Before that, reset_for_resync() was reached only via the sequence-gap
+path, which itself could never fire on real data.
+
+PRECISE HISTORY:
+  af27491..170f264 : threshold REACHABLE and genuinely proven. Claim TRUE.
+  during WO-008b-A1: ordering fix introduced a discard on failure ->
+                     threshold became unreachable. REGRESSION, caught by
+                     the rewired test before commit.
+  0893c1a onward   : counter survives the discard; threshold reachable
+                     again, and now fires on a broader trigger.
+
+################ CONSEQUENCE FOR THE RECORD ################
+NO annotation required. Unlike the sequence fiction, this proof was sound
+when it was made and is sound now. The only defect was one I introduced
+and caught within the same work order.

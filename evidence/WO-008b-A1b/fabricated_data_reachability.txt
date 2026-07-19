@@ -1,0 +1,141 @@
+WO-008b-A1b §1 — FABRICATED-MARKET-DATA PLACEHOLDER: REACHABILITY & CONTAMINATION
+Generated: 2026-07-19T15:41:36Z
+
+################ WHAT THE DEFECT WAS ################
+get_market_data()'s else-branch, taken when called WITHOUT fixture_data,
+FABRICATED a synthetic order book and emitted MarketStates from it.
+=== COMMAND: git show HEAD~1:<adapter> | sed -n '776,800p' ===
+        else:
+            # Placeholder: Would connect to WebSocket in WO-008b
+            # For now, generate minimal test data using QuoteUpdate format
+            from datetime import datetime, UTC
+            from decimal import Decimal
+
+            # Initialize book with a snapshot so checksum validation works
+            snapshot_bids = [
+                ('65000.0', '1.50000000'),
+                ('64999.0', '1.00000000'),
+                ('64998.0', '1.00000000'),
+                ('64997.0', '1.00000000'),
+                ('64996.0', '1.00000000'),
+                ('64995.0', '1.00000000'),
+                ('64994.0', '1.00000000'),
+                ('64993.0', '1.00000000'),
+                ('64992.0', '1.00000000'),
+                ('64991.0', '1.00000000'),
+            ]
+            snapshot_asks = [
+                ('65005.0', '2.00000000'),
+                ('65006.0', '1.00000000'),
+                ('65007.0', '1.00000000'),
+                ('65008.0', '1.00000000'),
+                ('65009.0', '1.00000000'),
+
+It invented a 10-level ladder (bids 65000.0..64991.0, asks 65005.0..65014.0),
+computed its OWN checksum over that invented book so validation would pass,
+and emitted 10 MarketStates. Production code manufacturing market data when
+given none is the most dangerous defect shape this project can have.
+
+################ WHEN WAS IT INTRODUCED? ################
+=== COMMAND: git log --oneline --all -S 'Placeholder: Would connect to WebSocket in WO-008b' -- <adapter> ===
+0893c1a WO-008b-A1: local defect remediation + raw-frame rewire (NO NETWORK)
+af27491 WO-008a/R/R2: Phase 8 integration work, proof remediation, evidence artifacts
+
+  INTRODUCED: af27491 (WO-008a/R/R2, 2026-07-18)
+  REMOVED   : 0893c1a (WO-008b-A1, this project lead's prior work order)
+  Lifetime  : af27491 -> 90882d0 -> f5c8939 -> 8e8a891 -> 43ca600 -> 07acfe5
+              -> 9a7c438 -> 03b7460 -> 170f264  (nine commits)
+
+################ WAS THE PATH REACHABLE? — YES ################
+=== COMMAND: git show af27491:.../factory.py | grep -n 'kraken_v2' -A6 ===
+    elif data_source == "kraken_v2":
+        # WO-008a T035: kraken_v2 adapter implementation (FIXTURES ONLY)
+        # No live WebSocket connections - fixture-based testing only
+        print("Using KrakenV2BookAdapter (FIXTURES ONLY - no live connection)")
+        feed = KrakenV2BookAdapter()
+        _active_feed = feed
+        return feed.get_market_data()
+
+
+  ^ THE PRODUCTION FACTORY CALLED IT WITH NO fixture_data.
+  DATA_SOURCE=kraken_v2 -> create_feed() -> feed.get_market_data()
+  -> else-branch -> FABRICATED BOOK.
+
+  So the hazard was real and one config value away, not theoretical.
+
+################ WAS IT EVER EXECUTED? — NO ################
+Four independent checks, all negative:
+
+--- CHECK 1: does any evidence record the factory selecting kraken_v2? ---
+=== COMMAND: grep -rln 'Using KrakenV2BookAdapter' evidence/ ===
+evidence/WO-008b-A1b/fabricated_data_reachability.txt
+evidence/WO-010/registry_bite_proof.txt
+  ONE hit. It is a GIT DIFF LINE, not run output:
+255:-        print("Using KrakenV2BookAdapter (FIXTURES ONLY - no live connection)")
+  ^ leading '-' == a removed source line inside a captured diff.
+  No evidence file contains that string as emitted stdout.
+
+--- CHECK 2: does the FABRICATED LADDER appear in any evidence? ---
+=== COMMAND: grep -rln '64991\|65014' evidence/ ===
+evidence/QUARANTINE-WO-008b-A-FABRICATED/no_silent_fixture_fallback.txt
+evidence/WO-008b-A1b/fabricated_data_reachability.txt
+  ONE hit, in the ALREADY-QUARANTINED file. Also diff text:
+531:-                ('64991.0', '1.00000000'),
+33:diff --git a/src/trading/data/adapters/kraken_v2_book.py b/src/trading/data/adapters/kraken_v2_book.py
+  ^ the value sits inside a 'diff --git' block with a leading '-'.
+  The distinctive fabricated prices appear NOWHERE as run output.
+
+--- CHECK 3: does any TEST reach the factory at all? ---
+=== COMMAND: grep -rn 'create_feed(' tests/ ===
+  NONE — no test invokes create_feed().
+  Every test calls the adapter DIRECTLY with explicit fixture_data:
+    test_live_loop.py explicit-fixture call sites: 9
+
+--- CHECK 4: was DATA_SOURCE ever actually set to kraken_v2? ---
+=== COMMAND: git ls-files .env ===
+=== COMMAND: current .env ===
+DATA_SOURCE=simulated
+=== COMMAND: every committed occurrence of the string DATA_SOURCE=kraken_v2 ===
+HEAD:evidence/WO-010/registry_bite_proof.txt:377:+    """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
+HEAD:specs/002-quote-level-data/quickstart.md:43:DATA_SOURCE=kraken_v2
+HEAD:src/trading/data/adapters/kraken_v2_book.py:1049:    """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
+  ^ all are DOCSTRINGS and quickstart DOCUMENTATION, not configuration.
+  Evidence runs consistently recorded the simulated feed:
+    "Using SimulatedMarketFeed" occurrences in evidence: 11
+
+################ VERDICT ################
+REACHABLE: YES — one config value (DATA_SOURCE=kraken_v2) away, via the
+           production factory, for nine commits.
+EXECUTED : NO — no evidence run entered it.
+
+THEREFORE THIS IS A LATENT HAZARD, NOT A CONTAMINATION EVENT.
+NO evidence requires quarantine under rule 0.6d. Nothing is being
+quarantined, and that conclusion is load-bearing enough to state the
+limits of the proof explicitly:
+
+################ ⚠ THE LIMIT OF THIS PROOF ################
+What is PROVEN: no COMMITTED EVIDENCE FILE contains output produced by the
+fabricating path — established by the absence of both its factory banner and
+its distinctive invented prices, plus the absence of any create_feed() call
+in the test suite.
+
+What is NOT PROVEN, and cannot be from inside the repository: that no one
+ever ran 'DATA_SOURCE=kraken_v2 python -m trading.loop.live' ad hoc in a
+shell without capturing the output. Such a run would leave no artifact.
+The distinction matters because the WHOLE POINT of this check is evidence
+integrity, and an uncaptured run produces no evidence to contaminate — but
+it could still have informed someone's belief about the system.
+
+MITIGATING FACT: the fabricated book emitted a CONSTANT top-of-book
+(bid 65000.00 / ask 65005.00, unchanging across all 10 emissions). Anyone
+watching such a run would have seen a frozen quote, which is conspicuous
+rather than plausible. It would not have passed for real market data.
+
+################ CURRENT STATE ################
+=== COMMAND: does the fabricating branch still exist? ===
+  NO — removed in 0893c1a.
+=== COMMAND: what happens now when called without fixture_data? ===
+        if fixture_data is None:
+            raise ValueError(
+                "get_market_data requires fixture_data (raw Kraken v2 frames). "
+  It RAISES. The adapter will not fabricate data under any input.
