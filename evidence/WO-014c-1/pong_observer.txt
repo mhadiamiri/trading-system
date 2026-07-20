@@ -1,0 +1,46 @@
+################################################################
+# WO-014c-1 §B.2 BITE PROOF — ABSENT pong is a SIGNAL, not gappiness (0.1i/0.7)
+# Generated: 2026-07-20T20:49:11Z
+# Every ping SENT; no pong returns. Absent pongs must register as a signal and NOT
+# make the observer gappy (gappiness = failed SENDS only). No network.
+################################################################
+
+===== sha256 BEFORE =====
+cbd5250b985fa37976ae7baac9aa0c3eaad7c5289968ead2a7831955986c38b5  src/trading/data/adapters/kraken_v2_book.py
+
+===== ARTIFACT 1/4 — PASS (absent counted as a signal, not gappiness) =====
+
+tests\integration\test_pong_observer.py .                                [100%]
+
+============================== 1 passed in 0.33s ==============================
+
+===== MUTATION — conflate ABSENT pongs into gappiness (the ruling forbids this) =====
+absent pongs now inflate gappiness -> genuine venue silence would be VOIDed as instrument failure
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (absent pongs wrongly make the observer gappy) =====
+tests/integration/test_pong_observer.py::test_absent_pongs_are_a_signal_not_gappiness FAILED [100%]
+
+================================== FAILURES ===================================
+________________ test_absent_pongs_are_a_signal_not_gappiness _________________
+tests\integration\test_pong_observer.py:71: in test_absent_pongs_are_a_signal_not_gappiness
+    assert record.missed_send_fraction < 0.10, (
+E   AssertionError: all pings were SENT, so the observer is not gappy; missed_send_fraction=0.80 � absent pongs must not count as missed sends
+E   assert 0.8 < 0.1
+E    +  where 0.8 = PongRecord(interval_s=0.02, absent_timeout_s=0.05, started_monotonic=263676.5853382, ended_monotonic=263676.891266, pings_attempted=10, pings_sent=10, pongs_received=0, pongs_absent=8, samples=[(263676.6073549, None), (263676.6417406, None), (263676.6735648, None), (263676.704631, None), (263676.735296, None), (263676.7653457, None), (263676.7963247, None), (263676.8284271, None)]).missed_send_fraction
+=========================== short test summary info ===========================
+FAILED tests/integration/test_pong_observer.py::test_absent_pongs_are_a_signal_not_gappiness
+============================== 1 failed in 0.40s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_pong_observer.py .                                [100%]
+
+============================== 1 passed in 0.35s ==============================
+
+===== ARTIFACT 4/4 — sha256 AFTER restore (must EQUAL before) =====
+cbd5250b985fa37976ae7baac9aa0c3eaad7c5289968ead2a7831955986c38b5  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK (rule 0.7).
+################################################################
+# END PONG-OBSERVER BITE PROOF
+################################################################

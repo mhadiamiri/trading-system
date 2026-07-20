@@ -100,6 +100,48 @@ class LagSampleRecord:
         return (self.missed_samples / exp) if exp > 0 else 0.0
 
 
+@dataclass
+class PongRecord:
+    """
+    WO-014c-1 §B.2. Protocol-level pong-latency record — the RTT distribution from the
+    sanctioned ws.ping() (RFC 6455 §5.5.2 control frame). Same time.monotonic() clock as the
+    lag sampler and message counters (§A.2), so pong latency is a TIME SERIES correlatable
+    against them, not a sparse health check.
+
+    THE RULED DISTINCTION (carryover #1): a MISSED SEND and an ABSENT PONG are NOT merged.
+      - a ping the observer FAILED TO SEND (its task was starved) is INSTRUMENT GAPPINESS —
+        it counts toward the VOID fraction: gappy = (pings_expected - pings_sent).
+      - a ping SENT with no pong within the absent timeout is an ABSENT PONG — a SIGNAL
+        feeding Branch 1/3, NEVER gappiness. Conflating them would VOID the strongest
+        protocol-side evidence (genuine venue silence) as instrument failure.
+
+    Fields: samples = list of (sent_monotonic_ts, rtt_s) for received pongs, (ts, None) for
+    absent. Four counters kept separately: pings_sent, pongs_received, pongs_absent, and the
+    expected send count (derived from the window span).
+    """
+
+    interval_s: float
+    absent_timeout_s: float
+    started_monotonic: float = 0.0
+    ended_monotonic: float = 0.0
+    pings_attempted: int = 0   # send points the observer REACHED (one per loop iteration)
+    pings_sent: int = 0        # ws.ping() calls that actually issued
+    pongs_received: int = 0
+    pongs_absent: int = 0
+    samples: list = field(default_factory=list)
+
+    @property
+    def missed_sends(self) -> int:
+        """A ping the observer REACHED but FAILED to send (ws.ping raised) — the only thing
+        that is gappiness. Uses attempted - sent (carryover #1), NOT span/interval, so it is
+        immune to sampling-interval overhead and never conflated with an absent pong."""
+        return max(0, self.pings_attempted - self.pings_sent)
+
+    @property
+    def missed_send_fraction(self) -> float:
+        return (self.missed_sends / self.pings_attempted) if self.pings_attempted > 0 else 0.0
+
+
 class LocalBookState(enum.Enum):
     """
     Local book state transitions for Kraken v2 book adapter.
@@ -633,6 +675,12 @@ class KrakenV2BookAdapter:
     # VOID (the gap timestamps remain reported evidence).
     INSTRUMENTS_GAPPY_VOID_FRACTION = 0.10
 
+    # ── WO-014c-1 §B.2: protocol-level PONG observer (sanctioned ws.ping() RTT) ──
+    # Declared engineering judgment (Phase A, documented silence). 1 ping/s is a control
+    # frame, ~20x the samples the library's 20s keepalive yields, negligible against ~26 msg/s.
+    PING_SAMPLE_INTERVAL_SECONDS = 1.0
+    PONG_ABSENT_SECONDS = 5.0   # a ping SENT with no pong within this = ABSENT pong (a SIGNAL)
+
     # Venue-mode provenance values (WO-008b-A1 §4).
     MODE_FIXTURE = "fixture"
     MODE_LIVE = "live"
@@ -684,6 +732,9 @@ class KrakenV2BookAdapter:
         self._heartbeat_absence_timeout = self.HEARTBEAT_ABSENCE_TIMEOUT_SECONDS
         self._app_ping_interval = self.APP_PING_INTERVAL_SECONDS
         self._ping_seq = 0                   # req_id for application pings
+        # WO-014c-1 §B.2: pong-observer config (instance-overridable for ms-scale tests).
+        self._ping_sample_interval = self.PING_SAMPLE_INTERVAL_SECONDS
+        self._pong_absent_timeout = self.PONG_ABSENT_SECONDS
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -1264,6 +1315,7 @@ class KrakenV2BookAdapter:
                 "fresh socket subscribed; awaiting fresh snapshot",
                 attempt,
             )
+            self._websocket = new_websocket  # WO-014c-1 §B.2: pong observer probes the LIVE socket
             return new_websocket
 
     def _trip_circuit_breaker(self, reason):
@@ -1370,24 +1422,107 @@ class KrakenV2BookAdapter:
         finally:
             record.ended_monotonic = time.monotonic()
 
-    def _check_instruments_gappy(self, record: "LagSampleRecord") -> bool:
+    async def _observe_protocol_pong(self, record: "PongRecord") -> None:
         """
-        WO-014c-1 branch 5. If the lag sampler missed more than the VOID fraction of its
-        expected samples, the quantitative discrimination is VOID — but the gap timestamps
-        stay REPORTED evidence (they can NOMINATE the starvation hypothesis; only clean
-        instruments CONVICT). Emits the declared reason code so the run's own report carries
-        its VOID reason. Returns True when gappy.
+        WO-014c-1 §B.2 — PROTOCOL-level pong observer. Every interval it issues ws.ping(),
+        which sends an RFC 6455 §5.5.2 control frame (the WebSocket-STANDARD ping — the layer
+        whose timeout threw the 1011), NOT Kraken's application {"method":"ping"} of §1.2. The
+        future ws.ping() returns resolves to the round-trip latency; per-ping RTT gives the
+        DISTRIBUTION the branches need (not the `latency` scalar). Random payload (default)
+        never collides with the library's own keepalive ping. Same time.monotonic() clock (§A.2).
+
+        RULED COUNTER DISCIPLINE (carryover #1): a ping the task FAILED TO SEND (starved) is
+        GAPPINESS (expected − sent); a ping SENT with no pong within the absent timeout is an
+        ABSENT PONG — a SIGNAL (Branch 1/3), NEVER gappiness.
+
+        ACTIVE-PROBE LIMIT (declared, not discovered):
+          - MEASURED: whether Kraken answers OUR ping.
+          - INFERRED: that Kraken answers THE LIBRARY'S keepalive ping — sound (identical RFC
+            6455 control-frame type, identical peer handler) but an INFERENCE, so labelled.
+          - CANNOT EXCLUDE: venue-side SELECTIVE behavior — Kraken deprioritizing keepalive-
+            class traffic under load while answering active probes, or the reverse. Almost
+            certainly negligible (same peer code path); stated as what it cannot exclude.
+          - COMPENSATING ADVANTAGE: 1s cadence gives ~20x the library's 20s-keepalive samples,
+            making pong latency a time series correlatable against message rate + lag.
+          - PROBE LOAD: 1 ping/s against ~26 msg/s inbound is negligible; Kraken publishes no
+            ping rate limit (documented silence) — noted so no one suspects the probe perturbed
+            the measurement.
         """
-        if record.missed_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION:
+        import asyncio
+        import time
+
+        interval = record.interval_s
+        absent_timeout = record.absent_timeout_s
+        record.started_monotonic = time.monotonic()
+        inflight = []  # (sent_ts, pong_waiter) not yet resolved
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                now = time.monotonic()
+                # Resolve in-flight pings WITHOUT blocking the send cadence — this is why absent
+                # pongs cannot shrink pings_sent (and so cannot be misread as gappiness): the send
+                # loop stays paced at `interval` no matter how slow/absent the pongs are.
+                still = []
+                for sent_ts, waiter in inflight:
+                    if waiter.done():
+                        try:
+                            record.pongs_received += 1
+                            record.samples.append((sent_ts, waiter.result()))  # RTT in seconds
+                        except Exception:
+                            record.pongs_absent += 1
+                            record.samples.append((sent_ts, None))
+                    elif now - sent_ts >= absent_timeout:
+                        record.pongs_absent += 1            # a SIGNAL (Branch 1/3), never gappiness
+                        record.samples.append((sent_ts, None))
+                        waiter.cancel()
+                    else:
+                        still.append((sent_ts, waiter))
+                inflight = still
+                # Send the next ping. Each iteration is one ATTEMPT; a ws.ping() that raises is
+                # a MISSED SEND -> gappiness (attempted - sent). It is NOT an absent pong.
+                record.pings_attempted += 1
+                try:
+                    pong_waiter = await self._websocket.ping()  # RFC 6455 §5.5.2 control frame, random payload
+                except Exception:
+                    continue
+                record.pings_sent += 1
+                inflight.append((time.monotonic(), pong_waiter))
+        finally:
+            record.ended_monotonic = time.monotonic()
+            for _sent_ts, waiter in inflight:
+                waiter.cancel()
+
+    def _check_instruments_gappy(self, lag_record=None, pong_record=None) -> bool:
+        """
+        WO-014c-1 branch 5. If EITHER instrument missed more than the VOID fraction of its
+        expected samples/sends, the QUANTITATIVE discrimination is VOID — but the gap
+        timestamps stay REPORTED evidence (they can NOMINATE the starvation hypothesis; only
+        clean instruments CONVICT). For the pong observer, gappiness is missed SENDS only —
+        ABSENT pongs are a signal, excluded by construction. Emits the declared reason code so
+        the run's own report carries its VOID reason. Returns True when either is gappy.
+        """
+        gappy = False
+        if (lag_record is not None
+                and lag_record.missed_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION):
             self._log_error(
-                f"INSTRUMENTS_GAPPY: lag sampler missed {record.missed_samples} of "
-                f"{record.expected_samples} expected samples "
-                f"({record.missed_fraction:.0%} > {self.INSTRUMENTS_GAPPY_VOID_FRACTION:.0%}); "
-                f"quantitative discrimination VOID. {len(record.gaps)} gap(s) retained as "
+                f"INSTRUMENTS_GAPPY: lag sampler missed {lag_record.missed_samples} of "
+                f"{lag_record.expected_samples} expected samples "
+                f"({lag_record.missed_fraction:.0%} > {self.INSTRUMENTS_GAPPY_VOID_FRACTION:.0%}); "
+                f"quantitative discrimination VOID. {len(lag_record.gaps)} gap(s) retained as "
                 f"reported evidence (may NOMINATE starvation; only clean instruments convict)."
             )
-            return True
-        return False
+            gappy = True
+        if (pong_record is not None
+                and pong_record.missed_send_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION):
+            self._log_error(
+                f"INSTRUMENTS_GAPPY: pong observer failed {pong_record.missed_sends} of "
+                f"{pong_record.pings_attempted} attempted SENDS "
+                f"({pong_record.missed_send_fraction:.0%} > {self.INSTRUMENTS_GAPPY_VOID_FRACTION:.0%}); "
+                f"quantitative discrimination VOID. Absent pongs ({pong_record.pongs_absent}) are a "
+                f"SIGNAL, not gappiness (Branch 1/3)."
+            )
+            gappy = True
+        return gappy
 
     async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
         """
@@ -1421,9 +1556,15 @@ class KrakenV2BookAdapter:
         # WO-014c-1 §B.1: the event-loop LAG sampler (PRIMARY starvation discriminator) runs
         # concurrently for this capture on the shared time.monotonic() clock (§A.2).
         self._lag_record = LagSampleRecord(interval_s=self.LAG_SAMPLE_INTERVAL_SECONDS)
+        # WO-014c-1 §B.2: the protocol-level pong observer runs concurrently on the same clock.
+        self._pong_record = PongRecord(
+            interval_s=self._ping_sample_interval, absent_timeout_s=self._pong_absent_timeout,
+        )
         lag_task = None
+        pong_task = None
 
         websocket = await self._connect()
+        self._websocket = websocket   # kept current on reconnect so the pong observer probes it
         logger.info(
             "[kraken_v2_book] CONNECTED mode=%s venue=%s url=%s",
             self._mode, self.venue_name, self.WS_URL,
@@ -1434,6 +1575,7 @@ class KrakenV2BookAdapter:
             await websocket.send(json.dumps(subscribe))
             logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
             lag_task = asyncio.create_task(self._sample_event_loop_lag(self._lag_record))
+            pong_task = asyncio.create_task(self._observe_protocol_pong(self._pong_record))
 
             deadline = time.time() + duration_seconds
             # WO-014b-2 §1.1/§1.2 keepalive clocks (monotonic). last_frame is refreshed by
@@ -1606,15 +1748,16 @@ class KrakenV2BookAdapter:
 
         finally:
             self._running = False
-            # WO-014c-1 §B.1: stop the lag sampler, finalize its record, and report gappiness
-            # (branch 5). Cancelling stamps ended_monotonic in the sampler's own finally.
-            if lag_task is not None:
-                lag_task.cancel()
-                try:
-                    await lag_task
-                except asyncio.CancelledError:
-                    pass
-                self._check_instruments_gappy(self._lag_record)
+            # WO-014c-1 §B.1/§B.2: stop the instrument tasks, finalize their records, and report
+            # gappiness (branch 5). Cancelling stamps ended_monotonic in each task's own finally.
+            for _task in (lag_task, pong_task):
+                if _task is not None:
+                    _task.cancel()
+                    try:
+                        await _task
+                    except asyncio.CancelledError:
+                        pass
+            self._check_instruments_gappy(self._lag_record, self._pong_record)
             try:
                 await websocket.close()
                 logger.info(

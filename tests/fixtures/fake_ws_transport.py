@@ -57,7 +57,8 @@ class FakeWebSocket:
     """A single simulated Kraken v2 socket. See module docstring; WO-014b-2 adds keepalive
     modes (silence / heartbeat / application pong) so time-based behavior is testable."""
 
-    def __init__(self, frames, on_drain="block", heartbeat_interval=0.005, auto_pong=False):
+    def __init__(self, frames, on_drain="block", heartbeat_interval=0.005, auto_pong=False,
+                 pong_rtt=None):
         # frames: JSON-serializable dict envelopes (the raw v2 fixtures), delivered first.
         # on_drain: behavior once scripted frames (and any queued pongs) are exhausted —
         #   "block"     : recv blocks until the transport's recv timeout cancels it — a
@@ -70,11 +71,15 @@ class FakeWebSocket:
         #                 frames" semantics; retained for any caller that wants it).
         # auto_pong: when True, a sent {"method":"ping"} queues a {"method":"pong"} that a
         #   subsequent recv returns — models Kraken's application ping/pong (§1.2).
+        # pong_rtt (WO-014c-1 §B.2): the simulated PROTOCOL-level ws.ping() round-trip time in
+        # seconds; None means the pong never comes back (an ABSENT pong the observer times out).
         self._frames = list(frames)
         self._index = 0
         self._on_drain = on_drain
         self._heartbeat_interval = heartbeat_interval
         self._auto_pong = auto_pong
+        self._pong_rtt = pong_rtt
+        self.pings_received = 0      # protocol-level ws.ping() calls this socket received
         self._pending = []      # frames (e.g. pongs) queued in response to sends
         self.sent = []          # parsed messages the transport sent on this socket
         self.closed = False
@@ -114,6 +119,20 @@ class FakeWebSocket:
 
     async def close(self):
         self.closed = True
+
+    async def ping(self, data=None):
+        """
+        WO-014c-1 §B.2: model the sanctioned protocol-level ws.ping() — returns a future
+        (the pong-waiter) whose result is the round-trip latency in seconds. Resolves
+        immediately to pong_rtt if set; if pong_rtt is None the future is never resolved, so
+        the observer records an ABSENT pong when its absent-timeout elapses. This is the RFC
+        6455 §5.5.2 control frame, NOT Kraken's application {"method":"ping"}.
+        """
+        self.pings_received += 1
+        fut = asyncio.get_event_loop().create_future()
+        if self._pong_rtt is not None:
+            fut.set_result(self._pong_rtt)
+        return fut
 
 
 # WO-014b-2 §2: a script entry of REOPEN_FAILURE makes that connect() attempt RAISE
