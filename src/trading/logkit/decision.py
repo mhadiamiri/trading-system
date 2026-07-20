@@ -9,7 +9,7 @@ Constitutional Principles:
 
 Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
 - Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_FLAG_STRANDED,
-  RECONNECT_CIRCUIT_BREAKER_TRIPPED
+  RECONNECT_CIRCUIT_BREAKER_TRIPPED, HEARTBEAT_ABSENCE, VENUE_CONNECTION_CLOSED
   (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
@@ -49,6 +49,11 @@ VALID_REASON_CODES = {
         # capture STOPS LOUDLY (Ruling B) rather than retrying into an undisclosed
         # multi-hour hole. Carries a forensic tail (Principle VIII).
         "RECONNECT_CIRCUIT_BREAKER_TRIPPED",
+        # WO-014b-2 §1.3: logged when the venue closes the connection UNEXPECTEDLY (abnormal
+        # WS close code, e.g. 1011 protocol keepalive-ping timeout) — routed into reconnect
+        # rather than ending the capture. A clean/normal close is an expected shutdown and is
+        # NOT logged with this code (it does not reconnect).
+        "VENUE_CONNECTION_CLOSED",
         # WO-014b-2 §1.1: logged by the transport when no frame of any kind (heartbeat,
         # data, or pong) has arrived within the heartbeat-absence threshold — the
         # connection is presumed dead and a reconnect is triggered (Kraken's own

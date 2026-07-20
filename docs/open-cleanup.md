@@ -82,3 +82,22 @@ that reintroduces a volume-sensitive slippage model would consume `avg_volume` a
 
 **Do not silently delete** `avg_volume` from the signature — that is a 0.1a event and the
 parameter is the retrieval hook for this discarded elaboration.
+
+---
+
+## Unguarded `factor ** attempt` in the reconnect backoff
+
+**Raised**: WO-014b-2 §1.3 (2026-07-20) · **Owner**: unassigned
+
+`_perform_reconnect` computes `self._reconnect_backoff_base * (self._reconnect_backoff_factor
+** attempt)` before capping it at `RECONNECT_BACKOFF_CAP_SECONDS`. `attempt` is unbounded —
+it climbs until the duration breaker trips at `RECONNECT_MAX_FAILURE_SECONDS` (T). At the
+current T=600s with full jitter (~15s expected delay at cap), `attempt` reaches only ~40, so
+`2.0 ** 40` is harmless. But the defense **depends on T staying small** — and `T` is a tunable
+declared-judgment figure. If `T` were raised far enough (or delays driven near zero) that
+`attempt` reached ~1024, `2.0 ** attempt` would raise `OverflowError` **instead of** the
+loud `RECONNECT_CIRCUIT_BREAKER_TRIPPED` — a crash where a reason-coded stop is promised.
+
+**Not fixed** (out of scope for §1.3; the exponent is unreachable at T=600s). One-line fix
+when actioned: cap the exponent, e.g. `factor ** min(attempt, 30)` — behaviour-preserving,
+since for `attempt >= 5` the delay is already at the cap.

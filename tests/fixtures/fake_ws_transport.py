@@ -79,10 +79,17 @@ class FakeWebSocket:
             self._pending.append(pong)
 
     async def recv(self):
-        """Deliver the next scripted frame, then any queued pong, then the drain behavior."""
+        """Deliver the next scripted frame, then any queued pong, then the drain behavior.
+
+        WO-014b-2 §1.3: a scripted entry that is an EXCEPTION INSTANCE is RAISED instead of
+        returned — this is how a test injects a protocol-level close (e.g. a websockets
+        ConnectionClosedError with code 1011, or ConnectionClosedOK with 1000) surfaced on recv.
+        """
         if self._index < len(self._frames):
             frame = self._frames[self._index]
             self._index += 1
+            if isinstance(frame, BaseException):
+                raise frame
             return json.dumps(frame)
         if self._pending:
             return json.dumps(self._pending.pop(0))
@@ -121,9 +128,11 @@ class ScriptedConnectionFactory:
         self.sockets = []
         self.connect_count = 0        # total connect() calls (successes + failures)
         self.failed_attempts = 0      # connect() calls that raised
+        self.connect_kwargs = []      # kwargs of each connect() call (WO-014b-2 §1.3: ping params)
 
     async def connect(self, *args, **kwargs):
-        """Drop-in for `websockets.connect`; ignores URL/timeout kwargs."""
+        """Drop-in for `websockets.connect`; records kwargs, ignores URL/timeout values."""
+        self.connect_kwargs.append(dict(kwargs))
         if self.connect_count >= len(self._scripts):
             raise AssertionError(
                 f"transport opened connection #{self.connect_count + 1} but the harness "

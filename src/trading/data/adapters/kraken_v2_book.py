@@ -550,6 +550,28 @@ class KrakenV2BookAdapter:
     APP_PING_INTERVAL_SECONDS = 5.0
     HEARTBEAT_ABSENCE_TIMEOUT_SECONDS = 10.0
 
+    # ── WO-014b-2 §1.3: PROTOCOL-LEVEL ping (the websockets library's own WS PING/PONG
+    # keepalive — the layer BELOW the application ping of §1.2, and the one that threw the
+    # 742s `1011 keepalive ping timeout` that ended WO-008b-B). Library defaults (20s/20s)
+    # produced that 1011. Kraken's docs are SILENT on protocol-ping expectations — the ping
+    # page documents ONLY the application ping and explicitly calls it "an application level
+    # ping, distinct from the protocol-level ping in the WebSockets standard"
+    # (evidence/WO-014/lifecycle_proposal.txt; rule 0.1e) — so these are DECLARED ENGINEERING
+    # JUDGMENT, same standard as T=600s.
+    #   WS_PING_INTERVAL = 20s: keep SENDING WS-level pings (cheap; keeps proxies/intermediaries
+    #     from idling a long-lived connection). We do NOT disable the ping.
+    #   WS_PING_TIMEOUT = None: do NOT let the LIBRARY close the connection on a missed/late
+    #     PONG. That library close (1011) is the exact mechanism that ended WO-008b-B, and BOTH
+    #     open hypotheses — Kraken not PONGing WS-level pings, and event-loop starvation at
+    #     ~1544 msg/min delaying pong servicing — make a fixed protocol timeout fire spuriously.
+    #     Connection LIVENESS is instead decided at the APPLICATION layer by heartbeat-absence
+    #     detection (§1.1: 10s over Kraken's own ~1/s server heartbeat + data + our app pongs)
+    #     and the app ping/pong (§1.2) — that is the named replacing signal, not an implied one.
+    #     Belt-and-suspenders: if a protocol-level close still arrives (venue/proxy-initiated),
+    #     §1.3's venue-close path routes it into reconnect, not a capture-ending crash.
+    WS_PING_INTERVAL_SECONDS = 20.0
+    WS_PING_TIMEOUT = None
+
     # Venue-mode provenance values (WO-008b-A1 §4).
     MODE_FIXTURE = "fixture"
     MODE_LIVE = "live"
@@ -1237,7 +1259,17 @@ class KrakenV2BookAdapter:
 
         logger.info("[kraken_v2_book] connecting to %s (public, unauthenticated)", self.WS_URL)
         try:
-            return await websockets.connect(self.WS_URL, open_timeout=15, close_timeout=5)
+            # WO-014b-2 §1.3: deliberate PROTOCOL-level ping params (see WS_PING_* constants).
+            # ping_timeout=None -> the library never closes on a missed pong; heartbeat-absence
+            # (§1.1) + app ping (§1.2) decide liveness. We still SEND WS pings (interval) so we
+            # are not silently disabling the protocol ping.
+            return await websockets.connect(
+                self.WS_URL,
+                open_timeout=15,
+                close_timeout=5,
+                ping_interval=self.WS_PING_INTERVAL_SECONDS,
+                ping_timeout=self.WS_PING_TIMEOUT,
+            )
         except Exception as exc:
             # RAISE. A failed connection must never silently replay fixtures.
             raise ConnectionError(
@@ -1260,6 +1292,8 @@ class KrakenV2BookAdapter:
         """
         import asyncio
         import time
+        # WO-014b-2 §1.3: the library surfaces a PROTOCOL-level close on recv as these.
+        from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 
         if self._mode != self.MODE_LIVE:
             raise ValueError(
@@ -1366,6 +1400,30 @@ class KrakenV2BookAdapter:
                 try:
                     message = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout)
                 except asyncio.TimeoutError:
+                    continue
+                except ConnectionClosedOK:
+                    # WO-014b-2 §1.3 (4c): a CLEAN/EXPECTED close (normal-closure code 1000/
+                    # 1001) — a graceful, intentional shutdown. Do NOT reconnect into it (that
+                    # would hammer a venue that closed on purpose); end the capture cleanly.
+                    logger.info(
+                        "[kraken_v2_book] venue closed the connection cleanly (normal closure); "
+                        "ending capture without reconnect"
+                    )
+                    break
+                except ConnectionClosedError as exc:
+                    # WO-014b-2 §1.3 (4c): an UNEXPECTED venue-initiated close (abnormal code —
+                    # e.g. 1011, the protocol-level keepalive-ping timeout that ended WO-008b-B).
+                    # This is the same hazard class as §0's hard-stop; ROUTE IT INTO THE EXISTING
+                    # recovery (reconnect + backoff + duration breaker) rather than propagating
+                    # and ending the capture. Reuse — no parallel recovery path.
+                    self._log_error(
+                        f"VENUE_CONNECTION_CLOSED: unexpected close ({exc}); reconnecting"
+                    )
+                    websocket = await self._perform_reconnect(
+                        websocket, reason=f"venue closed the connection unexpectedly ({exc})",
+                    )
+                    last_frame = time.monotonic()
+                    last_ping = time.monotonic()
                     continue
 
                 # A frame arrived (book, heartbeat, or pong) -> the link is alive.
