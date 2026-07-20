@@ -858,10 +858,19 @@ class KrakenV2BookAdapter:
         self._local_book.reset_for_resync()
 
     def _request_snapshot(self) -> None:
-        """Request fresh snapshot from Kraken."""
-        # This would send a snapshot request message over WebSocket
-        # For now, this is a placeholder for the connection logic
-        pass
+        """
+        Signal the transport to obtain a FRESH book snapshot by RESUBSCRIBING.
+
+        WO-014 §2.1 (design B). The v2 book channel documents NO snapshot re-request
+        method (https://docs.kraken.com/api/docs/websocket-v2/book/ is silent on it);
+        the documented path is unsubscribe+subscribe, which delivers a fresh snapshot.
+        This sets a flag the transport (get_live_market_data) consumes to send that
+        resubscribe on the live socket. Setting the flag is a REAL action, not a no-op
+        (rule 0.1g — this method was `pass` and latched emission off for 48 of
+        WO-008b-B's 60 minutes). Fixture-level only; the isolated live re-run confirms
+        Kraken actually responds with a snapshot.
+        """
+        self._pending_resubscribe = True
 
     def _reconnect(self) -> None:
         """Reconnect to Kraken WebSocket."""
@@ -929,6 +938,39 @@ class KrakenV2BookAdapter:
                 "snapshot": True,
             },
         }
+
+    def _build_unsubscribe_message(self) -> dict:
+        """
+        Kraken v2 book unsubscribe (WO-014 §2.1).
+
+        Cite (verbatim): https://docs.kraken.com/api/docs/websocket-v2/book/
+          {"method":"unsubscribe","params":{"channel":"book","symbol":[...]}}
+        """
+        return {
+            "method": "unsubscribe",
+            "params": {
+                "channel": "book",
+                "symbol": [self.BOOK_SYMBOL],
+                "depth": self.BOOK_DEPTH,
+            },
+        }
+
+    async def _maybe_resubscribe(self, websocket) -> None:
+        """
+        WO-014 §2.1 PRODUCER: if a checksum failure requested a fresh snapshot
+        (`_request_snapshot` set the flag), send unsubscribe+subscribe on the live
+        socket. Kraken then delivers a fresh snapshot, which the EXISTING consumer
+        branch (_process_quote_update) validates to clear the no-emission window and
+        resume emission. This supplies the producer that S10's certified consumer was
+        hand-fed (rule 0.1h). It runs in the transport so the checksum/emission
+        consumer path stays byte-for-byte unchanged (approved design B).
+        """
+        if not getattr(self, "_pending_resubscribe", False):
+            return
+        self._pending_resubscribe = False
+        await websocket.send(json.dumps(self._build_unsubscribe_message()))
+        await websocket.send(json.dumps(self._build_subscribe_message()))
+        logger.info("[kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot")
 
     async def _connect(self):
         """
@@ -1034,6 +1076,12 @@ class KrakenV2BookAdapter:
                     "(SHARED entry point, no live-only branch)"
                 )
                 market_states = await self.process_raw_frame(raw_frame)
+
+                # WO-014 §2.1: if that frame's checksum failure opened a resync
+                # window, RESUBSCRIBE now to obtain a fresh snapshot (the producer
+                # `_request_snapshot` requested). Without this the window latched off
+                # forever (WO-008b-B). The consumer path above is untouched.
+                await self._maybe_resubscribe(websocket)
 
                 # LAYER 4: yield boundary.
                 for market_state in market_states:

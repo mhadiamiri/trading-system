@@ -1,0 +1,183 @@
+WO-014 PHASE 1 — LIFECYCLE PROPOSAL (propose then STOP; NO network opened)
+=========================================================================
+Citation note (0.1e vs "no network"): this WO forbids opening any network
+connection, so Kraken documentation is cited from KNOWLEDGE (URLs given, behavior
+stated) rather than a fresh fetch, and our OWN WO-008b-B captured hour is used as
+PRIMARY OBSERVED evidence (the WO rules it admissible). Verbatim doc quotes were not
+re-fetched. FLAGGED FOR RULING: if you want fresh verbatim quotes, authorize a
+documentation fetch (report item 9 would then become YES) — otherwise the
+observed-frame evidence below is stronger than a doc quote for this specific claim,
+because it is an hour of the real server's behavior.
+
+═══════════════════════════════════════════════════════════════════════════
+1.1 SNAPSHOT RECOVERY — mechanism
+═══════════════════════════════════════════════════════════════════════════
+CLAIMED MECHANISM: RESUBSCRIBE. A fresh book snapshot on an existing connection is
+obtained by (re)subscribing to the book channel — NOT by any bare "re-request
+snapshot" method, which does not exist on the public v2 book channel.
+
+DOCUMENTATION (from knowledge; URL for your verification):
+  https://docs.kraken.com/api/docs/websocket-v2/book/
+  Documented behavior: `subscribe` to channel "book" with `snapshot: true` (the
+  default) delivers ONE snapshot message immediately, followed by a stream of
+  update messages. `unsubscribe` stops the stream. The book channel documents no
+  method to re-request a snapshot without a new subscription.
+
+OBSERVED — PRIMARY (WO-008b-B captured frames, labeled OBSERVATION not doc):
+  - Frame order per subscription: `{"method":"subscribe",...}` ack -> exactly ONE
+    `{"channel":"book","type":"snapshot"}` -> a stream of `{"channel":"book",
+    "type":"update"}`. (In the retained 70-frame sample: 1 subscribe ack, 1 book
+    snapshot, 57 book updates.)
+  - Across the run's THREE resync events we sent NO re-request (`_request_snapshot`
+    is `pass`) and NO snapshot arrived — emission stayed latched until a full
+    reconnect (a NEW subscription) produced a NEW snapshot (minutes 13-16). This is
+    an hour of direct evidence that (a) Kraken does not spontaneously re-snapshot a
+    live subscription, and (b) a new subscription is precisely what yields a fresh
+    snapshot.
+
+PROJECT LEAD'S PRIOR EXPECTATION ("resubscription is the documented path; no bare
+re-request exists on the public book channel"): CONFIRMED, by both the documented
+behavior and — more strongly — the observed hour. It survives.
+
+PROPOSED DESIGN:
+  On resync, `_request_snapshot()` sends, on the SAME live socket, an `unsubscribe`
+  for {channel:book, symbol:[BTC/USD], depth:10} immediately followed by a
+  `subscribe` with snapshot:true (reusing `_build_subscribe_message`). The fresh
+  snapshot then flows into the EXISTING consumer path (`_process_quote_update`),
+  whose validated-snapshot branch clears `_awaiting_resync` and resumes emission —
+  the same branch S10's test already exercises. No new consumer logic; we are
+  supplying the producer the test hand-fed.
+
+INTERFACES TOUCHED / 0.1a ASSESSMENT:
+  `_request_snapshot()` currently takes no arguments, is synchronous, and holds no
+  socket. To send on the live socket it must reach the websocket that only the
+  transport (`get_live_market_data`) holds. Options:
+    (A) store `self._ws` in get_live_market_data; make `_request_snapshot` async and
+        `await self._ws.send(...)`; `_enter_resync` (its caller, reached from the
+        already-async `_process_quote_update`) becomes async.
+    (B) leave `_process_quote_update` unchanged; have the transport loop, after each
+        `process_raw_frame`, detect a freshly-opened `_awaiting_resync` and send the
+        resubscribe itself.
+  These are INTERNAL signatures (`_`-prefixed), not public interface. Making
+  `_enter_resync`/`_request_snapshot` async is a signature change to private methods
+  — I read that as NOT a 0.1a public-interface trigger, but I am FLAGGING it
+  explicitly for your ruling rather than deciding unilaterally. Recommendation: (B)
+  — it keeps the checksum/emission consumer path byte-for-byte unchanged and adds
+  only a transport-level producer, which is the cleanest separation.
+
+═══════════════════════════════════════════════════════════════════════════
+1.2 KEEPALIVE — obligation
+═══════════════════════════════════════════════════════════════════════════
+CURRENT STATE: `_connect()` calls `websockets.connect(WS_URL, open_timeout=15,
+close_timeout=5)` with NO `ping_interval`/`ping_timeout`, so the `websockets`
+library uses its DEFAULTS (WS-level PING every ~20s, close with 1011 if no PONG in
+~20s). There is NO application-level ping/pong and NO heartbeat monitoring; the
+adapter FILTERS Kraken's heartbeat frames as "transport chatter". The 742s `1011
+keepalive ping timeout` that closed WO-008b-B was this library-level keepalive.
+
+ARITHMETIC (as required): 1 disconnect / 742s. A 24-hour capture at that cadence =
+86400 / 742 ≈ 116 disconnects (~120), each a book discard + a resync + a data gap.
+This is an unimplemented protocol obligation, not a network characteristic.
+
+DOCUMENTATION (from knowledge; URL for your verification):
+  https://docs.kraken.com/api/docs/websocket-v2/  (and .../websocket-v2/ping)
+  Documented behavior: the v2 server emits `{"channel":"heartbeat"}` messages at a
+  regular cadence (~1/second) while a connection is active; clients may send an
+  application-level `{"method":"ping"}` and receive `{"method":"pong"}`. The
+  server's heartbeat is the documented connection-liveness signal.
+
+OBSERVED — PRIMARY: `heartbeat` frames are present at ~1/second (10 in the 70-frame
+sample). So Kraken's heartbeat IS emitted and its ABSENCE is a usable liveness/dead-
+connection signal. Whether the 1011 was Kraken failing to PONG a WS-level ping or the
+harness event loop being momentarily starved is UNDETERMINED from the frames — I will
+not guess; the fix below does not depend on which it was.
+
+PROPOSED DESIGN:
+  (1) Monitor Kraken heartbeats: if no heartbeat (or any frame) for a documented-
+      cadence-derived threshold, declare the connection dead and reconnect. This uses
+      Kraken's OWN documented liveness signal rather than only the WS library's ping.
+  (2) Send an application-level `{"method":"ping"}` on an interval and expect
+      `{"method":"pong"}` — an active liveness probe independent of data flow.
+  (3) Set `websockets.connect(..., ping_interval=?, ping_timeout=?)` deliberately
+      (a cited value, not the silent default) so the WS-level keepalive is a chosen
+      parameter, not an accident.
+  Minimal robust core: (1) heartbeat-absence detection + reconnect. (2)/(3)
+  strengthen it. The reconnect it triggers is where `_reconnect()` (see below) must
+  actually re-establish the socket + resubscribe.
+
+INTERFACES TOUCHED / 0.1a: a concurrent keepalive/heartbeat-monitor task inside
+`get_live_market_data`, plus deliberate ping params on `_connect`. Internal; no
+public signature change. Flagged.
+
+═══════════════════════════════════════════════════════════════════════════
+0.1g STUBS FOUND (report; Phase 2.3)
+═══════════════════════════════════════════════════════════════════════════
+TWO no-op `pass` production stubs on this path, not one:
+  - `_request_snapshot()`  (line 860) — the resync producer (this WO's subject).
+  - `_reconnect()`         (line 866) — "Reconnect to Kraken WebSocket ... For now,
+      this is a placeholder ... pass". Called at 5 consecutive checksum failures
+      (line 811) AND it is the natural home for the keepalive-triggered reconnect in
+      1.2. It silently does nothing today: at 5 failures the code "reconnects" by
+      doing nothing, then continues against a discarded book.
+Both must FAIL LOUDLY (0.1g) until implemented. `_reconnect` is squarely in scope for
+1.2's keepalive design (keepalive detects death -> reconnect), so I propose to
+implement it alongside — flagging it here rather than fixing out of scope.
+(A third historical instance of this exact mechanism — `self._log_error = Mock()`
+swallowing every FR-017 log — is documented in the code at line 876 and is already
+fixed; it is cited in the Phase 6 decision-log line.)
+
+═══════════════════════════════════════════════════════════════════════════
+STOP — awaiting approval before Phase 2. Not implementing anything.
+Open questions for your ruling:
+  Q1. Accept knowledge-cited docs + observed frames, or authorize a doc fetch
+      (making report item 9 = YES)?
+  Q2. Approve design (B) for snapshot recovery (transport-level resubscribe,
+      consumer path untouched)? Any private-method async change you consider a 0.1a
+      event?
+  Q3. Approve implementing `_reconnect()` alongside keepalive (in scope), or hold it
+      to its own WO?
+═══════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════
+DOCUMENTATION FETCH (WO-014 RULING 1) — VERBATIM QUOTES
+═══════════════════════════════════════════════════════════════════════════
+FETCHED (docs.kraken.com — a documentation host, NOT the venue feed). Labeled
+DOCUMENTED; the WO-008b-B frames remain OBSERVED. Where they agree, noted.
+
+--- BOOK CHANNEL: https://docs.kraken.com/api/docs/websocket-v2/book/ ---
+snapshot param (verbatim): "snapshot" type="boolean", "Default: true",
+  "Request a snapshot after subscribing."  and  "Indicates if a snapshot is requested."
+  The snapshot response has "type": "snapshot" with bids, asks, and a checksum.
+checksum (verbatim): "checksum" type="integer" = "CRC32 checksum for the top 10 bids and asks."
+unsubscribe (verbatim JSON):
+  {"method":"unsubscribe","params":{"channel":"book","symbol":["ALGO/USD","MATIC/USD"]}}
+resubscribe: send the original subscribe request with "method":"subscribe".
+
+RE-REQUEST METHOD: **DOCUMENTED SILENCE (not documented absence).** The book page
+contains NO information about refreshing or re-requesting a snapshot on an existing
+subscription without unsubscribing/resubscribing. Per RULING 1 this is stated as the
+weaker claim. THE DESIGN DOES NOT REST ON "no re-request method exists"; it rests on
+the POSITIVE, DOCUMENTED path: unsubscribe+subscribe delivers a fresh snapshot.
+CORROBORATION: DOCUMENTED (snapshot follows subscribe) + OBSERVED (our hour: snapshot
+only ever followed a subscribe ack; no spontaneous re-snapshot across 3 resyncs) —
+mutual corroboration, stronger than either alone. Lead's expectation survives.
+
+--- PING/KEEPALIVE: https://docs.kraken.com/api/docs/websocket-v2/ping ---
+verbatim: "Clients can ping the server to verify connection is alive and the server
+  will respond with a pong."  It is "an application level ping, distinct from the
+  protocol-level ping in the WebSockets standard."
+request JSON:  {"method":"ping","req_id":101}
+response JSON: {"method":"pong","req_id":101,"time_in":"...","time_out":"..."}
+NOT DOCUMENTED (verbatim finding): mandatory interval, keepalive timeout, or
+  server-initiated pings. The ping page does not mention heartbeat.
+
+CONSEQUENCE FOR THE 1011: Kraken's DOCUMENTED keepalive is a CLIENT-INITIATED
+APPLICATION ping, explicitly DISTINCT from the WebSocket protocol-level ping. The
+1011 that closed WO-008b-B was the protocol-level ping (the `websockets` library's
+own keepalive) — a mechanism Kraken's docs do not govern. So the two candidate causes
+stand UNRESOLVED (RULING 4): (a) Kraken not PONGing the WS protocol ping, or (b)
+event-loop starvation at ~1544 msg/min delaying the library's pong servicing. The
+DOCUMENTED remedy (application ping/pong) is separate from the protocol ping and does
+NOT by itself fix cause (b) — hence RULING 4's instrumentation to DISTINGUISH.
+HEARTBEAT is OBSERVED (~1/s, 10 in 70 frames) but not on the ping page; treat its
+absence as a liveness signal (observation), not a documented obligation.

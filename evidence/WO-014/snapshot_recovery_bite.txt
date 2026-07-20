@@ -1,0 +1,11 @@
+WO-014 §2.1 BITE PROOF — snapshot recovery producer (production trigger path)
+Perturbation: revert _request_snapshot to the original `pass` (the WO-008b-B defect).
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAIL (rc=1, 0.51s) ---
+    assert adapter._pending_resubscribe is True, (
+E   AttributeError: 'KrakenV2BookAdapter' object has no attribute '_pending_resubscribe'
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:892 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+FAILED tests/integration/test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.45s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE: before=555b6a655fcb0f79 after=555b6a655fcb0f79 match=True ---

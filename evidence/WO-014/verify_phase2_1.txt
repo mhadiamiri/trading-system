@@ -1,0 +1,4 @@
+WO-014 Phase 2.1 verification (baseline 56bfc0c)
+DET:  ======================= 142 passed in 237.75s (0:03:57) =======================
+RAND (seed 20260725): ======================= 142 passed in 237.39s (0:03:57) =======================
+delta vs 56bfc0c (141): +1 (test_snapshot_recovery). import-linter 6/6, ruff clean.
