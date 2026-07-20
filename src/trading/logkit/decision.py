@@ -9,7 +9,8 @@ Constitutional Principles:
 
 Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
 - Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_FLAG_STRANDED,
-  RECONNECT_CIRCUIT_BREAKER_TRIPPED, HEARTBEAT_ABSENCE, VENUE_CONNECTION_CLOSED
+  RECONNECT_CIRCUIT_BREAKER_TRIPPED, HEARTBEAT_ABSENCE, VENUE_CONNECTION_CLOSED,
+  INSTRUMENTS_GAPPY
   (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
@@ -54,6 +55,13 @@ VALID_REASON_CODES = {
         # rather than ending the capture. A clean/normal close is an expected shutdown and is
         # NOT logged with this code (it does not reconnect).
         "VENUE_CONNECTION_CLOSED",
+        # WO-014c-1 §B.1 / branch 5: logged when the event-loop lag sampler missed more than
+        # the VOID fraction of its expected samples — the instrument starved itself, so the
+        # QUANTITATIVE discrimination is VOID (the gap timestamps remain reported evidence that
+        # may NOMINATE the starvation hypothesis; only clean instruments CONVICT). Declared now
+        # (approved Q4) so the completeness guard stays green and the re-run is never blocked
+        # by a missing code at the moment it needs to report one.
+        "INSTRUMENTS_GAPPY",
         # WO-014b-2 §1.1: logged by the transport when no frame of any kind (heartbeat,
         # data, or pong) has arrived within the heartbeat-absence threshold — the
         # connection is presumed dead and a reconnect is triggered (Kraken's own

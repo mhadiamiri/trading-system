@@ -1,0 +1,48 @@
+################################################################
+# WO-014c-1 §B.1 BITE PROOF — LAG SAMPLER self-reports under starvation (0.1i/0.7)
+# Generated: 2026-07-20T20:28:42Z
+# A REAL 300ms event-loop freeze; the record must REPORT the deficit, not go quiet.
+# No network.
+################################################################
+
+===== sha256 BEFORE =====
+19017b83a08a96511927f29a82ac4f1015cdb9552c27726d86c4db93f2dca3a3  src/trading/data/adapters/kraken_v2_book.py
+
+===== ARTIFACT 1/4 — PASS (self-reporting record in place) =====
+
+tests\integration\test_lag_sampler.py .                                  [100%]
+
+============================== 1 passed in 0.51s ==============================
+
+===== MUTATION — disable self-reporting (expected_samples := actual_samples) =====
+expected_samples now == actual_samples -> missed always 0 -> the shortfall is SILENT
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (deficit invisible: missed==0) =====
+
+tests/integration/test_lag_sampler.py::test_starved_lag_sampler_self_reports_degradation FAILED [100%]
+
+================================== FAILURES ===================================
+______________ test_starved_lag_sampler_self_reports_degradation ______________
+tests\integration\test_lag_sampler.py:43: in test_starved_lag_sampler_self_reports_degradation
+    assert record.expected_samples > record.actual_samples, (
+E   AssertionError: a healthy loop would have yielded more samples; the shortfall must be visible
+E   assert 6 > 6
+E    +  where 6 = LagSampleRecord(interval_s=0.02, started_monotonic=262447.8317276, ended_monotonic=262448.299796, samples=[(262447.8657327, 0.014005099965725094), (262447.8969619, 0.01122920001624152), (262448.2136008, 0.29663890002528204), (262448.2375058, 0.0039049999509006734), (262448.2687134, 0.011207600026391446), (262448.2997685, 0.011055099971126765)], gaps=[(262447.8969619, 262448.2136008, 0.31663890002528206)]).expected_samples
+E    +  and   6 = LagSampleRecord(interval_s=0.02, started_monotonic=262447.8317276, ended_monotonic=262448.299796, samples=[(262447.8657327, 0.014005099965725094), (262447.8969619, 0.01122920001624152), (262448.2136008, 0.29663890002528204), (262448.2375058, 0.0039049999509006734), (262448.2687134, 0.011207600026391446), (262448.2997685, 0.011055099971126765)], gaps=[(262447.8969619, 262448.2136008, 0.31663890002528206)]).actual_samples
+=========================== short test summary info ===========================
+FAILED tests/integration/test_lag_sampler.py::test_starved_lag_sampler_self_reports_degradation
+============================== 1 failed in 0.57s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_lag_sampler.py .                                  [100%]
+
+============================== 1 passed in 0.51s ==============================
+
+===== ARTIFACT 4/4 — sha256 AFTER restore (must EQUAL before) =====
+19017b83a08a96511927f29a82ac4f1015cdb9552c27726d86c4db93f2dca3a3  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK (rule 0.7).
+################################################################
+# END LAG-SAMPLER BITE PROOF
+################################################################

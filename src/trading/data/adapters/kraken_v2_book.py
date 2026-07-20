@@ -49,6 +49,57 @@ class CircuitBreakerTripped(RuntimeError):
         self.last_validated_book = last_validated_book
 
 
+@dataclass
+class LagSampleRecord:
+    """
+    WO-014c-1 §B.1. Self-reporting record for the event-loop LAG sampler — the PRIMARY
+    starvation discriminator. All timestamps are time.monotonic() (WO-014c-1 §A.2 shared
+    clock; never wall clock — the whole discrimination is a cross-record correlation).
+
+    The record is designed so a STARVED-QUIET sampler SELF-REPORTS: silence becomes a
+    POSITIVE signal, never "healthy because quiet." It carries not just the samples but the
+    completeness accounting — expected vs actual sample count, missed count, and the gap
+    timestamps where the sampler itself was starved — so a gappy run is legible as gappy
+    (WO-014c-1 §A.3 / branch 5: gappy -> VOID for the quantitative verdict, while the gaps
+    remain reported evidence that can NOMINATE the starvation hypothesis).
+
+    Fields:
+        interval_s          : intended sampling cadence (s)
+        started_monotonic   : monotonic() at first sample loop entry
+        ended_monotonic     : monotonic() at sampler stop/cancel
+        samples             : list of (monotonic_ts, lag_s) — lag_s is the sleep OVERRUN
+                              (actual_interval - interval_s); > 0 means the loop scheduled
+                              the sentinel late.
+        gaps                : list of (gap_start_ts, gap_end_ts, gap_duration_s) — wake
+                              intervals that overran by >= LAG_GAP_FACTOR, i.e. WHERE
+                              intended wakes were missed, identifiable by timestamp.
+    """
+
+    interval_s: float
+    started_monotonic: float = 0.0
+    ended_monotonic: float = 0.0
+    samples: list = field(default_factory=list)
+    gaps: list = field(default_factory=list)
+
+    @property
+    def actual_samples(self) -> int:
+        return len(self.samples)
+
+    @property
+    def expected_samples(self) -> int:
+        span = self.ended_monotonic - self.started_monotonic
+        return int(span / self.interval_s) if self.interval_s > 0 and span > 0 else 0
+
+    @property
+    def missed_samples(self) -> int:
+        return max(0, self.expected_samples - self.actual_samples)
+
+    @property
+    def missed_fraction(self) -> float:
+        exp = self.expected_samples
+        return (self.missed_samples / exp) if exp > 0 else 0.0
+
+
 class LocalBookState(enum.Enum):
     """
     Local book state transitions for Kraken v2 book adapter.
@@ -571,6 +622,16 @@ class KrakenV2BookAdapter:
     #     §1.3's venue-close path routes it into reconnect, not a capture-ending crash.
     WS_PING_INTERVAL_SECONDS = 20.0
     WS_PING_TIMEOUT = None
+
+    # ── WO-014c-1 §B.1: event-loop LAG sampler (PRIMARY starvation discriminator) ──
+    # Figures declared in WO-014c-1 Phase A (evidence/WO-014c-1/thresholds_and_branches.txt),
+    # declared engineering judgment under documented silence, anchored to ~26 msg/s (~38ms/frame).
+    LAG_SAMPLE_INTERVAL_SECONDS = 0.1   # 100ms: ~10 samples/s; fine enough for sub-second bursts
+    LAG_GAP_FACTOR = 2.0                # a wake overrunning to >= 2x the interval missed >=1 wake
+    # "Gappy -> VOID" (branch 5): >10% of expected samples missing means the sampler was itself
+    # starved enough that its surviving record is a biased sample — the quantitative verdict is
+    # VOID (the gap timestamps remain reported evidence).
+    INSTRUMENTS_GAPPY_VOID_FRACTION = 0.10
 
     # Venue-mode provenance values (WO-008b-A1 §4).
     MODE_FIXTURE = "fixture"
@@ -1277,6 +1338,57 @@ class KrakenV2BookAdapter:
                 f"Refusing to continue — a live run must never fall back to fixtures."
             ) from exc
 
+    async def _sample_event_loop_lag(self, record: "LagSampleRecord") -> None:
+        """
+        WO-014c-1 §B.1 — PRIMARY starvation discriminator. A sentinel task that measures how
+        late the event loop schedules a fixed-cadence sleep: lag = actual_interval - interval.
+        A healthy loop yields lag ~0; a STARVED loop overruns the sleep (high lag) and, when
+        badly starved, fails to wake the task at all — so the sample COUNT itself drops.
+
+        SELF-REPORTING (WO-014c-1 §A.2/§A.3): this task only appends; the completeness deficit
+        (expected vs actual, missed, gaps) is derived from the record on the SAME monotonic
+        clock all instruments share. That is what turns the sampler's own silence under load
+        into a POSITIVE signal instead of a false "healthy because quiet." Runs until cancelled
+        by the transport's finally; the finally stamps ended_monotonic even on cancellation.
+        """
+        import asyncio
+        import time
+
+        interval = record.interval_s
+        record.started_monotonic = time.monotonic()
+        prev = record.started_monotonic
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                now = time.monotonic()
+                actual = now - prev
+                record.samples.append((now, actual - interval))  # lag = sleep overrun
+                if actual >= interval * self.LAG_GAP_FACTOR:
+                    # This wake overran by >= one interval: intended wakes were missed here.
+                    record.gaps.append((prev, now, actual))
+                prev = now
+        finally:
+            record.ended_monotonic = time.monotonic()
+
+    def _check_instruments_gappy(self, record: "LagSampleRecord") -> bool:
+        """
+        WO-014c-1 branch 5. If the lag sampler missed more than the VOID fraction of its
+        expected samples, the quantitative discrimination is VOID — but the gap timestamps
+        stay REPORTED evidence (they can NOMINATE the starvation hypothesis; only clean
+        instruments CONVICT). Emits the declared reason code so the run's own report carries
+        its VOID reason. Returns True when gappy.
+        """
+        if record.missed_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION:
+            self._log_error(
+                f"INSTRUMENTS_GAPPY: lag sampler missed {record.missed_samples} of "
+                f"{record.expected_samples} expected samples "
+                f"({record.missed_fraction:.0%} > {self.INSTRUMENTS_GAPPY_VOID_FRACTION:.0%}); "
+                f"quantitative discrimination VOID. {len(record.gaps)} gap(s) retained as "
+                f"reported evidence (may NOMINATE starvation; only clean instruments convict)."
+            )
+            return True
+        return False
+
     async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
         """
         Stream MarketStates from the LIVE Kraken v2 public book channel.
@@ -1306,6 +1418,10 @@ class KrakenV2BookAdapter:
         self._start_time = time.time()
         self.captured_frames = []
         self.captured_raw_text = []
+        # WO-014c-1 §B.1: the event-loop LAG sampler (PRIMARY starvation discriminator) runs
+        # concurrently for this capture on the shared time.monotonic() clock (§A.2).
+        self._lag_record = LagSampleRecord(interval_s=self.LAG_SAMPLE_INTERVAL_SECONDS)
+        lag_task = None
 
         websocket = await self._connect()
         logger.info(
@@ -1317,6 +1433,7 @@ class KrakenV2BookAdapter:
             subscribe = self._build_subscribe_message()
             await websocket.send(json.dumps(subscribe))
             logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
+            lag_task = asyncio.create_task(self._sample_event_loop_lag(self._lag_record))
 
             deadline = time.time() + duration_seconds
             # WO-014b-2 §1.1/§1.2 keepalive clocks (monotonic). last_frame is refreshed by
@@ -1489,6 +1606,15 @@ class KrakenV2BookAdapter:
 
         finally:
             self._running = False
+            # WO-014c-1 §B.1: stop the lag sampler, finalize its record, and report gappiness
+            # (branch 5). Cancelling stamps ended_monotonic in the sampler's own finally.
+            if lag_task is not None:
+                lag_task.cancel()
+                try:
+                    await lag_task
+                except asyncio.CancelledError:
+                    pass
+                self._check_instruments_gappy(self._lag_record)
             try:
                 await websocket.close()
                 logger.info(

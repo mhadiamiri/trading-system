@@ -40,6 +40,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+
+
+async def starve_event_loop(seconds: float) -> None:
+    """
+    WO-014c-1 §B.4 starvation simulation. Blocks the WHOLE event loop synchronously for
+    `seconds` (a real, deterministic stall — time.sleep does not yield), so a concurrent lag
+    sampler genuinely misses wakes. Used to bite-prove that the sampler SELF-REPORTS the
+    degradation (missed count + gap timestamps) rather than going silently quiet.
+    """
+    time.sleep(seconds)
 
 
 class FakeWebSocket:
