@@ -1,0 +1,24 @@
+WO-012 §4 (category-a migration) and §5 (category-c verification)
+================================================================
+
+§4 — MIGRATE CATEGORY (a) TO LINT CONTRACTS
+The category (a) textual properties are ALREADY enforced unskippably by import-linter,
+so there is NOTHING TO MIGRATE and NO contract-count change (stays 6; EXPECTED_CONTRACT_COUNT
+untouched):
+  - S14 "no ML in risk"            -> contract 1 (Forbidden ML in Risk Layer)
+  - S15 "no execution.adapters"    -> contract 2 (Forbidden Execution Adapters Imports),
+                                      contracts 3/5 (no concrete adapter import above the registry)
+  - "no unittest.mock in prod"     -> contract 6 (No test doubles in production)
+The redundant category (a) TESTS (test_boundaries.py::test_risk_layer_has_no_ml_imports,
+test_strategy/data/backtest_cannot_import_execution_adapters) are 0.1f-permitted (a textual
+property, textually checked) and are KEPT as harmless defense-in-depth. A migration was not
+needed because the lint contract already exists; per §4 that is reported, not forced.
+Proof the lint enforcement BITES: evidence/WO-012/lint_contract_bite.txt (a forbidden
+risk->adapter import breaks the contract; restore -> kept; exact sha restore).
+
+§5 — VERIFY CATEGORY (c) BEHAVIORAL HALVES
+There are NO category (c) tests (textual check living ALONGSIDE a behavioral proof in the
+same test). The five remediated tests were category (b); the behavioral halves that cover
+their surfaces live in SEPARATE tests (test_mainnet_guard.py; test_live_loop.py
+RealBiteProof classes; test_filled_order_has_strictly_positive_costs) and are bite-proved in
+§3. Nothing to verify under §5; no reclassification performed (so no §5 escalation).

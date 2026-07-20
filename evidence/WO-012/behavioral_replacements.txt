@@ -1,0 +1,50 @@
+WO-012 §3 BEHAVIORAL BITE PROOFS (guard dead-but-present -> behavioral FAIL)
+Strictly stronger than the removed source greps: a present-but-dead guard,
+which a string search cannot see, makes each behavioral test fail.
+
+==========================================================================
+SURFACE 4 — order-capable path unreachable in paper mode (Principle IX)
+  guard file : src/trading/execution/paper.py
+  behavioral test: test_paper_client_refuses_construction_under_mainnet
+  perturbation: strings PRESENT, effect DEAD (a grep would still pass)
+--- ARTIFACT 1+2: GUARD DEAD -> ACTUAL FAILING OUTPUT (rc=1, 0.60s) ---
+    with pytest.raises(ValueError) as exc_info:
+E   Failed: DID NOT RAISE ValueError
+FAILED tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+============================== 1 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.53s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post == empty diff) ---
+  before=a6e66cc21ccfd494  after=a6e66cc21ccfd494  match=True
+
+==========================================================================
+SURFACE 3 — TRADING_ENV=mainnet execution guard (Principle IX)
+  guard file : config/settings.py
+  behavioral test: test_mainnet_env_is_blocked
+  perturbation: strings PRESENT, effect DEAD (a grep would still pass)
+--- ARTIFACT 1+2: GUARD DEAD -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    assert exc is not None, (
+E   AssertionError: GUARD DID NOT FIRE: TRADING_ENV=mainnet was accepted. No code path may reach a real-money venue in Phase 1.
+E   assert None is not None
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+============================== 1 failed in 0.10s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.52s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post == empty diff) ---
+  before=7b5b7db2571bce46  after=7b5b7db2571bce46  match=True
+
+==========================================================================
+SURFACE 2 — no fill without costs (Principle V)
+  guard file : src/trading/execution/costs.py
+  behavioral test: test_filled_order_has_strictly_positive_costs
+  perturbation: strings PRESENT, effect DEAD (a grep would still pass)
+--- ARTIFACT 1+2: GUARD DEAD -> ACTUAL FAILING OUTPUT (rc=1, 0.68s) ---
+    assert pnl["total_costs"] > 0, \
+E   AssertionError: Total cost MUST be strictly positive, got 0.0
+E   assert 0.0 > 0
+FAILED tests/integration/test_cost_bite_proof.py::test_filled_order_has_strictly_positive_costs
+============================== 1 failed in 0.19s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.60s) ---
+============================== 1 passed in 0.11s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post == empty diff) ---
+  before=374bdaa844965f2b  after=374bdaa844965f2b  match=True

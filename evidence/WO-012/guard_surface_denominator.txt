@@ -1,0 +1,62 @@
+WO-012 §1 GUARD-SURFACE DENOMINATOR (stated FIRST, before classification)
+==========================================================================
+Every constitutional "the system refuses X" / "must not Y" claim, mapped to its
+behavioral proof and whether that proof has been WATCHED TO BITE. Test existence
+verified by grep (see guard_surface_denominator_verify.txt). Honest annotation:
+some refusals live ABOVE the code (process rules) and are NOT behaviorally provable
+by the suite — they are marked PROCESS-ENFORCED and NOT covered by invented tests.
+
+BEHAVIORAL SURFACES (a refusal the running system performs)
+-----------------------------------------------------------
+#   surface (constitution / FR)                     behavioral proof                                             bite
+S2  No fill without costs (Principle V)             test_cost_bite_proof.py::test_filled_order_has_strictly_...  WO-012 §3 (fresh)
+S3  TRADING_ENV=mainnet execution guard (IX)        test_mainnet_guard.py::test_mainnet_env_is_blocked           WO-012 §3 (fresh)
+S4  Order-capable path unreachable in paper (IX)    test_mainnet_guard.py::test_paper_client_refuses_constr...   WO-012 §3 (fresh)
+S5  Clamp only shrinks, never grows/flips (§clamp)  test_risk.py::test_clamp_does_not_increase_size              behavioral (not re-bitten here)
+S6  No fill with absent/stale MarketState           test_staleness_guard_bite_proof.py::test_no_market_state_/   WATCHED (dedicated bite file)
+                                                     test_stale_market_state_guard
+S7  Abnormal/zero/negative spread rejected (FR-015b) test_cost_reconciliation.py::test_abnormal_spread_reject.. / WATCHED (WO-011 RULING 3)
+                                                     test_backtest_costs.py::test_abnormal_spread_wide_rejected
+S8  No synthetic spread (FR-015a)                   test_backtest_costs.py::test_code_review_no_synthetic_spread WATCHED (WO-011 RULING 7)
+S9  No silent fixture fallback on conn failure      test_no_silent_fallback.py::test_live_method_refuses_fix..   behavioral (not re-bitten here)
+S10 No MarketState while book unverified (FR-018a(d)) test_parse_path.py::test_non_book_frame_emits_nothing       behavioral (not re-bitten here)
+S11 Checksum from venue's transmitted rep (FR-018a(f)) test_captured_frames_a3_raw_text.py::test_every_captured_.. WATCHED (replay vs venue checksums)
+S12 Kill switch blocks NEW orders (Principle VI)    test_risk.py::test_kill_switch_blocks_new_orders             behavioral (not re-bitten here)
+
+UNCOVERED BEHAVIORAL SURFACE (reported, not silently covered)
+-------------------------------------------------------------
+S13 Kill switch PRESERVES cancellations (Principle VI): the production guard EXISTS
+    (paper.py::cancel_order ignores kill_switch_engaged and cancels regardless), but
+    NO behavioral test exercises "cancel succeeds while kill switch engaged." This is
+    UNCERTIFIED, not absent — so no escalation (OUT OF SCOPE escalates only genuine
+    ABSENCE). Recommend a one-line behavioral test in a follow-up (it is a positive
+    guarantee — "still allows" — not a refusal, which is why §1's refusal framing did
+    not surface it; listed here for completeness).
+
+STRUCTURAL SURFACES (textual property, enforced UNSKIPPABLY by import-linter)
+----------------------------------------------------------------------------
+S14 Risk layer contains no AI/ML (Principle III)    import-linter contract 1 "Forbidden ML in Risk Layer"        LINT (kept)
+S15 strategy/risk/data/backtest/loop no exec.adapters import-linter contract 2 "Forbidden Execution Adapters..."  LINT (kept)
+    (Principle IV)                                  (+ contracts 3,4,5 pin adapter resolution to the registry)
+    Supplementary tests (category (a), 0.1f-legit): test_boundaries.py::test_risk_layer_has_no_ml_imports,
+    test_strategy/data/backtest_cannot_import_execution_adapters. Redundant with the
+    contracts but permitted (textual property, textually checked). Kept as-is.
+
+PROCESS-ENFORCED (NOT behaviorally provable by the suite — honestly marked, no hollow tests)
+--------------------------------------------------------------------------------------------
+P1  No xfail/skip on enforcement tests (0.1b)          — enforced by review + the WO gate (0 xfailed).
+P2  No secrets/credentials committed (Principle IX)    — enforced by the secret scan (WO-011) + review.
+P3  No `unittest.mock` importable FROM production (0.1c) — import-linter contract 6 "No test doubles in production" (LINT).
+P4  No F811 identifier redefinition                     — ruff (LINT).
+P5  AI is not the FINAL authority on order placement    — architectural (risk engine sovereign); the deterministic
+    (Principle III)                                     clamp/veto behavior is proven by test_risk.py; "final authority"
+                                                        itself is a design property enforced by layering + review.
+
+CLOSURE COUNT (see §6 in the report)
+------------------------------------
+Behavioral surfaces S2..S12 = 11; S13 uncovered (1). Of the 11, three (S2,S3,S4)
+carry a FRESH WO-012 behavioral bite proof; five (S6,S7,S8,S11 + S2/3/4) have a
+watched bite (dedicated proof file or prior-WO bite); the remaining S5,S9,S10,S12
+have a behavioral test not re-bitten in this WO. Structural S14,S15 are lint-kept.
+Process P1..P5 are process/lint-enforced. Denominator total (behavioral) = 12
+(S2..S13); COVERED by a behavioral test = 11/12; the 1 uncovered is S13, named above.

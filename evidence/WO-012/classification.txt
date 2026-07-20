@@ -1,0 +1,38 @@
+WO-012 §2 — CLASSIFICATION of every inspect.getsource / code-text-assertion test
+Re-confirmed against the RULING 8 audit. (a) textual property textually checked -
+VALID; (b) behavioral claim textually certified - FALSE GUARANTEE, replaced; (c)
+supplementary alongside an existing behavioral proof.
+
+== remaining getsource / 'in source' after WO-012 removals ==
+tests/integration/test_cost_bite_proof.py:106:    The prior test_cost_bite_bites_when_zero asserted, via inspect.getsource, that
+tests/test_backtest_costs.py:343:        `"market_state.spread" in inspect.getsource(...)` — a source-string match.
+tests/test_boundaries.py:78:            source = inspect.getsource(module)
+tests/test_boundaries.py:79:            assert "trading.execution.adapters" not in source, f"{module.__name__} imports from execution.adapters"
+tests/test_reason_code_vocabulary.py:92:        f'"{code}"' in source_text
+tests/test_reason_code_vocabulary.py:93:        or f"'{code}'" in source_text
+tests/test_reason_code_vocabulary.py:94:        or f'"{code}:' in source_text
+tests/test_reason_code_vocabulary.py:95:        or f"'{code}:" in source_text
+
+CLASSIFICATION:
+ (b) BEHAVIORAL CLAIM, TEXTUALLY CERTIFIED — the FROZEN FIVE, now REPLACED/REMOVED:
+   [1] test_live_loop.py TestPaperModeGuardSection2_2::test_paper_execution_requires_paper_mode  -> REMOVED
+   [2] test_live_loop.py TestPaperModeGuardSection2_2::test_paper_mode_guard_fail_then_pass_proof -> REMOVED
+   [3] test_live_loop.py TestMainnetGuardSection2_3::test_mainnet_guard_is_intact                 -> REMOVED
+   [4] test_live_loop.py TestMainnetGuardSection2_3::test_mainnet_guard_source_is_intact          -> REMOVED
+   [6] test_cost_bite_proof.py::test_cost_bite_bites_when_zero (grep of a SIBLING TEST)           -> REPLACED
+        by test_zero_cost_path_is_detectable_behaviorally (monkeypatch defeat -> observe zero).
+   Behavioral coverage for [1]-[4] pre-existed (test_mainnet_guard.py; test_live_loop.py
+   TestPaperModeGuardRealBiteProof/TestMainnetGuardRealBiteProof) and is bite-proved in §3.
+
+ (a) TEXTUAL PROPERTY, TEXTUALLY CHECKED — VALID (rule 0.1f carve-out). Kept:
+   [5] test_boundaries.py::test_data_cannot_import_execution_adapters (getsource: "no import")
+       -> ALSO enforced unskippably by import-linter contract 2. See §4.
+   test_boundaries.py::test_risk_layer_has_no_ml_imports (sys.modules runtime check)
+   test_boundaries.py::test_strategy_cannot_import_execution_adapters (filesystem: no adapter files)
+   test_reason_code_vocabulary.py::_is_producible + prefix-freedom (vocabulary-in-use text checks)
+
+ (c) SUPPLEMENTARY (textual alongside an existing behavioral proof in the SAME test): NONE.
+
+SIXTH? Re-confirmation found NO sixth behavioral-claim grep. The remediation category
+stays FROZEN AT FIVE. (test_backtest_costs.py:343 is a docstring describing the OLD
+grep, not a live assertion; the reason-code string checks are category (a).)

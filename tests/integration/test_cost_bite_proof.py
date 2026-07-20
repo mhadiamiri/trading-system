@@ -24,7 +24,6 @@ from datetime import datetime, UTC
 from trading.backtest.runner import BacktestRunner
 from trading.data.market_state import MarketState
 from trading.execution.paper import PaperExecutionClient
-from unittest.mock import patch, MagicMock
 
 
 @pytest.mark.asyncio
@@ -99,57 +98,70 @@ async def test_filled_order_has_strictly_positive_costs():
     print(f"  All costs strictly positive [PASS]")
 
 
-def test_cost_bite_bites_when_zero():
+@pytest.mark.asyncio
+async def test_zero_cost_path_is_detectable_behaviorally(monkeypatch):
     """
-    Demonstrate that the test FAILS when costs are forced to zero.
+    BEHAVIORAL bite (WO-012 §3, RULING 8 remediation — replaces a source grep).
 
-    This is the "BITE" part of FAIL-THEN-PASS proof.
+    The prior test_cost_bite_bites_when_zero asserted, via inspect.getsource, that
+    the SIBLING test contained the strings "> 0" and "assert". That proved a string
+    was present in a file, not that costs are enforced positive (rule 0.1d / 0.1f:
+    a textual check of a behavioral claim — the worst quadrant).
 
-    Instructions for manual demonstration:
-    1. Temporarily stub CostModel.calculate_costs_from_market_state() to return zeros
-    2. Run test_fills_with_positive_costs() → should FAIL with AssertionError
-    3. Restore correct implementation
-    4. Re-run → should PASS
-    5. git diff should be empty
+    This ATTEMPTS the forbidden state — a cost-free fill — by defeating the cost
+    mechanism at the single source both paths call, and asserts the P&L report
+    OBSERVES zero cost. Strictly stronger: a present-but-dead cost path (which the
+    grep could not see) produces zero costs here and this test detects it. The
+    positive-cost guarantee itself is proven by
+    test_filled_order_has_strictly_positive_costs above.
 
-    This documents the proof pattern. The actual demonstration would be done
-    manually by temporarily modifying the cost model to return zeros.
+    Principle V (No Backtest Without Costs); Principle I (Truth Before Profit).
     """
-    # This test documents the proof pattern
-    # To demonstrate the bite, one would:
-    #
-    # 1. In backtest/costs.py, temporarily modify:
-    #    def calculate_costs_from_market_state(...):
-    #        return CostComponents(
-    #            fees=Decimal("0"),
-    #            spread_cost=Decimal("0"),
-    #            slippage_cost=Decimal("0"),
-    #            total_cost=Decimal("0"),
-    #        )
-    #
-    # 2. Run test_filled_order_has_strictly_positive_costs()
-    #    Expected: FAILED with AssertionError: "Total cost MUST be strictly positive, got 0"
-    #
-    # 3. Restore the correct implementation
-    #
-    # 4. Re-run test_filled_order_has_strictly_positive_costs()
-    #    Expected: PASSED
-    #
-    # 5. git diff backtest/costs.py
-    #    Expected: empty (no changes)
+    from trading.execution.costs import ExecutionCosts
 
-    # Verify the guard exists in the test
-    import inspect
-    source = inspect.getsource(test_filled_order_has_strictly_positive_costs)
+    def _zero_costs(side, size, market_state, fee_rate_pct, slippage_factor):
+        executed = market_state.best_ask if side == "BUY" else market_state.best_bid
+        return ExecutionCosts(
+            executed_price=executed,
+            fees=Decimal("0"),
+            spread_cost=Decimal("0"),
+            slippage_cost=Decimal("0"),
+            total_cost=Decimal("0"),
+        )
 
-    # Verify strict positivity assertions exist
-    assert "> 0" in source or "StrictPositive" in source, \
-        "Test must enforce strictly positive costs"
-    assert "total_costs" in source, "Test must check total_costs"
-    assert "assert" in source, "Test must have assertions"
+    test_data = []
+    for i in range(10):
+        price_change = Decimal("0.02") if i % 2 == 0 else Decimal("-0.02")
+        new_price = Decimal("65000.00") * (Decimal("1") + price_change)
+        test_data.append(
+            MarketState(
+                timestamp=datetime(2024, 7, 11, 12, 0, i),
+                symbol="BTC/USD",
+                best_bid=new_price - Decimal("2.50"),
+                best_ask=new_price + Decimal("2.50"),
+                best_bid_size=Decimal("1.5"),
+                best_ask_size=Decimal("2.0"),
+                trade_count=100 + i,
+                total_volume=Decimal(str(200 + i * 10)),
+                last_price=new_price,
+            )
+        )
 
-    print("\n[Cost bite proof test is armed]")
-    print("  (Manual FAIL-THEN-PASS demonstration would show the test bites)")
+    # Sanity: with the REAL mechanism, a fill incurs strictly positive cost.
+    real = await BacktestRunner().run(data_points=test_data, max_events=10)
+    assert real["trades_count"] > 0
+    assert real["pnl_report"]["total_costs"] > 0
+
+    # Defeat the cost mechanism at the name the paper venue actually resolves.
+    monkeypatch.setattr("trading.execution.paper.compute_execution_costs", _zero_costs)
+
+    defeated = await BacktestRunner().run(data_points=test_data, max_events=10)
+    assert defeated["trades_count"] > 0, "trades must still occur to make the bite meaningful"
+    assert defeated["pnl_report"]["total_costs"] == 0, (
+        "cost mechanism defeated but P&L still reported nonzero cost — a present-but-"
+        "dead cost path would go undetected"
+    )
+    print("\n[BEHAVIORAL COST BITE] mechanism defeated -> total_costs == 0 (observed, not grepped)")
 
 
 if __name__ == "__main__":

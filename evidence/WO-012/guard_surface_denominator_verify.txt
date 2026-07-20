@@ -1,0 +1,17 @@
+WO-012 §1 — behavioral proofs cited in the denominator EXIST (grep, not prose)
+
+test_filled_order_has_strictly_positive_costs           tests/integration/test_cost_bite_proof.py
+test_mainnet_env_is_blocked                             tests/integration/test_mainnet_guard.py
+test_paper_client_refuses_construction_under_mainnet    tests/integration/test_mainnet_guard.py
+test_clamp_does_not_increase_size                       tests/test_risk.py
+test_stale_market_state_guard                           tests/integration/test_staleness_guard_bite_proof.py
+test_no_market_state_guard                              tests/integration/test_staleness_guard_bite_proof.py
+test_abnormal_spread_rejected_identically_on_both_paths tests/integration/test_cost_reconciliation.py
+test_code_review_no_synthetic_spread                    tests/test_backtest_costs.py
+test_live_method_refuses_fixture_mode_adapter           tests/integration/test_no_silent_fallback.py
+test_kill_switch_blocks_new_orders                      tests/test_risk.py
+test_non_book_frame_emits_nothing                       tests/test_parse_path.py
+test_every_captured_update_reproduces_from_raw_text     tests/test_captured_frames_a3_raw_text.py
+
+== no cancel-under-killswitch test (S13 uncovered) ==
+  (none — confirms S13 uncovered)

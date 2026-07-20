@@ -1,0 +1,22 @@
+WO-012 §4 — IMPORT-LINTER CONTRACT BITE (structural surface S15: no adapter import above adapter)
+The source-grep equivalent (test_boundaries.py::test_data_cannot_import_execution_adapters,
+and the risk/strategy variants) is category (a); the UNSKIPPABLE enforcement is import-linter
+(contracts 2/3/5). This proves that enforcement BITES on a forbidden risk->adapter import.
+
+--- BROKEN: forbidden adapter import appended to risk/engine.py -> lint (rc=1, 0.2s) ---
+
+-   trading.loop.live -> trading.risk.engine (l.24)
+    trading.risk.engine -> trading.data.adapters.kraken_v2_book (l.134)
+
+
+trading.risk is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.risk.engine -> trading.data.adapters.kraken_v2_book (l.134)
+
+
+--- RESTORED -> lint (rc=0, 0.2s) ---
+No test doubles in production code KEPT
+
+Contracts: 6 kept, 0 broken.
+--- EXACT RESTORE (sha256 pre==post) ---
+  before=24a694fd95327e38  after=24a694fd95327e38  match=True
