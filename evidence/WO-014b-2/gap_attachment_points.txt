@@ -88,16 +88,25 @@ Three sub-paths, with DIFFERENT current coverage — flagged honestly:
     get_live_market_data line 1338-1343 (`except Exception ... _perform_reconnect(reason=
     "application ping send failed")`). Same in-scope fields as CAUSE 1 (a reconnect gap).
 
-4c. EXPLICIT VENUE CLOSE ON recv (ConnectionClosed frame). **COVERAGE GAP — FLAG.** The
-    recv at line 1362 catches ONLY asyncio.TimeoutError (1363). A websockets ConnectionClosed
-    raised by recv PROPAGATES out of get_live_market_data and ENDS THE CAPTURE — there is no
-    reconnect and no gap record. Silent drops are covered by heartbeat-absence (CAUSE 1), and
-    reopen failures by backoff, but an EXPLICIT close frame is not routed through the reconnect
-    path today. This is the residual shape of the §0 hard-stop for the explicit-close case.
-    RECOMMENDATION (NOT implemented — production change, needs approval): wrap recv to route
-    ConnectionClosed through _perform_reconnect (reason "venue closed connection"), giving 4c
-    the same gap attachment as 4a/4b. Until then, WO-014c should treat 4c as an uncovered
-    emission site.
+4c. EXPLICIT VENUE CLOSE ON recv (ConnectionClosed frame). **COVERAGE GAP — DEFERRED TO
+    THE §1.3 SESSION (project-lead ruling). Recorded here so it cannot evaporate between
+    sessions.**
+    WHAT PATH: the recv in get_live_market_data (line ~1362) catches ONLY asyncio.TimeoutError
+      (the next line). A websockets ConnectionClosed raised BY recv is a different exception.
+    WHAT CURRENTLY HAPPENS: that ConnectionClosed PROPAGATES out of get_live_market_data and
+      ENDS THE CAPTURE — no reconnect, no gap record. Silent drops are covered by
+      heartbeat-absence (CAUSE 1) and reopen failures by backoff, but an EXPLICIT close frame
+      is NOT routed through the reconnect path today. It is the residual shape of the §0
+      hard-stop for the explicit-close case, and the same hazard class as §0's finding: a
+      failure mode that ends a capture without routing into the recovery we built.
+    WHY IT MATTERS FOR A 24h RUN: a venue-initiated close mid-run truncates the corpus with
+      nothing routing into backoff/breaker — load-bearing for a 24-hour capture.
+    WHY §1.3 (not this turn, not WO-014c): it lives at the SAME LAYER §1.3 addresses —
+      protocol-level close and timeout semantics — and the 1011 that started all of this was
+      itself a venue-initiated close. Treating it alongside §1.3 gives one coherent treatment
+      of that layer instead of two partial ones. Likely fix (for §1.3): route ConnectionClosed
+      through _perform_reconnect (reason "venue closed connection"), giving 4c the same gap
+      attachment as 4a/4b.
 
 ════════════════════════════════════════════════════════════════════════
 SUMMARY FOR WO-014c SCHEMA
@@ -109,4 +118,5 @@ SUMMARY FOR WO-014c SCHEMA
 - Two fields need production support to be emitted wall-clock-bounded: (i) the last
   RECEIVED frame's server timestamp (CAUSE 1 open bound), (ii) an explicit gap-close hook on
   the absence path. Neither is built here (schema-first, per the ruling).
-- One coverage gap to close before or during WO-014c: 4c explicit venue close.
+- One coverage gap DEFERRED TO THE §1.3 SESSION (ruled): 4c explicit venue close — same
+  protocol-close/timeout layer as §1.3, and the 1011 was itself a venue-initiated close.

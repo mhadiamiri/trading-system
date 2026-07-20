@@ -161,4 +161,4 @@ tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::tes
 tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_unknown_mode_is_rejected PASSED [ 99%]
 tests/integration/test_venue_mode_observability.py::TestVenueModeProvenance::test_fixture_mode_reports_fixture_venue PASSED [100%]
 
-======================= 149 passed in 238.34s (0:03:58) =======================
+======================= 149 passed in 238.48s (0:03:58) =======================

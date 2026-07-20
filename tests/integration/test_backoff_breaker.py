@@ -87,12 +87,16 @@ async def test_transient_reopen_failure_retries_under_backoff_then_emission_resu
 async def test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail():
     """(b) Reopen keeps failing -> circuit breaker trips -> loud failure + forensic tail + retained capture."""
     adapter = _live_adapter()
-    adapter._max_reconnects_per_window = 3   # small threshold for the proof
+    # The DURATION breaker trips on elapsed WALL-CLOCK, so this proof uses REAL (tiny) backoff
+    # sleeps (not the no-op) and a small T: the streak crosses T=0.1s after a few ~0.01-0.04s
+    # retries. Deterministic jitter (1.0, from _live_adapter) makes the ladder reproducible.
+    adapter._reconnect_sleep = None            # real asyncio.sleep so wall-clock advances
+    adapter._reconnect_max_failure_seconds = 0.1
 
     socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]
-    # connect #1 = socket1; #2,#3,#4 = refused reopens. The 4th breaker check (attempt 3)
-    # trips BEFORE a 5th connect, so three REOPEN_FAILURE entries suffice.
-    factory = ScriptedConnectionFactory([socket1, REOPEN_FAILURE, REOPEN_FAILURE, REOPEN_FAILURE])
+    # connect #1 = socket1; the rest are refused reopens. The breaker trips on TIME, not
+    # count, before exhausting these — plenty of failures so the trip, not the factory, ends it.
+    factory = ScriptedConnectionFactory([socket1] + [REOPEN_FAILURE] * 20)
 
     emitted = []
     with patch("websockets.connect", factory.connect):
@@ -107,7 +111,7 @@ async def test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail()
 
     # FORENSIC TAIL (Ruling 2B condition 1): trip time, full retry ladder, last good book.
     assert exc.trip_time is not None
-    assert len(exc.reconnect_ladder) == 3, "every failed attempt is in the ladder"
+    assert len(exc.reconnect_ladder) >= 2, "the retry ladder records the failed attempts"
     for entry in exc.reconnect_ladder:
         assert {"attempt", "at", "delay_s", "error"} <= set(entry), entry
     assert exc.last_validated_book is not None
@@ -122,4 +126,4 @@ async def test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail()
     assert len(adapter.captured_raw_text) > 0, "the partial capture is retained, not discarded"
 
     # It STOPPED (Ruling B) — the initial sync emitted, but no silent continuation after.
-    assert factory.failed_attempts == 3
+    assert factory.failed_attempts >= 2, "reopen failed repeatedly before the breaker tripped"

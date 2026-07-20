@@ -160,4 +160,4 @@ tests/test_risk.py::TestRiskEngine::test_get_max_position_size PASSED    [ 98%]
 tests/test_risk.py::TestRiskEngine::test_get_max_daily_loss_pct PASSED   [ 99%]
 tests/test_risk.py::TestImportRestrictions::test_no_ml_imports_in_risk_layer PASSED [100%]
 
-======================= 149 passed in 238.52s (0:03:58) =======================
+======================= 149 passed in 238.84s (0:03:58) =======================

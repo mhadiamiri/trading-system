@@ -515,18 +515,24 @@ class KrakenV2BookAdapter:
     RECONNECT_BACKOFF_BASE_SECONDS = 1.0     # first retry delay
     RECONNECT_BACKOFF_FACTOR = 2.0           # 1, 2, 4, 8, 16, ... before the cap
     RECONNECT_BACKOFF_CAP_SECONDS = 30.0     # capped so a recovered venue reconnects promptly
-    # Circuit breaker: max reopen ATTEMPTS per rolling window. Calibrated to Ruling 2A's
-    # question — "how long do we try before concluding the venue is gone?" — NOT to
-    # protecting Kraken (at this rate the average is well under 1 attempt/min). ~30
-    # attempts under the capped-30s ladder span ~12-13 min of continuous failure: long
-    # enough to ride out ordinary Kraken interruptions (brief maintenance / network
-    # blips), short enough that a truly-gone venue yields a bounded, DISCLOSED ~13-min gap
-    # rather than a silent multi-hour hole. The 15-min window also bounds a flapping
-    # connection. The longest ordinary Kraken interruption is UNKNOWN to us without
-    # operational history; these are conservative declared-judgment figures, revisable
-    # once the 24h run yields data.
-    RECONNECT_WINDOW_SECONDS = 900.0
-    MAX_RECONNECTS_PER_WINDOW = 30
+    # Circuit breaker: a DURATION breaker (WO-014b-2, Proposal B, ruled). It trips when the
+    # continuous-failure streak exceeds this many seconds of elapsed wall-clock from the
+    # first failed reopen — the venue is presumed gone, the run STOPS loudly. T directly
+    # expresses the only question the breaker answers — "how long do we try before
+    # concluding the venue is gone?" — instead of encoding it indirectly through an attempt
+    # count, expected delay, and jitter (the count/rolling-window form had a WINDOW >= MAX x
+    # cap subtlety that made its own worst case marginal-by-construction, so it was rejected).
+    #
+    # T = 600s (10 min) is DECLARED ENGINEERING JUDGMENT — Kraken publishes no keepalive/
+    # reconnect limit (documented silence, evidence/WO-014b-2/rate_limits_research.txt, rule
+    # 0.1e). Derivation: routine unplanned Kraken interruptions (network events, brief WS
+    # drops) resolve in seconds to a few minutes; ~10 min clears ordinary hiccups with margin
+    # while bounding a truly-gone venue to a DISCLOSED ~10-20 min gap (carried by the forensic
+    # tail + retained partial capture) rather than a silent multi-hour hole. Unknown without
+    # operational history; conservative and revisable once the 24h run yields data.
+    # Attempt rate is now EMERGENT from T: at cap 30s with full jitter the expected delay is
+    # ~15s, so ~40 attempts across 600s ~= 4/min — well under any plausible venue limit.
+    RECONNECT_MAX_FAILURE_SECONDS = 600.0
 
     # ── WO-014b-2 §1.1 / §1.2: keepalive (application layer) ─────────────────
     # Kraken emits a heartbeat ~1/s (observed: 10 in a 70-frame sample, WO-008b-B) but
@@ -585,9 +591,7 @@ class KrakenV2BookAdapter:
         self._reconnect_backoff_base = self.RECONNECT_BACKOFF_BASE_SECONDS
         self._reconnect_backoff_factor = self.RECONNECT_BACKOFF_FACTOR
         self._reconnect_backoff_cap = self.RECONNECT_BACKOFF_CAP_SECONDS
-        self._reconnect_window_seconds = self.RECONNECT_WINDOW_SECONDS
-        self._max_reconnects_per_window = self.MAX_RECONNECTS_PER_WINDOW
-        self._reconnect_attempt_times = []   # monotonic ts of reopen attempts (rolling window)
+        self._reconnect_max_failure_seconds = self.RECONNECT_MAX_FAILURE_SECONDS  # duration breaker T
         self._reconnect_ladder = []          # forensic: per-attempt {attempt,at,delay_s,error}
         self._last_validated_book = None     # forensic: last checksum-validated top-of-book
         self._reconnect_sleep = None         # test hook; defaults to asyncio.sleep
@@ -1099,11 +1103,12 @@ class KrakenV2BookAdapter:
           ended a 24h run on one transient blip). It RETRIES under full-jitter exponential
           backoff (base×factor^attempt, capped), so a transient venue interruption is
           ridden out rather than fatal.
-        - A CIRCUIT BREAKER bounds how long we try before concluding the venue is gone:
-          when reopen attempts exceed MAX_RECONNECTS_PER_WINDOW within the rolling window it
-          TRIPS — fails loud with reason code RECONNECT_CIRCUIT_BREAKER_TRIPPED, carrying a
-          forensic tail, and STOPS the capture (Ruling B: STOP, never continue-with-a-
-          silent-gap). The retained partial capture is labeled a truncated-honest window.
+        - A DURATION CIRCUIT BREAKER bounds how long we try before concluding the venue is
+          gone: when the continuous-failure streak exceeds RECONNECT_MAX_FAILURE_SECONDS of
+          elapsed wall-clock (from the first failed reopen) it TRIPS — fails loud with reason
+          code RECONNECT_CIRCUIT_BREAKER_TRIPPED, carrying a forensic tail, and STOPS the
+          capture (Ruling B: STOP, never continue-with-a-silent-gap). The retained partial
+          capture is labeled a truncated-honest window.
 
         Backoff/breaker figures are DECLARED ENGINEERING JUDGMENT: Kraken's WS rate limits
         are documented silence (evidence/WO-014b-2/rate_limits_research.txt; rule 0.1e).
@@ -1131,24 +1136,24 @@ class KrakenV2BookAdapter:
             # A close failure on an already-dead socket must not block the reopen.
             logger.warning("[kraken_v2_book] error closing socket during reconnect: %s", exc)
 
-        # New reconnect operation: reset the per-operation forensic ladder.
+        # New reconnect operation: reset the per-operation forensic ladder. streak_start is
+        # stamped at the FIRST failed reopen; the duration breaker measures elapsed from it.
         self._reconnect_ladder = []
+        streak_start = None
         attempt = 0
         while True:
-            now = time.monotonic()
-            # Circuit breaker: prune the rolling window, record this attempt, check the cap.
-            self._reconnect_attempt_times = [
-                t for t in self._reconnect_attempt_times
-                if now - t <= self._reconnect_window_seconds
-            ]
-            self._reconnect_attempt_times.append(now)
-            if len(self._reconnect_attempt_times) > self._max_reconnects_per_window:
+            # DURATION circuit breaker: trip once the continuous-failure streak has run
+            # longer than T seconds — the venue is presumed gone (Proposal B, ruled).
+            if (streak_start is not None
+                    and time.monotonic() - streak_start > self._reconnect_max_failure_seconds):
                 raise self._trip_circuit_breaker(reason)
 
             try:
                 new_websocket = await self._connect()
             except ConnectionError as exc:
                 # Transient reopen failure -> back off and RETRY (do not propagate).
+                if streak_start is None:
+                    streak_start = time.monotonic()  # the continuous-failure streak begins
                 delay = min(
                     self._reconnect_backoff_cap,
                     self._reconnect_backoff_base * (self._reconnect_backoff_factor ** attempt),
@@ -1193,11 +1198,11 @@ class KrakenV2BookAdapter:
         last_book = self._last_validated_book
         frames = len(getattr(self, "captured_raw_text", []) or [])
         message = (
-            f"RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect ({reason}) exceeded "
-            f"{self._max_reconnects_per_window} reopen attempts within "
-            f"{self._reconnect_window_seconds:.0f}s; venue presumed gone. Capture STOPPED "
-            f"(no silent gap). Trip {trip_time}. Retry ladder: [{ladder_str}]. "
-            f"Last validated book: {last_book}. Partial capture retained: {frames} frames."
+            f"RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect ({reason}) kept failing for more "
+            f"than {self._reconnect_max_failure_seconds:.0f}s of continuous retry; venue "
+            f"presumed gone. Capture STOPPED (no silent gap). Trip {trip_time}. Retry ladder: "
+            f"[{ladder_str}]. Last validated book: {last_book}. Partial capture retained: "
+            f"{frames} frames."
         )
         # Ruling B condition 2: retain + LABEL the partial capture (two-window doctrine).
         self.capture_terminated = {
