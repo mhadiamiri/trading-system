@@ -1,0 +1,99 @@
+WO-008b-B §1.4 PREFLIGHT BITE PROOFS (four artifacts each, sha256 exact-restore)
+
+==========================================================================
+S4 refusal — order-capable path unreachable when NOT paper (IX)
+  guard file : src/trading/execution/paper.py
+  test       : test_paper_client_refuses_construction_under_mainnet
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    with pytest.raises(ValueError) as exc_info:
+E   Failed: DID NOT RAISE ValueError
+FAILED tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+============================== 1 failed in 0.10s ==============================
+--- RESTORED -> PASS (rc=0, 0.51s) ---
+============================== 1 passed in 0.04s ==============================
+--- sha256 EXACT RESTORE: before=a6e66cc21ccfd494 after=a6e66cc21ccfd494 match=True ---
+
+==========================================================================
+S4 dual — paper execution must still fill (IX)
+  guard file : src/trading/execution/paper.py
+  test       : test_nonpaper_construction_refused_but_paper_still_fills
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    raise ValueError(
+E   ValueError: PaperExecutionClient CANNOT be used when TRADING_ENV=paper. PaperExecutionClient is for paper trading only (TRADING_ENV=paper). This is a constitutional guard preventing accidental real-money order placement. See .specify/memory/constitution.md Principle IX.
+FAILED tests/integration/test_preservation_guarantees.py::test_nonpaper_construction_refused_but_paper_still_fills
+============================== 1 failed in 0.11s ==============================
+--- RESTORED -> PASS (rc=0, 0.54s) ---
+============================== 1 passed in 0.04s ==============================
+--- sha256 EXACT RESTORE: before=a6e66cc21ccfd494 after=a6e66cc21ccfd494 match=True ---
+
+==========================================================================
+S3 — Settings.validate() mainnet guard (IX)
+  guard file : config/settings.py
+  test       : test_mainnet_env_is_blocked
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.60s) ---
+    assert exc is not None, (
+E   AssertionError: GUARD DID NOT FIRE: TRADING_ENV=mainnet was accepted. No code path may reach a real-money venue in Phase 1.
+E   assert None is not None
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+============================== 1 failed in 0.10s ==============================
+--- RESTORED -> PASS (rc=0, 0.54s) ---
+============================== 1 passed in 0.05s ==============================
+--- sha256 EXACT RESTORE: before=7b5b7db2571bce46 after=7b5b7db2571bce46 match=True ---
+
+==========================================================================
+S6 refusal — a stale MarketState must be refused (R6)
+  guard file : src/trading/execution/paper.py
+  test       : test_stale_market_state_guard
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 2.10s) ---
+    with pytest.raises(ValueError) as exc_info:
+E   Failed: DID NOT RAISE ValueError
+FAILED tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard
+============================== 1 failed in 1.61s ==============================
+--- RESTORED -> PASS (rc=0, 2.04s) ---
+============================== 1 passed in 1.55s ==============================
+--- sha256 EXACT RESTORE: before=a6e66cc21ccfd494 after=a6e66cc21ccfd494 match=True ---
+
+==========================================================================
+S6 dual — a fresh MarketState must still price (R6)
+  guard file : src/trading/execution/paper.py
+  test       : test_stale_state_refused_but_fresh_state_still_fills
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.66s) ---
+    raise ValueError(
+E   ValueError: EXEC_STALE_MARKET_STATE: MarketState is too old (0.0s). Threshold: 18.0s. The paper venue refuses to fill against stale market data.
+FAILED tests/integration/test_preservation_guarantees.py::test_stale_state_refused_but_fresh_state_still_fills
+============================== 1 failed in 0.13s ==============================
+--- RESTORED -> PASS (rc=0, 0.53s) ---
+============================== 1 passed in 0.04s ==============================
+--- sha256 EXACT RESTORE: before=a6e66cc21ccfd494 after=a6e66cc21ccfd494 match=True ---
+
+==========================================================================
+S10 refusal — a failed checksum opens the no-emission window (FR-018a(d))
+  guard file : src/trading/data/adapters/kraken_v2_book.py
+  test       : test_corrupted_checksum_rejected_and_logged
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.61s) ---
+    assert adapter._awaiting_resync is True, (
+E   AssertionError: FR-018a(d): a failed checksum must open the no-emission window
+E   assert False is True
+E    +  where False = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x000001280E966510>._awaiting_resync
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:883 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+FAILED tests/test_data_adapters.py::TestKrakenV2BookChecksum::test_corrupted_checksum_rejected_and_logged
+============================== 1 failed in 0.10s ==============================
+--- RESTORED -> PASS (rc=0, 0.57s) ---
+============================== 1 passed in 0.04s ==============================
+--- sha256 EXACT RESTORE: before=726210278834a445 after=726210278834a445 match=True ---
+
+==========================================================================
+S10 dual — emission must RESUME once a fresh snapshot validates (FR-018a(d))
+  guard file : src/trading/data/adapters/kraken_v2_book.py
+  test       : test_resync_blocks_emission_then_resumes_after_fresh_snapshot
+--- BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.59s) ---
+    assert adapter._awaiting_resync is False, "emission must resume after resync validates"
+E   AssertionError: emission must resume after resync validates
+E   assert True is False
+E    +  where True = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x000002BF052DA120>._awaiting_resync
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:883 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+FAILED tests/integration/test_preservation_guarantees.py::test_resync_blocks_emission_then_resumes_after_fresh_snapshot
+============================== 1 failed in 0.11s ==============================
+--- RESTORED -> PASS (rc=0, 0.54s) ---
+============================== 1 passed in 0.04s ==============================
+--- sha256 EXACT RESTORE: before=726210278834a445 after=726210278834a445 match=True ---

@@ -1,0 +1,42 @@
+WO-008b-B §1 PREFLIGHT GATE — complete, pasted BEFORE any socket opens
+Baseline: d5bfd45
+
+== §1.1 git status / worktree / package path / guards ==
+-- git status --porcelain (only instructions.md, the work-order file) --
+ M instructions.md
+?? evidence/WO-008b-B/
+-- git worktree list (ONLY main) --
+C:/Projects/bot/trading-system d5bfd45 [master]
+-- preflight guards --
+PASS: trading package resolves inside the repo tree
+  C:\Projects\bot\trading-system\src\trading\__init__.py
+
+== §1.2 full suite, RANDOMIZED ordering, seed 20260723 ==
+======================= 141 passed in 237.28s (0:03:57) =======================
+REQUIRED 0 failed / 0 xfailed / 0 xpassed -> MET (141 passed)
+
+== §1.3 import-linter / contract / ruff ==
+Contracts: 6 kept, 0 broken.
+PASS: import-linter evaluated 6 contracts (expected 6)
+All checks passed!
+
+== §1.4 bite proofs (four artifacts + sha256 restore) — see preflight_bite_proofs.txt ==
+S4 refusal — order-capable path unreachable when NOT paper (IX)
+S4 dual — paper execution must still fill (IX)
+S3 — Settings.validate() mainnet guard (IX)
+S6 refusal — a stale MarketState must be refused (R6)
+S6 dual — a fresh MarketState must still price (R6)
+S10 refusal — a failed checksum opens the no-emission window (FR-018a(d))
+S10 dual — emission must RESUME once a fresh snapshot validates (FR-018a(d))
+ALL 7 (4 surface-pairs) bit and restored (sha256 match). Full artifacts in preflight_bite_proofs.txt.
+
+== §1.5 config + credentials ==
+TRADING_ENV=paper (launch env), DATA_SOURCE=kraken_v2 (v2 book adapter)
+.env KEY NAMES (values NOT printed, rule 0.5): DATA_SOURCE TRADING_ENV 
+credential-shaped keys in .env: 0 (0 = none)
+adapter is UNAUTHENTICATED: 1 reference(s); Kraken public book needs no key.
+feed venue_name = kraken_mainnet; endpoint = wss://ws.kraken.com/v2; symbol BTC/USD; depth 10
+
+== GATE ==
+PREFLIGHT COMPLETE — proceeding to live connection.
+Gate statement recorded at 2026-07-20T03:36:24Z UTC, BEFORE the socket opens.

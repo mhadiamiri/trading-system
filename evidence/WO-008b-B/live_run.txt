@@ -1,0 +1,33 @@
+WO-008b-B LIVE RUN — WO-008b-B-2026-07-20
+start_utc=2026-07-20T03:39:35.967431+00:00
+end_utc=2026-07-20T04:39:37.386648+00:00
+elapsed_s=3601.4
+endpoint=wss://ws.kraken.com/v2  channel=book  symbol=BTC/USD  depth=10
+feed_venue_name=kraken_mainnet  TRADING_ENV=paper
+uninterrupted=NO (1 reconnect(s))
+fatal=None
+
+== THROUGHPUT (two separate numbers) ==
+raw book messages RECEIVED : total=92679  rate=1544.0/min
+MarketStates EMITTED       : total=14248  rate=237.4/min
+
+== CHECKSUM LEDGER (every update validated, FR-018a) ==
+attempted=14251  passed=14248  failed=3
+
+== RESYNC / RECONNECT ==
+resync windows opened=3  emission resumed=0
+reconnects=1
+  {'segment': 1, 'ended_after_s': 742.6, 'cause': 'ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received'}
+
+== STALENESS GUARD FIRINGS ==
+count=0
+
+== PAPER FILLS ==
+count=0  final_realized_pnl=0.00
+
+== SAMPLE MarketStates ==
+  bid=64746.1 ask=64746.2 spread=0.1 ts=2026-07-20 03:39:37.863457+00:00
+  bid=64746.1 ask=64746.2 spread=0.1 ts=2026-07-20 03:39:38.004439+00:00
+  bid=64746.1 ask=64746.2 spread=0.1 ts=2026-07-20 03:39:38.064681+00:00
+  bid=64746.1 ask=64746.2 spread=0.1 ts=2026-07-20 03:39:39.299639+00:00
+  bid=64746.1 ask=64746.2 spread=0.1 ts=2026-07-20 03:39:39.395562+00:00

@@ -1,0 +1,17 @@
+WO-008b-B §6 — VERIFICATION (baseline d5bfd45)
+== DETERMINISTIC ==
+======================= 141 passed in 237.10s (0:03:57) =======================
+== RANDOMIZED (--randomly-seed=20260724) ==
+======================= 141 passed in 236.91s (0:03:56) =======================
+0 failed / 0 xfailed / 0 xpassed both orders. Delta vs d5bfd45: NONE — no source
+code changed (this WO added evidence only; the pipeline defect it exposed is NOT
+fixed here per §3/§4/OUT-OF-SCOPE).
+== import-linter ==
+Contracts: 6 kept, 0 broken.
+== contract ==
+PASS: import-linter evaluated 6 contracts (expected 6)
+== ruff ==
+All checks passed!
+== secret scan (captured frames + all WO evidence) ==
+  evidence/WO-008b-B\captured_raw_text_sample.json clean
+  no credential/token/session/connection-id survives (redacted via trading.logkit.redaction)

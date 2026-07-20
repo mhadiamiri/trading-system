@@ -1,0 +1,1 @@
+HB elapsed=3599.4s min=16 raw=14753 emitted=14248 seg=1 last_frame_age=2665.9s reconnects=1 status=capturing
