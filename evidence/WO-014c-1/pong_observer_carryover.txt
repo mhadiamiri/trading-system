@@ -1,0 +1,71 @@
+WO-014c-1 §B.2 PONG OBSERVER — CARRY-OVER REQUIREMENTS (ruled; must not be lost)
+================================================================================
+Written to the tree so these survive the session boundary. B.1 (lag sampler) is COMPLETE
+at 0b7b9ba; these three were ruled BEFORE B.1 and are NOT satisfied by it — they are
+specific to the PONG OBSERVER (B.2), to be built next from baseline 0b7b9ba.
+
+Read alongside: evidence/WO-014c-1/instrument_proposal.txt (approved design + §A/§B) and
+evidence/WO-014c-1/thresholds_and_branches.txt (Phase A). All timestamps: time.monotonic()
+(§A.2 shared clock).
+
+────────────────────────────────────────────────────────────────────────────────
+1. MISSED PING SEND vs ABSENT PONG — SEPARATE COUNTERS, DO NOT MERGE
+────────────────────────────────────────────────────────────────────────────────
+Four separate counters in the pong record:
+    PINGS_ATTEMPTED   — intended sends across the window (= window / PING_SAMPLE_INTERVAL)
+    PINGS_SENT        — ws.ping() calls that actually issued
+    PONGS_RECEIVED    — futures that resolved with an RTT within 5s
+    PONGS_ABSENT      — pings SENT with no pong within 5s
+
+  - A ping the observer FAILED TO SEND (its task was starved) = INSTRUMENT GAPPINESS.
+    It counts toward the 10% VOID threshold. GAPPY = (PINGS_ATTEMPTED - PINGS_SENT) only.
+  - A ping SENT with no pong within 5s = ABSENT PONG = a SIGNAL feeding Branch 1 or Branch
+    3 (see thresholds_and_branches.txt). It must NEVER count as gappiness.
+
+  WHY IT MATTERS: a run where Kraken genuinely stops answering is the STRONGEST protocol-
+  side evidence the re-run can produce. Under a merged (absent==gappy) definition it would
+  arrive looking like instrument failure and get VOIDed — discarding exactly the evidence
+  we most want. Absent pongs are a signal; only failed SENDS are gappiness.
+
+────────────────────────────────────────────────────────────────────────────────
+2. MESSAGE-RATE RECORD NEEDS ITS OWN COMPLETENESS ACCOUNTING (B.3, same clock)
+────────────────────────────────────────────────────────────────────────────────
+Branch 5's pre-ruled NOMINATION correlates lag-sampler gaps against MESSAGE-RATE PEAKS on
+the shared monotonic clock. But if the loop is starved enough to gap the lag sampler, the
+message-counting path may be degraded at exactly those timestamps — making the nomination
+UNMAKEABLE, which is the outcome the branch-5 split exists to prevent.
+
+  REQUIRED: the message-rate record carries its OWN expected-vs-actual accounting on the
+  same monotonic clock, so a correlation attempt can STATE whether the message data at the
+  gap timestamps is trustworthy. "Nomination unmakeable — message record also degraded at
+  the relevant timestamps" is an honest, useful report; silently correlating against
+  incomplete data is not.
+
+────────────────────────────────────────────────────────────────────────────────
+3. ACTIVE-PROBE LIMIT — IN THE PONG OBSERVER'S DOCSTRING
+────────────────────────────────────────────────────────────────────────────────
+State, in the docstring:
+  - WHAT IS MEASURED: whether Kraken answers OUR ws.ping() (an RFC 6455 §5.5.2 control
+    frame — the PROTOCOL layer, not Kraken's application {"method":"ping"}).
+  - WHAT IS INFERRED: that Kraken also answers THE LIBRARY'S keepalive ping — sound, since
+    it is the identical control-frame type and the identical peer handler — but an
+    INFERENCE, and inferences get labelled.
+  - WHAT IT CANNOT EXCLUDE: venue-side SELECTIVE behavior — Kraken deprioritizing
+    keepalive-class traffic while answering active probes, or the reverse. Almost certainly
+    negligible (same peer handler / same code path), but the limit states what it CANNOT
+    exclude, not only what it measures.
+  - COMPENSATING ADVANTAGE: 1s cadence gives ~20x the samples the library's 20s keepalive
+    would — a pong-latency TIME SERIES correlatable against message rate + lag on the
+    shared clock, not a sparse health check.
+  - PROBE LOAD: 1 ping/s against ~26 msg/s inbound is negligible; Kraken publishes no ping
+    rate limit (documented silence) — noted so no one later suspects the probe perturbed
+    the measurement.
+
+Carry the active-probe limit and §1.3's ping_timeout=None-confirmed-only-by-re-run limit
+into the eventual re-run report as NAMED limits.
+
+────────────────────────────────────────────────────────────────────────────────
+HARNESS (B.4): FakeWebSocket.ping() returning pong-waiter futures still to add (the
+starvation sim starve_event_loop() is already in fake_ws_transport.py). Do not rebuild.
+PHASE C: decision-log entry (verbatim in the WO), verify both orders, push.
+Named seam still available: after the pong observer.
