@@ -1,0 +1,15 @@
+WO-012c §5 — VERIFICATION (baseline aa12003)
+== DETERMINISTIC ==
+======================= 141 passed in 237.26s (0:03:57) =======================
+== RANDOMIZED (--randomly-seed=20260722) ==
+======================= 141 passed in 236.98s (0:03:56) =======================
+
+0 failed / 0 xfailed / 0 xpassed both orders. Delta vs aa12003 (136): +5 —
+the five preservation paired tests (S4, S5, S6, S7, S10) in
+tests/integration/test_preservation_guarantees.py.
+== import-linter ==
+Contracts: 6 kept, 0 broken.
+== contract ==
+PASS: import-linter evaluated 6 contracts (expected 6)
+== ruff ==
+All checks passed!

@@ -1,0 +1,64 @@
+WO-012c §1 — PRESERVATION DENOMINATOR (derived by reading for SHAPE, not grepped)
+=================================================================================
+METHOD: for each of WO-012's 12 refusal surfaces, ask "what must STILL WORK when
+this guard fires?" — semantic reading, not phrase matching. Every dual below was
+found by SEMANTIC READING; the WO-012b phrase-sweep ("must still permit / must not
+block / ...") found only S12/S13. Method is annotated per row so the denominator's
+own reliability is auditable.
+
+STATED DENOMINATOR OF 12
+------------------------
+S2  no fill without costs (V)            NO DUAL. The cost model ATTRIBUTES cost; it
+    [semantic]                           does not GATE fills. It has no state in which
+                                         it fires and blocks something. A null result.
+S3  mainnet execution guard (IX)         NO DUAL. Its firing legitimately stops ALL
+    [semantic]                           execution in Phase 1 — that is its purpose.
+                                         Nothing must still work when mainnet is blocked.
+S4  order-capable path unreachable       DUAL: "in paper mode the order-capable path
+    in paper (IX) [semantic]             must still CONSTRUCT and FILL." -> CERTIFIED.
+S5  clamp only shrinks (VI) [semantic]   DUAL: "a clamp must still PERMIT the reduced
+                                         (nonzero) order, not veto to zero." -> CERTIFIED.
+S6  no fill absent/stale MarketState     DUAL: "a FRESH MarketState must still price
+    (R6) [semantic]                      and fill." -> CERTIFIED.
+S7  abnormal/zero/neg spread rejected    DUAL: "a NORMAL spread must still price."
+    (FR-015b) [semantic]                 -> CERTIFIED.
+S8  no synthetic spread (FR-015a)        DUAL EXISTS but == S7: "an observed (real)
+    [semantic]                           spread must still price" is the same testable
+                                         claim as S7. Folds into S7; not double-counted.
+S9  no silent fixture fallback           DUAL: "a legitimately-configured feed must
+    [semantic]                           still emit." LIVE form (a working socket emits)
+                                         is NOT offline-testable (no network — OUT OF
+                                         SCOPE). FIXTURE form ("the fixture path still
+                                         emits in fixture mode") is already covered by
+                                         test_no_silent_fallback.py::
+                                         test_fixture_path_cannot_be_labelled_live.
+                                         Reported; not separately certified.
+S10 no MarketState while book unverified DUAL: "once a fresh snapshot validates,
+    (FR-018a(d)) [semantic]              emission must RESUME." -> CERTIFIED.
+S11 checksum from venue rep (FR-018a(f)) DUAL EXISTS but ~S10: "a validly-rendered
+    [semantic]                           frame must still validate and emit" is the same
+                                         emission-continuity claim as S10. Folds into S10.
+S12 kill switch blocks NEW orders (VI)   DUAL: "cancellation must still succeed" = S13,
+    [phrase + semantic]                  ALREADY CERTIFIED in WO-012b
+                                         (test_kill_switch_blocks_orders_but_preserves_
+                                         cancellation).
+S13 kill switch preserves cancellation   This IS the preservation dual of S12. Certified
+    [phrase + semantic]                  WO-012b.
+
+BEYOND THE 12 — free-standing preservation guarantees (not duals of any refusal)
+--------------------------------------------------------------------------------
+- Observability / "zero silent decisions" (Principle VIII): a positive REQUIREMENT to
+  always log, not a GUARD that fires and could over-block. No over-block failure mode;
+  not a preservation guarantee in this sense. Enforced by the logger + review.
+- FR-023/024/025 "MUST remain unchanged": WO-012b classified these as INTERFACE-
+  STABILITY (development) constraints, not runtime preservations. CLASSIFICATION
+  CONFIRMED — they describe what the code may not become, not what must still run when
+  a guard fires. No free-standing runtime preservation guarantee found.
+
+FROZEN COUNT (see §2)
+---------------------
+New preservation duals requiring certification this WO = 5: S4, S5, S6, S7, S10.
+Already certified (WO-012b) = 1: S12/S13. Fold into another surface = 2: S8->S7,
+S11->S10. Reported-not-certified = 1: S9 (live half out of scope, fixture half covered).
+No dual = 2: S2, S3. Beyond-12 free-standing = 0.
+=> REMEDIATION CATEGORY FROZEN AT 5.

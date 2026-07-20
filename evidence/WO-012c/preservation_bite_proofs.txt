@@ -1,0 +1,82 @@
+WO-012c OVER-BLOCKING BITE PROOFS (guard fires too broadly -> preservation FAILS)
+Defeat mechanism: structural file perturbation, sha256-restored. No monkeypatch.
+
+==========================================================================
+S5 clamp — must still PERMIT the reduced order (Principle VI)
+  guard file : src/trading/risk/engine.py
+  paired test: test_clamp_reduces_but_still_permits_the_order_not_veto_to_zero
+  perturbation: guard fires TOO BROADLY (over-block = preservation failure direction)
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.56s) ---
+    assert decision.value == "CLAMP"
+E   AssertionError: assert 'VETO' == 'CLAMP'
+E     - CLAMP
+E     + VETO
+FAILED tests/integration/test_preservation_guarantees.py::test_clamp_reduces_but_still_permits_the_order_not_veto_to_zero
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.51s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE ---
+  before=24a694fd95327e38  after=24a694fd95327e38  match=True
+
+==========================================================================
+S6 staleness — a FRESH MarketState must still fill (WO-008a-R6)
+  guard file : src/trading/execution/paper.py
+  paired test: test_stale_state_refused_but_fresh_state_still_fills
+  perturbation: guard fires TOO BROADLY (over-block = preservation failure direction)
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.59s) ---
+    raise ValueError(
+E   ValueError: EXEC_STALE_MARKET_STATE: MarketState is too old (0.0s). Threshold: 18.0s. The paper venue refuses to fill against stale market data.
+FAILED tests/integration/test_preservation_guarantees.py::test_stale_state_refused_but_fresh_state_still_fills
+============================== 1 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.51s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE ---
+  before=a6e66cc21ccfd494  after=a6e66cc21ccfd494  match=True
+
+==========================================================================
+S7 abnormal spread — a NORMAL spread must still price (FR-015b)
+  guard file : src/trading/execution/costs.py
+  paired test: test_abnormal_spread_rejected_but_normal_spread_still_prices
+  perturbation: guard fires TOO BROADLY (over-block = preservation failure direction)
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.59s) ---
+    raise ValueError(
+E   ValueError: ABNORMAL_SPREAD_REJECT: Spread 0.01% exceeds 5% threshold. Bid: 64997.50, Ask: 65002.50, Spread: 5.00
+FAILED tests/integration/test_preservation_guarantees.py::test_abnormal_spread_rejected_but_normal_spread_still_prices
+============================== 1 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.52s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE ---
+  before=374bdaa844965f2b  after=374bdaa844965f2b  match=True
+
+==========================================================================
+S4 order-capable path — paper mode must still fill (Principle IX)
+  guard file : src/trading/execution/paper.py
+  paired test: test_nonpaper_construction_refused_but_paper_still_fills
+  perturbation: guard fires TOO BROADLY (over-block = preservation failure direction)
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    raise ValueError(
+E   ValueError: PaperExecutionClient CANNOT be used when TRADING_ENV=paper. PaperExecutionClient is for paper trading only (TRADING_ENV=paper). This is a constitutional guard preventing accidental real-money order placement. See .specify/memory/constitution.md Principle IX.
+FAILED tests/integration/test_preservation_guarantees.py::test_nonpaper_construction_refused_but_paper_still_fills
+============================== 1 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.50s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE ---
+  before=a6e66cc21ccfd494  after=a6e66cc21ccfd494  match=True
+
+==========================================================================
+S10 resync — emission must RESUME after a fresh snapshot (FR-018a(d))
+  guard file : src/trading/data/adapters/kraken_v2_book.py
+  paired test: test_resync_blocks_emission_then_resumes_after_fresh_snapshot
+  perturbation: guard fires TOO BROADLY (over-block = preservation failure direction)
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.56s) ---
+    assert adapter._awaiting_resync is False, "emission must resume after resync validates"
+E   AssertionError: emission must resume after resync validates
+E   assert True is False
+E    +  where True = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x000002DF6415A120>._awaiting_resync
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:883 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+FAILED tests/integration/test_preservation_guarantees.py::test_resync_blocks_emission_then_resumes_after_fresh_snapshot
+============================== 1 failed in 0.10s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.51s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: sha256 EXACT RESTORE ---
+  before=726210278834a445  after=726210278834a445  match=True
