@@ -38,16 +38,129 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-18 (Session 9 - WO-008a-R6 COMPLETE + CI GREEN)
-**Current Phase**: Sprint 2 Phases 4-8 Complete ✅ | WO-008a-R6 Complete
-**Status**: WO-008a-R6 COMPLETE - Spread Double-Count Fixed, Staleness Guard Implemented, Test Suite Clean
+**Last Updated**: 2026-07-20 (WO-014b-1 COMPLETE; WO-014b-2 §0 + §2.1 research CHECKPOINTED)
+**Current Phase**: WO-014 Connection Lifecycle — reconnect proven to effect; keepalive + backoff/breaker pending a fresh session
+**Status**: HEAD `9fbc522` on master, 144 tests green both orders. See **▶ CURRENT STATUS (AUTHORITATIVE)** below.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
+**Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
 ---
 
 ## Executive Summary
 
 A systematic crypto trading system built on constitutional principles. The project has completed Sprint 1 (Walking Skeleton) and successfully executed a venue swap from Bybit testnet to Kraken mainnet public feed. All safety guards have been verified with fail-then-pass proofs. **Sprint 2 Phases 4-8 (WO-008a + WO-008a-R + WO-008a-R2 + WO-008a-R3 + WO-008a-R5 + WO-008a-R6) are now COMPLETE** with quote processing, trades enrichment, observed-spread cost model, backtest replay, integration loop fully demonstrated, spread double-count bug fixed, and staleness guard implemented. All §2 non-negotiable requirements proven with REAL FAIL-THEN-PASS proofs. T036 completed (11 xfails cleared). Full 4-layer cycle observable. **CI GREEN achieved (73 passed, 0 failed, 8 xfailed, 0 xpassed)**. Ready for human review before WO-008b (Live WebSocket Integration).
+
+---
+
+## ▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20
+
+> This is the single source of truth for "where are we now." Everything below the
+> reference sections (Project Overview, Technology Stack, Development Tools, File
+> Structure, Constitutional Principles, Configuration) remains valid. The dated
+> `Current Status (Session N)` blocks further down are **historical** — read this
+> section to resume.
+
+### Where the tree is
+- **HEAD `9fbc522` on `master`** (pushed; local == remote).
+- **Test baseline: 144 passed** deterministic (`-p no:randomly`) **AND** randomized
+  (`--randomly-seed=20260725`), 0 failed / 0 xfailed / 0 xpassed. import-linter **6 kept
+  / 0 broken**, `tools/contract_count_check.py` **6/6**, ruff clean. (Green established at
+  `97306c0`; `33aa9c4` and `9fbc522` added only evidence `.txt` files, so the code is
+  identical and the 144-green result stands.)
+- Full suite ≈ 4 min per order. Verify with:
+  `pytest tests/ -p no:randomly -rX` and `pytest tests/ --randomly-seed=20260725 -rX`,
+  then `lint-imports`, `python tools/contract_count_check.py`, `ruff check .`.
+  (`python -m importlinter.cli` prints nothing under redirection — use the `lint-imports`
+  console script for visible output.)
+
+### The WO-014 line (connection lifecycle) — what is DONE
+WO-014 was split at the `_reconnect`-to-effect vs. keepalive seam. Completed slices:
+
+1. **WO-014b-1 — `_reconnect()` proven to effect (`97306c0`).**
+   - `_reconnect()` was `pass` (a no-op) from Phases 1-3 through WO-008b-A1b; the 5-failure
+     recovery had **never worked in production**. Now it sets `_pending_reconnect`, and the
+     transport (`get_live_market_data`) consumes it: `_perform_reconnect` closes/reopens the
+     socket and hands off to the committed Phase 2.1 producer `_maybe_resubscribe`.
+   - **Watchdog:** a set-but-unconsumed flag raises reason code `RECONNECT_FLAG_STRANDED`
+     (declared in `src/trading/logkit/decision.py` DATA layer). Threshold: zero-iteration
+     latency (flag set in `process_raw_frame`, serviced same loop iteration).
+   - Bite proof (5 real checksum failures → reconnect → fresh snapshot → emission resumes;
+     asserts the END STATE, not the call): `evidence/WO-014b/reconnect_to_effect.txt`.
+   - Reusable simulated-transport harness: `tests/fixtures/fake_ws_transport.py`
+     (`FakeWebSocket`, `ScriptedConnectionFactory` — connection N → script N; drains via
+     `asyncio.TimeoutError`). Test: `tests/integration/test_reconnect_to_effect.py`.
+   - Decision log: `docs/decisions/2026-07-20-reconnect-never-worked-in-production.md`.
+
+2. **WO-014b-2 §0 — carry-over verification (`33aa9c4`).**
+   `evidence/WO-014b-2/carryover_verification.txt`. Two production findings + three OK:
+   - **0.1 Backoff: NONE exists.** Two hazards: (a) a persistently-invalid book re-arms
+     reconnect with zero delay (counter latched ≥5) → storm; (b) a **failed reopen** raises
+     `ConnectionError` that propagates and **ends the capture** — a 24h run dies on one
+     transient failure. **Fix deferred to the fresh session (see below).**
+   - 0.2 counter reset: OK (reset only on a validating snapshot, `_process_quote_update`).
+   - 0.3 watchdog spurious-fire: not possible (one recv/process/service per iteration).
+   - 0.4 fixture-limit docstring: present.
+
+3. **WO-014b-2 §2.1 — Kraken WS rate-limit research (`9fbc522`).**
+   `evidence/WO-014b-2/rate_limits_research.txt`. **DOCUMENTED SILENCE** (0.1e): Kraken
+   documents that WS connection/message limits exist but publishes no specific number; the
+   "~150/10min Cloudflare" figure is secondary and **uncited**. ⇒ backoff/breaker figures
+   are **declared engineering judgment**, never dressed as a citation.
+
+### ▶ NEXT SESSION (authorized) — run as a genuinely FRESH context
+**Scope: `{§1.1 + §1.2 + §2 backoff/breaker}`** from `instructions.md` (WO-014b-2 §1),
+with **§1.3's protocol-level bite proof as the pre-named checkpoint seam** — stop there
+rather than weaken it (a weak version corrupts WO-014c's starvation discrimination).
+Baseline for that session: **`9fbc522`**.
+
+Must-honor rulings/constraints (from `instructions.md` + its update block):
+- **Keepalive parts:** 1.1 heartbeat-absence detection → reconnect (Kraken heartbeat ~1/s);
+  1.2 application-level `{"method":"ping"}`→pong; 1.3 deliberate **cited** `ping_interval`/
+  `ping_timeout` on `websockets.connect` (defaults 20s/20s produced the 1011). **Do NOT
+  silently disable the protocol-level ping.** The 1.3 bite proof MUST exercise the
+  **PROTOCOL-LEVEL** mechanism, with the citation in the test docstring.
+- **Backoff+breaker land WITH keepalive** (Ruling A — keepalive installs the reconnect
+  trigger, so the guard ships with it). Proposed backoff (engineering judgment): full-jitter
+  exponential, base 1s ×2, **cap 30s**.
+- **Breaker threshold: RE-DERIVE, do not adopt the draft 10/10min** (Ruling 2A). Calibrate to
+  "how long do we try before concluding the venue is gone?" — survive the longest plausible
+  ordinary Kraken interruption (maintenance/network); if unknown without ops history, say so
+  and choose conservatively as declared judgment. (Draft 10/10min exhausts in ~3 min — too
+  short.)
+- **Failed reopen RETRIES under backoff** (fixes the hard-stop hazard). **Breaker trip → STOP
+  the run**, FAIL LOUD with a **declared reason code** (not a bare `ConnectionError`), never
+  a silent gap. Two mandatory carry-over conditions on STOP (Ruling 2B):
+  (1) **complete forensic tail** — trip time, full retry ladder (every attempt w/ timestamp +
+  delay), and last validated book state, so the artifact carries its own reason;
+  (2) **retain the partial capture** as a labeled honest window (two-window doctrine, stated
+  evidentiary bounds). Keep the STOP-vs-continue decision at a single marked branch (Ops
+  pending-veto).
+- **Bite proofs** (4 artifacts each, sha256, 0.1i end-state): keepalive parts 1.1/1.2/1.3;
+  backoff (a) transient → retry → emission resumes; (b) persistent → breaker trips → loud.
+  **Extend `fake_ws_transport.py`** (silent socket for 1.1; fail-N-then-succeed factory for
+  backoff) — **do not rebuild it.**
+- **Every new raised reason code declared in the same commit** (the completeness guard caught
+  `RECONNECT_FLAG_STRANDED` last slice — declare, never suppress).
+- **§3 decision log §4.2** (evidence-type sovereignty) still to write — verbatim text is in
+  `instructions.md`.
+- **DO NOT claim keepalive resolves the 1011.** Both hypotheses (missing pong vs event-loop
+  starvation) remain open; WO-014c builds the discriminators, the re-run rules it.
+- **NO venue connection.** Simulated transport only. HTTPS documentation fetching is permitted
+  and is not venue contact.
+- Out of scope (WO-014c): discrimination instruments, failure-targeted capture, the 60-min
+  re-run.
+
+### Key files for the next session
+- Production: `src/trading/data/adapters/kraken_v2_book.py` (transport loop
+  `get_live_market_data`, `_reconnect`/`_perform_reconnect`, `_connect`, `_maybe_resubscribe`),
+  `src/trading/logkit/decision.py` (`VALID_REASON_CODES`).
+- Tests/harness: `tests/fixtures/fake_ws_transport.py`,
+  `tests/integration/test_reconnect_to_effect.py`, `tests/test_reason_code_vocabulary.py`
+  (completeness guard).
+- Work order + rulings: `instructions.md` (read its `update:` block). Approved design +
+  verbatim Kraken quotes: `evidence/WO-014/lifecycle_proposal.txt`.
+- Evidence to date: `evidence/WO-014b/`, `evidence/WO-014b-2/`.
+- Authority: `.specify/memory/constitution.md` (conflict → STOP and escalate).
 
 ---
 
