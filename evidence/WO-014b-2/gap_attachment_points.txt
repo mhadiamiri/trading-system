@@ -1,0 +1,112 @@
+WO-014b-2 ADDENDUM — GAP-RECORD ATTACHMENT POINTS (for WO-014c schema design)
+Generated: 2026-07-20.  Baseline: bdb5052 (WO-014b-2 §1 complete).
+
+PURPOSE (project-lead ruling): WO-014c will record data gaps against a DECLARED schema
+and cause taxonomy — keepalive reconnect, checksum resync, breaker-adjacent retry ladder,
+venue disconnect. Two of those causes are created by the §1 slice just shipped. This
+document names, for each gap-producing path in the shipped implementation, the EXACT code
+location where a gap record would be emitted and WHAT IS IN SCOPE there — so WO-014c can
+specify the schema against real emission sites rather than retrofitting to whatever the
+capture happened to write (the "fixtures-shaped-to-the-implementation, one layer up" trap).
+
+NO GAP RECORDING IS IMPLEMENTED HERE. This is a reporting/spec artifact only. All line
+numbers are src/trading/data/adapters/kraken_v2_book.py @ bdb5052.
+
+Convention: a "gap" is a [t_open, t_close] interval during which NO validated MarketState
+is emitted. Each path below is described as (OPEN site, CLOSE site, in-scope fields).
+
+════════════════════════════════════════════════════════════════════════
+CAUSE 1 — KEEPALIVE RECONNECT (heartbeat-absence)        [cause: keepalive_reconnect]
+════════════════════════════════════════════════════════════════════════
+OPEN site:  get_live_market_data, the heartbeat-absence branch — line 1312
+            `if mono - last_frame >= self._heartbeat_absence_timeout:` (log at 1313-1317,
+            reconnect at 1319-1322). The gap OPENS at the last frame actually received.
+CLOSE site: emission resumes = the first validated MarketState returned by
+            _process_quote_update after the reconnect (return at ~line 909). NOTE: today
+            there is NO explicit gap-close hook here for the absence path (unlike the
+            checksum path, which toggles _awaiting_resync). WO-014c must add the close at
+            the first post-reconnect validated emit, OR route the absence path through the
+            same _awaiting_resync window the checksum path uses.
+IN SCOPE at OPEN:
+  - bounding start ts   : last_frame is MONOTONIC (line 1312). A wall-clock bound is NOT
+                          directly held here — the nearest durable wall-clock bound is
+                          self._last_validated_book["at"] (line 901). FLAG for WO-014c: to
+                          emit a wall-clock-bounded gap, retain the last received frame's
+                          server timestamp, not only the monotonic last_frame.
+  - cause               : keepalive_reconnect (heartbeat absence)
+  - silence duration    : mono - last_frame (already formatted into the log at 1313-1315)
+  - last validated book : self._last_validated_book (best_bid/ask, last_checksum, at) @901
+  - reconnect ladder    : self._reconnect_ladder after _perform_reconnect (see CAUSE 3)
+
+════════════════════════════════════════════════════════════════════════
+CAUSE 2 — CHECKSUM RESYNC / RECONNECT                    [cause: checksum_resync]
+════════════════════════════════════════════════════════════════════════
+OPEN site:  _enter_resync — line 824 (`self._awaiting_resync = True`, book discarded),
+            reached from the checksum-mismatch branch _process_quote_update:891. This is
+            the cleanest OPEN in the codebase: the no-emission window is an explicit flag.
+            (Single failure -> same-socket resubscribe; the 5th consecutive failure also
+            sets _pending_reconnect and is serviced by _perform_reconnect at line 1417.)
+CLOSE site: line 907 `self._awaiting_resync = False` — the validated fresh snapshot closes
+            the window and emission resumes. Explicit, already present. IDEAL close hook.
+IN SCOPE at OPEN (_enter_resync, line 824-...):
+  - bounding start ts   : the failing frame's timestamp (quote_update.timestamp in
+                          _process_quote_update) — server-sent, wall-clock. In scope at 891.
+  - cause               : checksum_resync (reason string already passed to _enter_resync)
+  - last validated book : self._last_validated_book @901 (the last checksum-GOOD top-of-book)
+  - escalation          : whether this crossed the 5-failure threshold into a full reconnect
+                          (consecutive_failures @ line 810 / _reconnect at 811 / servicing 1417)
+IN SCOPE at CLOSE (line 907): the validating snapshot's timestamp + checksum -> gap end ts.
+
+════════════════════════════════════════════════════════════════════════
+CAUSE 3 — BREAKER-ADJACENT RETRY LADDER (backoff)        [cause: reconnect_retry_ladder]
+════════════════════════════════════════════════════════════════════════
+EMISSION site: _perform_reconnect backoff loop — line 1157 `self._reconnect_ladder.append(
+            {"attempt","at","delay_s","error"})`, one entry per FAILED reopen. This is the
+            DURATION detail of any reconnect gap (CAUSE 1, 2, or 4): the ladder's span is
+            how long the reconnect itself contributed to the gap.
+IN SCOPE (per attempt, line 1157-1162):
+  - attempt index, wall-clock "at" (ISO), delay_s (the jittered backoff), error string.
+  - The ladder is reset per reconnect operation (line 1155) and is readable on
+    self._reconnect_ladder; on success the reconnect completes at ~line 1170 after N attempts.
+NOTE: a successful reconnect's ladder is currently RETAINED on the instance but not emitted
+  anywhere except the breaker forensic tail (CAUSE 4). WO-014c should attach the ladder to
+  the gap record for CAUSE 1/2 as well, not only to the terminal breaker trip.
+
+════════════════════════════════════════════════════════════════════════
+CAUSE 4 — VENUE DISCONNECT                               [cause: venue_disconnect]
+════════════════════════════════════════════════════════════════════════
+Three sub-paths, with DIFFERENT current coverage — flagged honestly:
+
+4a. TERMINAL (breaker trip = venue presumed gone). BEST-DEFINED emission site already:
+    OPEN/record: _trip_circuit_breaker — line 1203 `self.capture_terminated = {...}`, raised
+    at line 1146. capture_terminated ALREADY carries the full terminal-gap record:
+    reason_code, trip_time, trigger, retry_ladder, last_validated_book, frames_captured,
+    evidentiary_bounds. **WO-014c's gap schema should be shaped to MATCH capture_terminated**
+    — it is the one place a gap record is fully assembled today, and the run STOPS here.
+
+4b. APPLICATION-PING-SEND FAILURE (socket dropped, detected on send). Emission site:
+    get_live_market_data line 1338-1343 (`except Exception ... _perform_reconnect(reason=
+    "application ping send failed")`). Same in-scope fields as CAUSE 1 (a reconnect gap).
+
+4c. EXPLICIT VENUE CLOSE ON recv (ConnectionClosed frame). **COVERAGE GAP — FLAG.** The
+    recv at line 1362 catches ONLY asyncio.TimeoutError (1363). A websockets ConnectionClosed
+    raised by recv PROPAGATES out of get_live_market_data and ENDS THE CAPTURE — there is no
+    reconnect and no gap record. Silent drops are covered by heartbeat-absence (CAUSE 1), and
+    reopen failures by backoff, but an EXPLICIT close frame is not routed through the reconnect
+    path today. This is the residual shape of the §0 hard-stop for the explicit-close case.
+    RECOMMENDATION (NOT implemented — production change, needs approval): wrap recv to route
+    ConnectionClosed through _perform_reconnect (reason "venue closed connection"), giving 4c
+    the same gap attachment as 4a/4b. Until then, WO-014c should treat 4c as an uncovered
+    emission site.
+
+════════════════════════════════════════════════════════════════════════
+SUMMARY FOR WO-014c SCHEMA
+════════════════════════════════════════════════════════════════════════
+- The richest, already-assembled emission site is capture_terminated (line 1203) — shape
+  the schema to it: {reason_code, open_ts, close_ts, cause, duration, retry_ladder,
+  last_validated_book, frames_captured, evidentiary_bounds}.
+- The cleanest OPEN/CLOSE pair is the checksum window (_enter_resync:824 / :907).
+- Two fields need production support to be emitted wall-clock-bounded: (i) the last
+  RECEIVED frame's server timestamp (CAUSE 1 open bound), (ii) an explicit gap-close hook on
+  the absence path. Neither is built here (schema-first, per the ruling).
+- One coverage gap to close before or during WO-014c: 4c explicit venue close.
