@@ -1676,3 +1676,36 @@ This invariant is enforced through:
 ---------------------------
 
 
+
+---
+
+## WO-011: Cost Model Unification + Reason-Code Vocabulary Completeness (Session — 2026-07-19)
+
+**Status**: ✅ COMPLETE — stopped for human review (did NOT proceed to WO-008b-B).
+**Baseline**: `1ef7447` (119 passed + 8 xfailed; the "1 failing" was order-dependent, deterministic was green).
+**Commit**: `452914f` — pushed, local == remote.
+
+**Executed across three turns** (two enumeration gaps escalated & ruled before code):
+- Escalation 1 → RULING 1 froze the legalized set at 3 tests + the 8 xfails.
+- Escalation 2 (ADDENDUM 2) → RULING 7 (behavioral guard) + RULING 8 (audit, report-only).
+
+| Section | Deliverable | Result |
+|---------|-------------|--------|
+| §1 | One cost model in one module (`trading.execution.costs.compute_execution_costs`), both callers delegate | ✅ fork closed; no 0.1a; import-linter 6/6 |
+| §2 + RULING 1 | 3 frozen-set assertions corrected additive → ruled (cite R6/D14) | ✅ passes randomized |
+| §3 | 8 `TestCostModel` xfails → hard passes, bite-proofed | ✅ 0 xfailed |
+| §4 | Reconciliation to the cent (BUY/SELL/edge, all 3 axes) + regression test | ✅ identical, bite-proofed |
+| §5 | Vocabulary completeness (3 properties, declaration site excluded) | ✅ + 3 declared-but-unproducible codes REPORTED (not deleted) |
+| RULING 7 | Behavioral no-synthetic-spread guard replaces source grep (6th 0.1d) | ✅ strictly stronger, bite-proofed |
+| §6 | Mechanical redaction (`trading.logkit.redaction`); A2 scrubbed; fixtures labeled | ✅ secret scan clean |
+| RULING 8 | Source-inspection audit (report-only) | ✅ cluster → own WO |
+| §7 | Decision log — 4 entries | ✅ |
+| §8 | 139 passed deterministic AND randomized (seed 20260719); import-linter 6/6, contract 6/6, ruff clean | ✅ 0 failed/xfailed/xpassed |
+
+**Ruled**: R2 design approved; R3 paper venue gains >5% abnormal-spread guard; R4 slippage → constant (volume-scaling parked in `docs/open-cleanup.md`); R5 notional = executed price; R6 `report.py`/`fill.py` corrected.
+
+**Open for lead**: (1) ruling on 3 declared-but-unproducible codes (`KILL_SWITCH_ENGAGED`, `LONG_SIGNAL`, `SHORT_SIGNAL`); (2) source-inspection cluster WO.
+
+**Local/Remote HEAD**: `452914f47ecd260125944fa24f0bee925aef4c7c` (MATCH). Full report: `evidence/WO-011/REPORT.md`.
+
+**Next Phase**: Human review of WO-011, then WO-008b-B (24h capture) ONLY after approval.
