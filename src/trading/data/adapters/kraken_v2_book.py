@@ -142,6 +142,58 @@ class PongRecord:
         return (self.missed_sends / self.pings_attempted) if self.pings_attempted > 0 else 0.0
 
 
+@dataclass
+class ThroughputRecord:
+    """
+    WO-014c-1 §B.3. Per-second receive-to-process latency AND message rate, on the shared
+    time.monotonic() clock (§A.2). Carries its OWN expected-vs-actual completeness accounting:
+    Branch 5's nomination correlates lag-sampler gaps against message-rate peaks, and if the
+    loop was starved enough to gap the sampler the message-counting path is degraded at exactly
+    those timestamps — so the record must be able to STATE which seconds hold trustworthy data.
+    A SILENT second (no messages) is either genuinely quiet or starvation-suppressed; the record
+    reports it explicitly (silent_seconds), so a correlation can say "nomination unmakeable —
+    message record also degraded at the relevant timestamps" rather than silently trusting it.
+
+    per_second: {second_index -> {messages, lat_sum, lat_max, lat_n}}. Latencies in seconds.
+    """
+
+    bucket_seconds: float = 1.0
+    start_monotonic: float = 0.0
+    end_monotonic: float = 0.0
+    per_second: dict = field(default_factory=dict)
+
+    def record(self, recv_ts: float, done_ts: float) -> None:
+        """One frame: recv_ts (recv returned) -> done_ts (process_raw_frame returned)."""
+        idx = int((recv_ts - self.start_monotonic) / self.bucket_seconds)
+        b = self.per_second.setdefault(
+            idx, {"messages": 0, "lat_sum": 0.0, "lat_max": 0.0, "lat_n": 0}
+        )
+        b["messages"] += 1
+        lat = done_ts - recv_ts
+        b["lat_sum"] += lat
+        b["lat_max"] = max(b["lat_max"], lat)
+        b["lat_n"] += 1
+
+    @property
+    def expected_seconds(self) -> int:
+        span = self.end_monotonic - self.start_monotonic
+        return int(span / self.bucket_seconds) + 1 if span > 0 else 0
+
+    @property
+    def observed_seconds(self) -> int:
+        return len(self.per_second)
+
+    @property
+    def silent_seconds(self) -> list:
+        """Expected second-indices with NO message data — the completeness deficit, made
+        explicit so trustworthiness at gap timestamps is statable (never silently trusted)."""
+        return [i for i in range(self.expected_seconds) if i not in self.per_second]
+
+    def mean_latency(self, idx: int) -> float:
+        b = self.per_second.get(idx)
+        return (b["lat_sum"] / b["lat_n"]) if b and b["lat_n"] else 0.0
+
+
 class LocalBookState(enum.Enum):
     """
     Local book state transitions for Kraken v2 book adapter.
@@ -1560,6 +1612,8 @@ class KrakenV2BookAdapter:
         self._pong_record = PongRecord(
             interval_s=self._ping_sample_interval, absent_timeout_s=self._pong_absent_timeout,
         )
+        # WO-014c-1 §B.3: per-second receive-to-process latency + message-rate completeness.
+        self._throughput_record = ThroughputRecord(bucket_seconds=1.0)
         lag_task = None
         pong_task = None
 
@@ -1582,6 +1636,7 @@ class KrakenV2BookAdapter:
             # ANY received frame (book, heartbeat, or pong); last_ping paces the app ping.
             last_frame = time.monotonic()
             last_ping = time.monotonic()
+            self._throughput_record.start_monotonic = time.monotonic()
             while time.time() < deadline:
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
@@ -1723,6 +1778,9 @@ class KrakenV2BookAdapter:
                     "(SHARED entry point, no live-only branch)"
                 )
                 market_states = await self.process_raw_frame(raw_frame)
+                # WO-014c-1 §B.3: receive-to-process latency (last_frame = recv return) and the
+                # per-second message count, on the shared monotonic clock.
+                self._throughput_record.record(last_frame, time.monotonic())
 
                 # WO-014b-1: RECONNECT takes priority over same-socket resubscribe.
                 # Five consecutive checksum failures (FR-018) set _pending_reconnect via
@@ -1757,6 +1815,7 @@ class KrakenV2BookAdapter:
                         await _task
                     except asyncio.CancelledError:
                         pass
+            self._throughput_record.end_monotonic = time.monotonic()
             self._check_instruments_gappy(self._lag_record, self._pong_record)
             try:
                 await websocket.close()

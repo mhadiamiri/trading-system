@@ -1,0 +1,45 @@
+################################################################
+# WO-014c-1 §B.3 BITE PROOF — message-rate COMPLETENESS reports silent seconds (0.1i/0.7)
+# Generated: 2026-07-20T21:01:06Z
+# A second with no message data must be REPORTED, not silently trusted. No network.
+################################################################
+
+===== sha256 BEFORE =====
+da98827e34fe5ffa3dcca6b97a03575d73d1dd244cb2c75def87f8f6a7c5381e  src/trading/data/adapters/kraken_v2_book.py
+
+===== ARTIFACT 1/4 — PASS (silent seconds reported) =====
+
+tests\integration\test_throughput.py .                                   [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+===== MUTATION — silence the completeness accounting (silent_seconds := []) =====
+silent_seconds now empty -> the message-record deficit is invisible; a nomination would trust it blindly
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (silent second not reported) =====
+tests/integration/test_throughput.py::test_message_rate_completeness_reports_silent_seconds FAILED [100%]
+
+================================== FAILURES ===================================
+____________ test_message_rate_completeness_reports_silent_seconds ____________
+tests\integration\test_throughput.py:55: in test_message_rate_completeness_reports_silent_seconds
+    assert 1 in rec.silent_seconds, (
+E   AssertionError: the silent second must be reported so a nomination can judge its data; silent_seconds=[]
+E   assert 1 in []
+E    +  where [] = ThroughputRecord(bucket_seconds=1.0, start_monotonic=1000.0, end_monotonic=1002.5, per_second={0: {'messages': 2, 'lat_sum': 0.049999999999954525, 'lat_max': 0.03999999999996362, 'lat_n': 2}, 2: {'messages': 1, 'lat_sum': 0.009999999999990905, 'lat_max': 0.009999999999990905, 'lat_n': 1}}).silent_seconds
+=========================== short test summary info ===========================
+FAILED tests/integration/test_throughput.py::test_message_rate_completeness_reports_silent_seconds
+============================== 1 failed in 0.09s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_throughput.py .                                   [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+===== ARTIFACT 4/4 — sha256 AFTER restore (must EQUAL before) =====
+da98827e34fe5ffa3dcca6b97a03575d73d1dd244cb2c75def87f8f6a7c5381e  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK (rule 0.7).
+################################################################
+# END B.3 BITE PROOF
+################################################################
