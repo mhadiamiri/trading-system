@@ -1,0 +1,194 @@
+WO-014c-1 PHASE 1 — INSTRUMENT PROPOSAL (propose then STOP; NO instrument code written)
+=======================================================================================
+Baseline: 8a430bb. NO VENUE CONNECTION. Doc fetch over HTTPS only (websockets docs).
+This document proposes; it implements nothing. Awaiting approval before Phase 2.
+
+Framing (from the WO): §1.3 set ping_timeout=None, so the library pings but never closes —
+the 1011-on-missed-pong signal is unobservable by construction. The starvation/protocol
+discrimination now rests ENTIRELY on this WO's instruments. And liveness detection lives
+INSIDE the failure domain it detects (a starved loop starves our detector), so the lag
+sampler must degrade VISIBLY.
+
+═══════════════════════════════════════════════════════════════════════════
+§1.1 SURVEY — what `websockets` OFFERS for PROTOCOL-LEVEL pong observation
+═══════════════════════════════════════════════════════════════════════════
+Surveyed in the ruled order of preference (cheapest-first; monkey-patching is a 0.1a
+STOP-and-ask and a "lot of epistemics stacked on interception"). Library version installed:
+websockets 16.1. `websockets.connect()` returns an asyncio `ClientConnection`
+(websockets.asyncio.client) whose ping/pong surface lives on the base `Connection`.
+
+1) SANCTIONED OBSERVABILITY — **EXISTS AND IS ADEQUATE. RECOMMENDED.**
+   CITE (websockets docs, API reference — asyncio common Connection):
+     https://websockets.readthedocs.io/en/stable/reference/asyncio/common.html
+   - `Connection.ping(data=None)` — VERBATIM: "Send a Ping." with the RFC reference
+     https://datatracker.ietf.org/doc/html/rfc6455#section-5.5.2 . VERBATIM on the return:
+     "A future that will be completed when the corresponding pong is received... The result
+     of the future is the latency of the connection in seconds."
+       pong_waiter = await ws.ping()      # sends the PROTOCOL Ping frame
+       rtt_seconds = await pong_waiter    # resolves to RTT when the matching Pong arrives
+   - `Connection.latency` — VERBATIM: "Latency of the connection, in seconds. Latency is
+     defined as the round-trip time of the connection. It is measured by sending a Ping frame
+     and waiting for a matching Pong frame." "Before the first measurement, [latency] is 0.0."
+     Updated by the built-in keepalive OR by an explicit `ping()`.
+   - `Connection.pong(data=None)` — VERBATIM: "Send a Pong." (RFC 6455 §5.5.3). Not needed
+     here (we observe, not answer).
+   WHY THIS IS PROTOCOL-LEVEL (the whole point of this WO): `ping()` emits an RFC 6455
+   §5.5.2 control frame — the WebSocket-STANDARD ping, the exact layer whose timeout threw
+   the 1011. It is NOT Kraken's application ping (`{"method":"ping"}` -> pong, WO-014b-2
+   §1.2), which is a JSON data message at a different layer. The two layers are precisely
+   what this WO exists to distinguish; `ping()` observes the correct one.
+   PER-PING (not aggregate): each `ping()` returns its OWN future -> its OWN RTT, so a
+   sampler issuing one ping per interval yields the DISTRIBUTION the branches need, not just
+   the `latency` scalar (which holds only the most-recent value).
+
+2) DEBUG LOGGING WITH TIMESTAMPS — exists, but inferior here.
+   websockets logs frames (incl. PING/PONG) on its logger at DEBUG. It is coarser (requires
+   log parsing), couples the instrument to log formatting, and yields no clean per-ping RTT
+   future. Superseded by (1). (Not cited in depth: (1) is adequate, so this is moot.)
+
+3) SUBCLASSING THE PONG HANDLER — possible but invasive.
+   One could subclass the connection and override its pong handling. This reaches into
+   library internals (fragile across versions) for no gain over (1)'s public RTT future.
+   Rejected as unnecessary.
+
+4) WRAPPING / INTERCEPTION — NOT USED. This would be the 0.1a monkey-patch event requiring
+   explicit approval, and it is unnecessary because (1) is a sanctioned public surface.
+
+NEGATIVE-CLAIM NOTE (0.1e): no negative existence claim is required — the library DOES
+expose an adequate protocol-level surface (1), documented above. Source inspection of the
+installed 16.1 corroborates the cited docs (0.1f: it supplements, it does not constitute).
+
+RECOMMENDATION: Option 1 — `ws.ping()` per-ping RTT futures (+ `ws.latency` as a
+convenience read). Cheapest adequate, public, protocol-level, no 0.1a event.
+
+═══════════════════════════════════════════════════════════════════════════
+§1.2 PROPOSED INSTRUMENT DESIGNS (Phase 2, pending approval)
+═══════════════════════════════════════════════════════════════════════════
+All three run as concurrent asyncio tasks inside get_live_market_data, alongside the recv
+loop; `ws.ping()` and `ws.recv()` are safe concurrently (the library demuxes pong frames to
+their waiters internally, never to recv). Records are per-sample with monotonic + wall-clock
+timestamps. NO aggregates-only.
+
+A) PROTOCOL-LEVEL PONG OBSERVATION (§2.1)
+   A task that every PING_SAMPLE_INTERVAL issues `pw = await ws.ping()` (random 4-byte
+   payload, so it never collides with the library's own keepalive ping — the docs warn
+   `ConcurrencyError` only on a same-payload in-flight ping), then
+   `rtt = await asyncio.wait_for(pw, timeout=PONG_ABSENT_SECONDS)`.
+   Per-ping record: {sent_ts, rtt_ms} on success; {sent_ts, "ABSENT"} on wait_for timeout;
+   {sent_ts, "CLOSED"} if ConnectionClosed (routed to §1.3's venue-close path). The
+   distribution of rtt_ms feeds the "late"/"absent" branch inputs.
+
+B) EVENT-LOOP LAG SAMPLER (§2.2) — the PRIMARY discriminator.
+   A sentinel task: record the intended cadence, `await asyncio.sleep(LAG_SAMPLE_INTERVAL)`,
+   measure `lag_ms = actual_elapsed - LAG_SAMPLE_INTERVAL`. A starved loop overruns the
+   sleep -> lag_ms climbs; a SEVERELY starved loop fails to schedule the task at all ->
+   samples are MISSED.
+   **VISIBLE DEGRADATION (mandatory, ruled).** The record is NOT just a list of lags. It
+   carries, explicitly:
+     - expected_samples = window_seconds / LAG_SAMPLE_INTERVAL   (what a healthy loop yields)
+     - actual_samples   = len(recorded)
+     - missed           = expected_samples - actual_samples
+     - gaps[]           = pairs of consecutive wake timestamps whose spacing >> interval,
+                          i.e. WHERE the sampler itself was starved, by timestamp
+   So if the sampler goes quiet under load, the count deficit and the gap timestamps make
+   the degradation SELF-REPORTING — silence becomes a positive signal, not an absence. A run
+   whose missed-fraction exceeds the "gappy" threshold is VOID (Phase 4, branch 5), never
+   read as "healthy because quiet."
+   This is why B is a task measuring the loop from INSIDE the loop's own domain: it is not a
+   flaw (every in-process detector shares the process domain) but a declared limit, and the
+   visible-degradation record is the declaration made operational.
+
+C) RECEIVE-TO-PROCESS LATENCY (§2.3)
+   For each frame, measure monotonic() at recv return -> after process_raw_frame returns;
+   aggregate PER SECOND (count, mean, max) across the window. Rising receive->process time
+   is a second, independent starvation fingerprint (the consumer path itself lagging).
+
+═══════════════════════════════════════════════════════════════════════════
+§1.2 (cont.) PROPOSED THRESHOLDS — for Phase 3's numeric declaration
+═══════════════════════════════════════════════════════════════════════════
+Baseline anchor (ruled): WO-008b-B observed ~1,544 raw msg/min ~= 26 msg/s ~= one frame
+every ~38 ms. A healthy loop services each frame in << 38 ms. Kraken and websockets publish
+NO expected-RTT / scheduling-latency figures -> DOCUMENTED SILENCE -> every figure below is
+DECLARED ENGINEERING JUDGMENT with its derivation, same standard as T=600s / the backoff
+figures. Proposed (for approval; Phase 3 finalizes):
+
+- PING_SAMPLE_INTERVAL = 1 s. Derivation: a control frame (not an app message; unlikely to
+  touch venue msg-rate limits), frequent enough to yield ~60 RTT samples/min for a
+  distribution, sparse relative to the 38 ms frame cadence.
+- LAG_SAMPLE_INTERVAL = 100 ms. Derivation: samples the loop ~10x/s -> ~600 samples/min;
+  fine enough to catch sub-second starvation bursts, coarse enough not to be its own load.
+
+- "LATE" pong: rtt > 250 ms. Derivation: normal WS RTT to a major venue is tens of ms;
+  250 ms is ~6x a nominal ~40 ms network RTT and ~6x the 38 ms frame cadence — above network
+  variance, reachable when the loop needs >~200 ms to service the pong. (The LAG sampler, not
+  this figure, decides WHY it is late; "late" only flags abnormal RTT.)
+- "ABSENT" pong: no pong within 5 s of the ping. Derivation: 5 s == the app-ping interval
+  (§1.2) and >> any plausible RTT + reasonable starvation; unseen at 5 s == effectively gone.
+- "ELEVATED" lag: lag > 100 ms on > 5 % of samples. Derivation: 100 ms is ~2.6x the 38 ms
+  frame cadence — a loop persistently >100 ms late cannot keep 26 msg/s; the >5 % fraction
+  demands SUSTAINED elevation, not a lone GC pause.
+- "GAPPY" instruments (VOID): missed-fraction > 10 % of expected samples (on EITHER the lag
+  sampler or the pong observer). Derivation: losing >10 % of samples means the instrument was
+  itself starved enough that its record cannot discriminate -> VOID, not a result (branch 5).
+
+═══════════════════════════════════════════════════════════════════════════
+OPEN QUESTIONS FOR APPROVAL (Phase 1 gate)
+═══════════════════════════════════════════════════════════════════════════
+Q1. Approve Option 1 (sanctioned `ws.ping()` RTT futures + `ws.latency`) as the protocol-
+    level pong observer — no wrapping, no 0.1a event?
+Q2. Approve the lag sampler as PRIMARY with the visible-degradation record shape above
+    (expected vs actual sample count + gap timestamps)?
+Q3. Approve the proposed threshold figures and sampling intervals, or adjust before Phase 3
+    declares them numerically? (All declared engineering judgment; documented silence.)
+Q4. Any new reason code you want reserved now (e.g. an INSTRUMENTS_GAPPY / VOID code for
+    branch 5), to declare in the Phase 2 commit?
+
+STOP — end of Phase 1. Awaiting approval before writing any instrument code (Phase 2).
+
+═══════════════════════════════════════════════════════════════════════════
+APPROVAL & REFINEMENTS (project lead, 2026-07-20) — attached to this design record
+═══════════════════════════════════════════════════════════════════════════
+Q1–Q4 ALL APPROVED. Q1: sanctioned ws.ping() observer, no wrapping (citation + RFC, with
+16.1 source as CORROBORATION — 0.1f applied properly). Q2: lag sampler primary, with the
+expected-vs-actual + missed + gap-timestamp self-reporting record. Q3: thresholds approved
+as declared engineering judgment under documented silence. Q4: reserve INSTRUMENTS_GAPPY —
+declare it in the Phase 2 commit so the completeness guard stays green and the re-run is
+never blocked by a missing code.
+
+§A — ACTIVE-PROBE LIMITATION (must be DECLARED, not discovered):
+  ws.ping() is an ACTIVE PROBE — it measures whether Kraken answers OUR ping, not whether
+  Kraken passively answers THE LIBRARY'S keepalive ping. The inference (same RFC 6455 §5.5.2
+  control-frame type, same peer handler → an answered probe strongly implies an answered
+  keepalive) is SOUND but is an inference, and inferences get labeled. Carry into Phase 2:
+  (1) state it in the instrument docstring — what is measured, what is inferred, why the
+      inference holds;
+  (2) name it in the re-run report, alongside §1.3's existing limit (ping_timeout=None under
+      the library's real ping loop is confirmed only by the re-run);
+  (3) record the compensating advantage: 1s cadence gives ~20x the samples the 20s keepalive
+      would, far better resolving the distribution than passive observation;
+  (4) probe load: 1 ping/s against ~26 msg/s inbound is negligible; Kraken publishes no ping
+      rate limit (documented silence) — noted so nobody later suspects the instrument
+      perturbed the measurement.
+
+§B — BRANCH-5 REFINEMENT (additive; branch 5 UNALTERED):
+  A gappy lag record is BOTH (a) grounds to distrust the numbers AND (b) qualitative
+  starvation evidence — and they don't conflict once we say which is which:
+    - VOID applies to the QUANTITATIVE discrimination: a gappy record is a biased sample
+      (recorded preferentially during healthy periods), so the distributions cannot support
+      a branch verdict.
+    - THE GAPPINESS ITSELF is a REPORTED FINDING pointing at starvation; the gap TIMESTAMPS
+      are evidence — do they cluster with high message rates? coincide with late pongs?
+  A VOID run reports "no branch verdict, PLUS this evidence," not "no result." REQUIREMENT
+  for Phase 2: build the record so gap timestamps are CORRELATABLE against message-rate and
+  pong records ON THE SAME CLOCK.
+
+Q3 derivation notes to state numerically in Phase 3:
+  - 250ms "late": justify against EXPECTED RTT (a client → Kraken WS endpoint is plausibly
+    ~20–100ms), making 250ms ~2.5–10x nominal; if no RTT figure is held, say so and label it
+    conservative.
+  - 100ms "elevated" lag on a 100ms sampling interval means a FULL interval was consumed — a
+    meaningful block against the ~38ms/frame budget. State that; it makes the figure legible.
+
+PROCEED: Phase 2 (three instruments + bite proofs terminating in observable effect),
+Phase 3 (thresholds numeric + derivations), Phase 4 (cross-product enumeration, branch 5
+overriding), Phases 5–7. STOP at the end for review.
