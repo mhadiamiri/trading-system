@@ -1,0 +1,13 @@
+WO-012b — S13 BITE PROOF: kill switch preserves cancellation (Principle VI / FR-008)
+Failure mode exercised: OVER-BLOCKING (cancel_order refuses while kill switch engaged).
+
+--- ARTIFACT 1+2: OVER-BLOCK -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    assert cancelled is True, (
+E   AssertionError: cancellation MUST succeed even while the kill switch is engaged (Principle VI / FR-008); over-blocking strands resting orders in an emergency
+E   assert False is True
+FAILED tests/integration/test_kill_switch_cancellation.py::test_kill_switch_blocks_orders_but_preserves_cancellation
+============================== 1 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.57s) ---
+============================== 1 passed in 0.04s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post == empty diff) ---
+  before=a6e66cc21ccfd494  after=a6e66cc21ccfd494  match=True

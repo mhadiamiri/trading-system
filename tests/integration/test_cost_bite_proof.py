@@ -99,7 +99,7 @@ async def test_filled_order_has_strictly_positive_costs():
 
 
 @pytest.mark.asyncio
-async def test_zero_cost_path_is_detectable_behaviorally(monkeypatch):
+async def test_zero_cost_path_is_detectable_behaviorally():
     """
     BEHAVIORAL bite (WO-012 §3, RULING 8 remediation — replaces a source grep).
 
@@ -108,26 +108,35 @@ async def test_zero_cost_path_is_detectable_behaviorally(monkeypatch):
     was present in a file, not that costs are enforced positive (rule 0.1d / 0.1f:
     a textual check of a behavioral claim — the worst quadrant).
 
-    This ATTEMPTS the forbidden state — a cost-free fill — by defeating the cost
-    mechanism at the single source both paths call, and asserts the P&L report
-    OBSERVES zero cost. Strictly stronger: a present-but-dead cost path (which the
-    grep could not see) produces zero costs here and this test detects it. The
-    positive-cost guarantee itself is proven by
+    This ATTEMPTS the forbidden state — a cost-free fill — by INJECTING a venue whose
+    fill costs are zeroed (BacktestRunner accepts execution_client), and asserts the
+    P&L report OBSERVES zero cost. Strictly stronger: a present-but-dead cost path
+    (which the grep could not see) produces zero costs here and this test detects it.
+    The positive-cost guarantee itself is proven by
     test_filled_order_has_strictly_positive_costs above.
+
+    Injection is used rather than monkeypatching trading.execution.paper's module
+    global: that global is resolved through a chain the suite's sys.modules churn can
+    rebind (the same function-local/reload hazard documented in
+    test_mainnet_guard.py::_live_settings), which made an earlier monkeypatch version
+    order-dependent. Dependency injection is order-independent by construction.
 
     Principle V (No Backtest Without Costs); Principle I (Truth Before Profit).
     """
-    from trading.execution.costs import ExecutionCosts
+    import dataclasses
 
-    def _zero_costs(side, size, market_state, fee_rate_pct, slippage_factor):
-        executed = market_state.best_ask if side == "BUY" else market_state.best_bid
-        return ExecutionCosts(
-            executed_price=executed,
-            fees=Decimal("0"),
-            spread_cost=Decimal("0"),
-            slippage_cost=Decimal("0"),
-            total_cost=Decimal("0"),
-        )
+    class _ZeroCostVenue(PaperExecutionClient):
+        """Test-only venue whose fills carry zero cost (defeats the cost mechanism)."""
+
+        def _simulate_fill(self, symbol, side, size, price):
+            fill = super()._simulate_fill(symbol, side, size, price)
+            return dataclasses.replace(
+                fill,
+                fees=Decimal("0"),
+                spread_cost=Decimal("0"),
+                slippage_cost=Decimal("0"),
+                total_cost=Decimal("0"),
+            )
 
     test_data = []
     for i in range(10):
@@ -152,10 +161,10 @@ async def test_zero_cost_path_is_detectable_behaviorally(monkeypatch):
     assert real["trades_count"] > 0
     assert real["pnl_report"]["total_costs"] > 0
 
-    # Defeat the cost mechanism at the name the paper venue actually resolves.
-    monkeypatch.setattr("trading.execution.paper.compute_execution_costs", _zero_costs)
-
-    defeated = await BacktestRunner().run(data_points=test_data, max_events=10)
+    # Defeat the cost mechanism by injecting a zero-cost venue (order-independent).
+    defeated = await BacktestRunner(execution_client=_ZeroCostVenue()).run(
+        data_points=test_data, max_events=10
+    )
     assert defeated["trades_count"] > 0, "trades must still occur to make the bite meaningful"
     assert defeated["pnl_report"]["total_costs"] == 0, (
         "cost mechanism defeated but P&L still reported nonzero cost — a present-but-"

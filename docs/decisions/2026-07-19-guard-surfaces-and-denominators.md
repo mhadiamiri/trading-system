@@ -41,3 +41,23 @@ Standing consequence: **audits state their denominator first.** WO-012 §1 produ
 is reported as "N of M, here are the M−N and why" — including the one genuinely
 uncovered surface (kill-switch-preserves-cancellations), named rather than hidden by
 a padded total.
+
+---
+
+## 3. A denominator's SHAPE can be a blind spot, not only its length (WO-012b)
+
+"A denominator's SHAPE can be a blind spot, not only its length. WO-012's
+guard-surface enumeration asked for claims of the form 'the system refuses X' and
+therefore could not see 'even when X, the system must still permit Y.' S13
+(kill-switch preserves cancellations) went uncovered for that reason. Standing
+consequence: guard-surface enumerations cover BOTH REFUSALS AND PRESERVATIONS. The
+failure mode of a preservation guarantee is over-blocking, which for kill-switch
+semantics means being unable to cancel resting orders during the exact emergency the
+switch exists for."
+
+Third instance of "an audit without a denominator audits what it noticed" — and the
+first about the denominator's SHAPE rather than its completeness. S13 is closed in
+WO-012b with a paired behavioral test (blocking AND preservation certified together)
+and an over-blocking bite proof; the preservation-guarantee re-sweep found no other
+runtime preservation guarantee (FR-023/024/025 "MUST remain unchanged" are
+interface-stability constraints, not runtime "still permit Y when X" guarantees).

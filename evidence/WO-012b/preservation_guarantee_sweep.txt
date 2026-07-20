@@ -1,0 +1,32 @@
+WO-012b §3 — PRESERVATION-GUARANTEE SWEEP (shape: 'even when X, must still permit Y')
+Now that the denominator's SHAPE blind spot is known, re-scan constitution + specs
+for preservation guarantees (must still permit / must not block / must preserve /
+remains available when).
+
+== RUNTIME PRESERVATION GUARANTEES FOUND (grep) ==
+.specify/memory/constitution.md:90:- The **kill switch**, when engaged, MUST block all *new* orders while still permitting
+specs/001-walking-skeleton/contracts/exchange_client.py:93:    Tests must verify: kill switch engaged → place_order refused AND cancel_order still succeeds.
+specs/001-walking-skeleton/contracts/exchange_client.py:153:        - tests/ must cover: kill switch engaged → place_order refused AND cancel_order still succeeds
+specs/001-walking-skeleton/contracts/exchange_client.py:182:        - tests/ must cover: kill switch engaged → place_order refused AND cancel_order still succeeds
+specs/001-walking-skeleton/contracts/risk_engine.py:176:        - When True: block all new orders, still permit cancellations (Principle VI)
+specs/001-walking-skeleton/contracts/risk_engine.py:188:        - When engaged: block all new orders, still permit cancellations (Principle VI)
+specs/001-walking-skeleton/spec.md:90:- **FR-008**: When the kill switch is engaged, the system MUST block all new orders while still permitting cancellation logic to run
+specs/001-walking-skeleton/tasks.md:267:- Test: Kill switch engaged → place_order refused AND cancel_order still succeeds
+
+DISTINCT COUNT = 1 — all hits above are the SAME guarantee:
+  kill-switch-preserves-cancellation (Principle VI / FR-008) = surface S13.
+  CLOSED in this WO: tests/integration/test_kill_switch_cancellation.py
+  (blocking + preservation paired) with an over-blocking bite proof
+  (s13_kill_switch_cancellation.txt). Per the addendum, count==1 -> closed here,
+  not escalated.
+
+== NOT runtime-preservation (distinct category — interface-stability, process-enforced) ==
+specs/002-quote-level-data/spec.md:160:- **FR-023**: Strategy logic and interface MUST remain unchanged — strategy still takes MarketState and returns DesiredPosition
+specs/002-quote-level-data/spec.md:161:- **FR-024**: Risk engine logic and interface MUST remain unchanged
+specs/002-quote-level-data/spec.md:162:- **FR-025**: Execution layer interfaces MUST remain unchanged
+  FR-023/024/025 'MUST remain unchanged' are DEVELOPMENT constraints (do not alter
+  strategy/risk/execution INTERFACES during a refactor), not runtime 'still permit Y
+  when X' guarantees. Enforced by review + the unchanged-interface tests, not a
+  runtime behavior. Reported for completeness; NOT a preservation surface.
+
+RESULT: exactly ONE runtime preservation guarantee (S13), now covered. No cluster.

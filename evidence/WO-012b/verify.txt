@@ -1,0 +1,15 @@
+WO-012b §4 — VERIFICATION (baseline 201be91)
+== DETERMINISTIC ==
+======================= 136 passed in 237.01s (0:03:57) =======================
+== RANDOMIZED (--randomly-seed=20260721, the seed that EXPOSED the defect) ==
+======================= 136 passed in 237.06s (0:03:57) =======================
+
+0 failed / 0 xfailed / 0 xpassed both orders. Delta vs 201be91 (135): +1 (S13).
+NOTE: seed 20260721 first exposed an ORDER-DEPENDENT failure in the WO-012 test
+test_zero_cost_path_is_detectable_behaviorally (module-global monkeypatch missed
+under sys.modules churn). Refactored to dependency injection (order-independent);
+re-run under the SAME seed now passes. This is a modification, not a count change.
+== import-linter ==
+Contracts: 6 kept, 0 broken.
+== ruff ==
+All checks passed!
