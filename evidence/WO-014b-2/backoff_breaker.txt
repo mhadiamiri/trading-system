@@ -1,0 +1,86 @@
+################################################################
+# WO-014b-2 §2 BITE PROOF — reconnect BACKOFF + CIRCUIT BREAKER (rule 0.1i/0.7)
+# Generated: 2026-07-20T15:44:35Z
+# Both paths driven through the PRODUCTION reconnect trigger (5 real checksum
+# failures). Simulated transport; NO network.
+################################################################
+
+===== sha256 BEFORE (production, fix in place) =====
+b21b74b3a50b6e7523b77fe4d13a9383f3ba20d8390525293ab22c4b22f79668  src/trading/data/adapters/kraken_v2_book.py
+
+################  PATH (a) TRANSIENT: failed reopen RETRIES under backoff  ################
+===== ARTIFACT 1/4 — PASS (backoff retry in place) =====
+collected 1 item
+
+tests\integration\test_backoff_breaker.py .                              [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+===== MUTATION A — restore the §0 HARD-STOP (a failed reopen propagates, no retry) =====
+disabled backoff retry -> a failed reopen now propagates (the S0 hard-stop hazard)
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (no retry -> reopen failure is fatal, run does not resume) =====
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1143 [kraken_v2_book] reconnect reopen attempt 0 failed; backing off 0.010s: Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue � a live run must never fall back to fixtures.
+=========================== short test summary info ===========================
+FAILED tests/integration/test_backoff_breaker.py::test_transient_reopen_failure_retries_under_backoff_then_emission_resumes
+============================== 1 failed in 0.13s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_backoff_breaker.py .                              [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+################  PATH (b) PERSISTENT: circuit breaker TRIPS loud  ################
+===== ARTIFACT 1/4 — PASS (breaker in place) =====
+collected 1 item
+
+tests\integration\test_backoff_breaker.py .                              [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+===== MUTATION B — trip with a BARE ConnectionError instead of the loud reason-coded breaker =====
+breaker now raises a BARE ConnectionError -- the exact thing Ruling B forbids
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (bare error -> not the loud CircuitBreakerTripped the proof requires) =====
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:986 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1143 [kraken_v2_book] reconnect reopen attempt 0 failed; backing off 0.010s: Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue � a live run must never fall back to fixtures.
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1143 [kraken_v2_book] reconnect reopen attempt 1 failed; backing off 0.020s: Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue � a live run must never fall back to fixtures.
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1143 [kraken_v2_book] reconnect reopen attempt 2 failed; backing off 0.040s: Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue � a live run must never fall back to fixtures.
+=========================== short test summary info ===========================
+FAILED tests/integration/test_backoff_breaker.py::test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail
+============================== 1 failed in 0.11s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_backoff_breaker.py .                              [100%]
+
+============================== 1 passed in 0.05s ==============================
+
+===== ARTIFACT 4/4 (both paths) — sha256 AFTER restore (must EQUAL before) =====
+b21b74b3a50b6e7523b77fe4d13a9383f3ba20d8390525293ab22c4b22f79668  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK: sha256 identical before and after (rule 0.7).
+################################################################
+# END §2 BITE PROOF
+################################################################

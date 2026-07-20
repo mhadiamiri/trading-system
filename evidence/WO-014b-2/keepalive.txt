@@ -1,0 +1,77 @@
+################################################################
+# WO-014b-2 §1.1/§1.2 BITE PROOF — KEEPALIVE (rule 0.1i/0.7)
+# Generated: 2026-07-20T16:01:12Z
+# Simulated transport; NO network.
+################################################################
+
+===== sha256 BEFORE (fix in place) =====
+c992ba41cf47d318c1f30425b60afb1759fc98bc3090fb01ca63f8ea6d05c72e  src/trading/data/adapters/kraken_v2_book.py
+
+################  §1.1 HEARTBEAT-ABSENCE -> RECONNECT  ################
+===== ARTIFACT 1/4 — PASS (absence detection in place) =====
+
+tests\integration\test_keepalive.py .                                    [100%]
+
+============================== 1 passed in 0.31s ==============================
+
+===== MUTATION A — DISABLE heartbeat-absence detection =====
+disabled heartbeat-absence detection -> a silent link is never noticed
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (silence not detected -> no reconnect) =====
+    assert "HEARTBEAT_ABSENCE" in caplog.text, "absence must be detected and logged with its code"
+E   AssertionError: absence must be detected and logged with its code
+E   assert 'HEARTBEAT_ABSENCE' in 'INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1233 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1272 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1280 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1431 [kraken_v2_book] DISCONNECTED cleanly. raw=1 emitted=1\n'
+E    +  where 'INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1233 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1272 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1280 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}\nINFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1431 [kraken_v2_book] DISCONNECTED cleanly. raw=1 emitted=1\n' = <_pytest.logging.LogCaptureFixture object at 0x000001FBE97B63C0>.text
+------------------------------ Captured log call ------------------------------
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1233 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1272 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1280 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1431 [kraken_v2_book] DISCONNECTED cleanly. raw=1 emitted=1
+=========================== short test summary info ===========================
+FAILED tests/integration/test_keepalive.py::test_heartbeat_absence_triggers_reconnect
+============================== 1 failed in 0.35s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_keepalive.py .                                    [100%]
+
+============================== 1 passed in 0.30s ==============================
+
+################  §1.2 APPLICATION PING/PONG  ################
+===== ARTIFACT 1/4 — PASS (app ping in place) =====
+
+tests\integration\test_keepalive.py .                                    [100%]
+
+============================== 1 passed in 0.29s ==============================
+
+===== MUTATION B — BREAK the application ping (send a non-ping the venue will not pong) =====
+app ping now sends method=noop -> the venue never pongs -> the quiet link is declared absent
+
+===== ARTIFACT 2/4 — ACTUAL FAIL (no ping -> no pongs -> not kept alive) =====
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1233 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1272 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1280 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1006 [kraken_v2_book] HEARTBEAT_ABSENCE: no frame for 0.09s (>= 0s threshold); connection presumed dead
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1124 [kraken_v2_book] RECONNECT: closing and reopening the live socket after heartbeat absence (0.1s without a frame)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1233 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1087 [kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1174 [kraken_v2_book] RECONNECT complete after 0 failed attempt(s); fresh socket subscribed; awaiting fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1431 [kraken_v2_book] DISCONNECTED cleanly. raw=7 emitted=2
+=========================== short test summary info ===========================
+FAILED tests/integration/test_keepalive.py::test_application_ping_pong_keeps_a_quiet_link_alive
+============================== 1 failed in 0.36s ==============================
+
+===== RESTORE =====
+===== ARTIFACT 3/4 — PASS after restore =====
+
+tests\integration\test_keepalive.py .                                    [100%]
+
+============================== 1 passed in 0.30s ==============================
+
+===== ARTIFACT 4/4 (both parts) — sha256 AFTER restore (must EQUAL before) =====
+c992ba41cf47d318c1f30425b60afb1759fc98bc3090fb01ca63f8ea6d05c72e  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK: sha256 identical before and after (rule 0.7).
+################################################################
+# END §1.1/§1.2 BITE PROOF
+################################################################

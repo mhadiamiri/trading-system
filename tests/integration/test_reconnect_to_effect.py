@@ -57,9 +57,13 @@ async def test_five_real_failures_reconnect_and_emission_resumes():
     socket2 = [SNAPSHOT_FRAME]
     factory = ScriptedConnectionFactory([socket1, socket2])
 
+    # WO-014b-2: under keepalive a silent link no longer ENDS the capture (it would
+    # reconnect); the capture ends at its deadline. A short window (well under the default
+    # 5s ping / 10s absence) ends the run right after emission resumes, without a spurious
+    # keepalive reconnect. The reconnect under test here is checksum-triggered.
     emitted = []
     with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=30):
+        async for state in adapter.get_live_market_data(duration_seconds=0.1):
             emitted.append(state)
 
     # ---- OBSERVABLE END STATE (never "_reconnect was called") ----

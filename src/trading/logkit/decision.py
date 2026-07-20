@@ -8,7 +8,8 @@ Constitutional Principles:
 - IX. Secrets and Safety Rails: No secrets in logs
 
 Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
-- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_FLAG_STRANDED
+- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_FLAG_STRANDED,
+  RECONNECT_CIRCUIT_BREAKER_TRIPPED
   (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
@@ -43,6 +44,16 @@ VALID_REASON_CODES = {
         # non-action recovery is the WO-008b-B defect class; this code makes the
         # watchdog's loud failure part of the audit vocabulary (Principle VIII).
         "RECONNECT_FLAG_STRANDED",
+        # WO-014b-2 §2: raised when reconnect reopen attempts exceed the circuit-breaker
+        # threshold within its rolling window — the venue is presumed gone and the live
+        # capture STOPS LOUDLY (Ruling B) rather than retrying into an undisclosed
+        # multi-hour hole. Carries a forensic tail (Principle VIII).
+        "RECONNECT_CIRCUIT_BREAKER_TRIPPED",
+        # WO-014b-2 §1.1: logged by the transport when no frame of any kind (heartbeat,
+        # data, or pong) has arrived within the heartbeat-absence threshold — the
+        # connection is presumed dead and a reconnect is triggered (Kraken's own
+        # liveness signal, applied at the application layer).
+        "HEARTBEAT_ABSENCE",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

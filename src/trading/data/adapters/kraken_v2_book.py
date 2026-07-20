@@ -23,11 +23,30 @@ import enum
 import binascii
 import logging
 import json
+import random
 
 from trading.data.market_state import MarketState
 
 
 logger = logging.getLogger(__name__)
+
+
+class CircuitBreakerTripped(RuntimeError):
+    """
+    WO-014b-2 §2. Raised when reconnect reopen attempts exceed the circuit-breaker
+    threshold within its rolling window: the venue is presumed gone and the capture
+    STOPS LOUDLY (Ruling B) rather than retrying forever into an undisclosed multi-hour
+    hole — the dishonest-evidence failure this project refuses. Carries its own forensic
+    tail so the artifact explains itself: .trip_time, .reconnect_ladder (every attempt with
+    timestamp + delay + error), and .last_validated_book (last checksum-good top-of-book).
+    """
+
+    def __init__(self, message, *, trip_time=None, reconnect_ladder=None,
+                 last_validated_book=None):
+        super().__init__(message)
+        self.trip_time = trip_time
+        self.reconnect_ladder = reconnect_ladder or []
+        self.last_validated_book = last_validated_book
 
 
 class LocalBookState(enum.Enum):
@@ -488,6 +507,43 @@ class KrakenV2BookAdapter:
     # Checksum failure threshold
     CHECKSUM_FAILURE_THRESHOLD = 5
 
+    # ── WO-014b-2 §2: reconnect backoff + circuit breaker ────────────────────
+    # Figures are DECLARED ENGINEERING JUDGMENT, not a citation: Kraken's WS
+    # connection/subscription rate limits are DOCUMENTED SILENCE on the reachable
+    # official pages (evidence/WO-014b-2/rate_limits_research.txt; rule 0.1e). All are
+    # instance-overridable (see __init__) so tests can drive them at ms scale.
+    RECONNECT_BACKOFF_BASE_SECONDS = 1.0     # first retry delay
+    RECONNECT_BACKOFF_FACTOR = 2.0           # 1, 2, 4, 8, 16, ... before the cap
+    RECONNECT_BACKOFF_CAP_SECONDS = 30.0     # capped so a recovered venue reconnects promptly
+    # Circuit breaker: max reopen ATTEMPTS per rolling window. Calibrated to Ruling 2A's
+    # question — "how long do we try before concluding the venue is gone?" — NOT to
+    # protecting Kraken (at this rate the average is well under 1 attempt/min). ~30
+    # attempts under the capped-30s ladder span ~12-13 min of continuous failure: long
+    # enough to ride out ordinary Kraken interruptions (brief maintenance / network
+    # blips), short enough that a truly-gone venue yields a bounded, DISCLOSED ~13-min gap
+    # rather than a silent multi-hour hole. The 15-min window also bounds a flapping
+    # connection. The longest ordinary Kraken interruption is UNKNOWN to us without
+    # operational history; these are conservative declared-judgment figures, revisable
+    # once the 24h run yields data.
+    RECONNECT_WINDOW_SECONDS = 900.0
+    MAX_RECONNECTS_PER_WINDOW = 30
+
+    # ── WO-014b-2 §1.1 / §1.2: keepalive (application layer) ─────────────────
+    # Kraken emits a heartbeat ~1/s (observed: 10 in a 70-frame sample, WO-008b-B) but
+    # DOCUMENTS NO mandatory application ping interval or keepalive timeout (the ping page
+    # is silent — rule 0.1e; evidence/WO-014/lifecycle_proposal.txt). These are therefore
+    # DECLARED ENGINEERING JUDGMENT, not cited limits, and are instance-overridable.
+    #   - Probe every 5s with an application ping ({"method":"ping"} -> pong): active
+    #     liveness independent of data flow; the pong is a frame that refreshes the
+    #     absence clock below.
+    #   - Declare the connection dead after 10s with NO frame of any kind (heartbeat,
+    #     data, or pong): ~10x the observed ~1s heartbeat cadence and two ping cycles —
+    #     enough to tolerate scheduling jitter, and detected at the APPLICATION layer
+    #     rather than waiting on the library's ~20s PROTOCOL ping whose timeout threw the
+    #     1011. (The protocol-layer ping params are §1.3 — the checkpoint seam.)
+    APP_PING_INTERVAL_SECONDS = 5.0
+    HEARTBEAT_ABSENCE_TIMEOUT_SECONDS = 10.0
+
     # Venue-mode provenance values (WO-008b-A1 §4).
     MODE_FIXTURE = "fixture"
     MODE_LIVE = "live"
@@ -524,6 +580,23 @@ class KrakenV2BookAdapter:
         # pattern (design B). A set-but-never-consumed flag is silent non-action and
         # the transport fails loudly on it (RECONNECT_FLAG_STRANDED).
         self._pending_reconnect = False
+        # WO-014b-2 §2: reconnect backoff + circuit-breaker state. Constants copied to
+        # instance attributes so tests can override them at ms scale without monkeypatching.
+        self._reconnect_backoff_base = self.RECONNECT_BACKOFF_BASE_SECONDS
+        self._reconnect_backoff_factor = self.RECONNECT_BACKOFF_FACTOR
+        self._reconnect_backoff_cap = self.RECONNECT_BACKOFF_CAP_SECONDS
+        self._reconnect_window_seconds = self.RECONNECT_WINDOW_SECONDS
+        self._max_reconnects_per_window = self.MAX_RECONNECTS_PER_WINDOW
+        self._reconnect_attempt_times = []   # monotonic ts of reopen attempts (rolling window)
+        self._reconnect_ladder = []          # forensic: per-attempt {attempt,at,delay_s,error}
+        self._last_validated_book = None     # forensic: last checksum-validated top-of-book
+        self._reconnect_sleep = None         # test hook; defaults to asyncio.sleep
+        self._reconnect_jitter = None        # test hook; defaults to random.random
+        self.capture_terminated = None       # set when the breaker STOPS a live capture
+        # WO-014b-2 §1.1/§1.2: keepalive (instance-overridable for ms-scale tests).
+        self._heartbeat_absence_timeout = self.HEARTBEAT_ABSENCE_TIMEOUT_SECONDS
+        self._app_ping_interval = self.APP_PING_INTERVAL_SECONDS
+        self._ping_seq = 0                   # req_id for application pings
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -820,6 +893,14 @@ class KrakenV2BookAdapter:
 
         # Confirmed valid: this is the ONLY place the failure streak is cleared.
         self._local_book.consecutive_failures = 0
+        # WO-014b-2 §2: remember the last checksum-VALIDATED top-of-book, for the circuit
+        # breaker's forensic tail (the last-known-good state before a fatal disconnect).
+        self._last_validated_book = {
+            "best_bid": str(self._local_book.best_bid_price),
+            "best_ask": str(self._local_book.best_ask_price),
+            "last_checksum": self._local_book.last_checksum,
+            "at": datetime.now(UTC).isoformat(),
+        }
 
         # A validated SNAPSHOT is the only thing that closes the window.
         if quote_update.is_snapshot and self._awaiting_resync:
@@ -1005,43 +1086,139 @@ class KrakenV2BookAdapter:
         await websocket.send(json.dumps(self._build_subscribe_message()))
         logger.info("[kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot")
 
-    async def _perform_reconnect(self, websocket):
+    async def _perform_reconnect(self, websocket, reason="5 consecutive checksum failures (FR-018)"):
         """
-        WO-014b-1 EFFECT: close the current socket, open a FRESH one, resubscribe.
+        WO-014b-1 EFFECT + WO-014b-2 §2 (backoff + circuit breaker).
 
-        The transport calls this when _reconnect() (reached at 5 consecutive checksum
-        failures, FR-018) has set _pending_reconnect. This is the close/reopen that
-        WO-008b-B never performed — its _reconnect was `pass`, so at five failures the
-        code "reconnected" by doing nothing and continued against a discarded book.
+        Close the current socket and reopen a FRESH one, resubscribing via the committed
+        Phase 2.1 producer (`_maybe_resubscribe` — one code path serves "get a fresh
+        snapshot onto a socket"; on a fresh socket the unsubscribe is a harmless no-op).
 
-        Reuses the committed Phase 2.1 producer for the fresh subscription rather than
-        inventing a second subscribe mechanism (note 1): it sets _pending_resubscribe
-        and hands off to _maybe_resubscribe, which sends unsubscribe+subscribe. On a
-        FRESH socket the unsubscribe has nothing to cancel — Kraken answers it with a
-        non-book error frame the parser already filters — and the subscribe delivers
-        the fresh snapshot. One code path serves "get a fresh snapshot onto a socket".
+        WO-014b-2 §2 hardens the reopen against the two §0 hazards:
+        - A FAILED reopen no longer propagates on the first failure (the hard-stop that
+          ended a 24h run on one transient blip). It RETRIES under full-jitter exponential
+          backoff (base×factor^attempt, capped), so a transient venue interruption is
+          ridden out rather than fatal.
+        - A CIRCUIT BREAKER bounds how long we try before concluding the venue is gone:
+          when reopen attempts exceed MAX_RECONNECTS_PER_WINDOW within the rolling window it
+          TRIPS — fails loud with reason code RECONNECT_CIRCUIT_BREAKER_TRIPPED, carrying a
+          forensic tail, and STOPS the capture (Ruling B: STOP, never continue-with-a-
+          silent-gap). The retained partial capture is labeled a truncated-honest window.
 
-        Returns the NEW socket for the transport to swap in. A failed reopen raises
-        ConnectionError from _connect — never a silent fixture fallback (rule 0.5,
-        no-silent-fallback).
+        Backoff/breaker figures are DECLARED ENGINEERING JUDGMENT: Kraken's WS rate limits
+        are documented silence (evidence/WO-014b-2/rate_limits_research.txt; rule 0.1e).
+
+        HONEST FIXTURE LIMIT: the close/reopen, the backoff retries, and the breaker trip
+        are exercised by simulated transport (evidence/WO-014b-2/backoff_breaker.txt). Only
+        the isolated live re-run confirms Kraken's real reopen behavior and rate tolerance.
+
+        Returns the NEW socket for the transport to swap in.
         """
+        import asyncio
+        import time
+
         self._pending_reconnect = False
+        sleep = self._reconnect_sleep or asyncio.sleep
+        jitter = self._reconnect_jitter or random.random
+
         logger.info(
-            "[kraken_v2_book] RECONNECT: closing and reopening the live socket after "
-            "5 consecutive checksum failures (FR-018)"
+            "[kraken_v2_book] RECONNECT: closing and reopening the live socket after %s",
+            reason,
         )
         try:
             await websocket.close()
         except Exception as exc:
             # A close failure on an already-dead socket must not block the reopen.
             logger.warning("[kraken_v2_book] error closing socket during reconnect: %s", exc)
-        new_websocket = await self._connect()
-        # Fresh connection => fresh subscription for a fresh snapshot. Hand off to the
-        # committed producer (design B), which the transport's resync path also uses.
-        self._pending_resubscribe = True
-        await self._maybe_resubscribe(new_websocket)
-        logger.info("[kraken_v2_book] RECONNECT complete: fresh socket subscribed; awaiting fresh snapshot")
-        return new_websocket
+
+        # New reconnect operation: reset the per-operation forensic ladder.
+        self._reconnect_ladder = []
+        attempt = 0
+        while True:
+            now = time.monotonic()
+            # Circuit breaker: prune the rolling window, record this attempt, check the cap.
+            self._reconnect_attempt_times = [
+                t for t in self._reconnect_attempt_times
+                if now - t <= self._reconnect_window_seconds
+            ]
+            self._reconnect_attempt_times.append(now)
+            if len(self._reconnect_attempt_times) > self._max_reconnects_per_window:
+                raise self._trip_circuit_breaker(reason)
+
+            try:
+                new_websocket = await self._connect()
+            except ConnectionError as exc:
+                # Transient reopen failure -> back off and RETRY (do not propagate).
+                delay = min(
+                    self._reconnect_backoff_cap,
+                    self._reconnect_backoff_base * (self._reconnect_backoff_factor ** attempt),
+                )
+                delay = delay * jitter()  # full jitter in [0, delay)
+                self._reconnect_ladder.append({
+                    "attempt": attempt,
+                    "at": datetime.now(UTC).isoformat(),
+                    "delay_s": round(delay, 4),
+                    "error": str(exc),
+                })
+                logger.warning(
+                    "[kraken_v2_book] reconnect reopen attempt %d failed; backing off %.3fs: %s",
+                    attempt, delay, exc,
+                )
+                attempt += 1
+                await sleep(delay)
+                continue
+
+            # Reopen succeeded -> fresh subscription via the committed producer.
+            self._pending_resubscribe = True
+            await self._maybe_resubscribe(new_websocket)
+            logger.info(
+                "[kraken_v2_book] RECONNECT complete after %d failed attempt(s); "
+                "fresh socket subscribed; awaiting fresh snapshot",
+                attempt,
+            )
+            return new_websocket
+
+    def _trip_circuit_breaker(self, reason):
+        """
+        WO-014b-2 §2 / Ruling B. Build the RECONNECT_CIRCUIT_BREAKER_TRIPPED exception with
+        a complete forensic tail, LABEL the retained partial capture as a truncated-honest
+        window (two-window doctrine), log loudly, and return the exception for the caller to
+        raise. The capture STOPS; it never continues silently with a gap.
+        """
+        trip_time = datetime.now(UTC).isoformat()
+        ladder = list(self._reconnect_ladder)
+        ladder_str = "; ".join(
+            f"#{e['attempt']}@{e['at']} delay={e['delay_s']}s err={e['error']}" for e in ladder
+        ) or "(no per-attempt errors recorded)"
+        last_book = self._last_validated_book
+        frames = len(getattr(self, "captured_raw_text", []) or [])
+        message = (
+            f"RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect ({reason}) exceeded "
+            f"{self._max_reconnects_per_window} reopen attempts within "
+            f"{self._reconnect_window_seconds:.0f}s; venue presumed gone. Capture STOPPED "
+            f"(no silent gap). Trip {trip_time}. Retry ladder: [{ladder_str}]. "
+            f"Last validated book: {last_book}. Partial capture retained: {frames} frames."
+        )
+        # Ruling B condition 2: retain + LABEL the partial capture (two-window doctrine).
+        self.capture_terminated = {
+            "reason_code": "RECONNECT_CIRCUIT_BREAKER_TRIPPED",
+            "trip_time": trip_time,
+            "trigger": reason,
+            "retry_ladder": ladder,
+            "last_validated_book": last_book,
+            "frames_captured": frames,
+            "evidentiary_bounds": (
+                "TRUNCATED-HONEST WINDOW: the captured frames are real observed data up to "
+                "the disconnect; NO data exists after the trip. A truncated run is still real "
+                "data about a real hour (two-window doctrine) — retained, not discarded. Bound "
+                "any analysis to [capture start .. trip_time]."
+            ),
+        }
+        self._log_error(message)
+        return CircuitBreakerTripped(
+            message, trip_time=trip_time, reconnect_ladder=ladder,
+            last_validated_book=last_book,
+        )
 
     async def _connect(self):
         """
@@ -1103,6 +1280,10 @@ class KrakenV2BookAdapter:
             logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
 
             deadline = time.time() + duration_seconds
+            # WO-014b-2 §1.1/§1.2 keepalive clocks (monotonic). last_frame is refreshed by
+            # ANY received frame (book, heartbeat, or pong); last_ping paces the app ping.
+            last_frame = time.monotonic()
+            last_ping = time.monotonic()
             while time.time() < deadline:
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
@@ -1120,13 +1301,70 @@ class KrakenV2BookAdapter:
                         "the next loop boundary. Recovery must never silently no-op."
                     )
 
+                mono = time.monotonic()
+
+                # WO-014b-2 §1.1: HEARTBEAT-ABSENCE DETECTION -> reconnect. Kraken's
+                # heartbeat (~1/s) is the venue's own liveness signal; a data-quiet-but-
+                # alive link is also kept warm by our pong (below). If NO frame of any kind
+                # has arrived within the threshold, the connection is presumed dead and we
+                # reconnect (through the §2 backoff/breaker). This is why the capture ends
+                # ONLY at the deadline: a silent link is reconnected, never quietly ended.
+                if mono - last_frame >= self._heartbeat_absence_timeout:
+                    self._log_error(
+                        f"HEARTBEAT_ABSENCE: no frame for {mono - last_frame:.2f}s "
+                        f"(>= {self._heartbeat_absence_timeout:.0f}s threshold); "
+                        f"connection presumed dead"
+                    )
+                    websocket = await self._perform_reconnect(
+                        websocket,
+                        reason=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
+                    )
+                    last_frame = time.monotonic()
+                    last_ping = time.monotonic()
+                    continue
+
+                # WO-014b-2 §1.2: APPLICATION-LEVEL PING. Kraken's documented keepalive is a
+                # CLIENT-INITIATED application ping ({"method":"ping"} -> pong), DISTINCT
+                # from the WS PROTOCOL ping (§1.3). Probe on an interval so a data-quiet link
+                # is actively tested; the pong Kraken returns is a frame that refreshes
+                # last_frame above. A failed SEND means a dead socket -> reconnect.
+                if mono - last_ping >= self._app_ping_interval:
+                    self._ping_seq += 1
+                    try:
+                        await websocket.send(
+                            json.dumps({"method": "ping", "req_id": self._ping_seq})
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[kraken_v2_book] application ping send failed (%s); reconnecting",
+                            exc,
+                        )
+                        websocket = await self._perform_reconnect(
+                            websocket, reason="application ping send failed",
+                        )
+                        last_frame = time.monotonic()
+                        last_ping = time.monotonic()
+                        continue
+                    last_ping = time.monotonic()
+
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     break
+                # Bound recv so we wake to re-check absence/ping/deadline before either
+                # would fire. A recv timeout is a tick, NOT the end of the capture.
+                mono = time.monotonic()
+                recv_timeout = max(0.0, min(
+                    remaining,
+                    self._heartbeat_absence_timeout - (mono - last_frame),
+                    self._app_ping_interval - (mono - last_ping),
+                ))
                 try:
-                    message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                    message = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout)
                 except asyncio.TimeoutError:
-                    break
+                    continue
+
+                # A frame arrived (book, heartbeat, or pong) -> the link is alive.
+                last_frame = time.monotonic()
 
                 # LAYER 1: feed boundary. Count EVERY raw frame received, before
                 # any filtering, validation or pause check — the same semantic
