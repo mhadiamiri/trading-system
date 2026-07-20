@@ -1,0 +1,295 @@
+################################################################
+# WO-014b-2 §0 — CARRY-OVER VERIFICATION FROM WO-014b-1
+# Generated: 2026-07-20T14:33:21Z
+# Baseline: 97306c0  (tree clean except instructions.md)
+# Code pasted below is the COMMITTED source at this SHA (sed over the file;
+# git status shows the adapter unmodified). Prose annotates; code constitutes.
+################################################################
+
+================================================================
+0.1 — RECONNECT BACKOFF POLICY
+================================================================
+--- _perform_reconnect() [lines 1008-1044] ---
+    async def _perform_reconnect(self, websocket):
+        """
+        WO-014b-1 EFFECT: close the current socket, open a FRESH one, resubscribe.
+
+        The transport calls this when _reconnect() (reached at 5 consecutive checksum
+        failures, FR-018) has set _pending_reconnect. This is the close/reopen that
+        WO-008b-B never performed — its _reconnect was `pass`, so at five failures the
+        code "reconnected" by doing nothing and continued against a discarded book.
+
+        Reuses the committed Phase 2.1 producer for the fresh subscription rather than
+        inventing a second subscribe mechanism (note 1): it sets _pending_resubscribe
+        and hands off to _maybe_resubscribe, which sends unsubscribe+subscribe. On a
+        FRESH socket the unsubscribe has nothing to cancel — Kraken answers it with a
+        non-book error frame the parser already filters — and the subscribe delivers
+        the fresh snapshot. One code path serves "get a fresh snapshot onto a socket".
+
+        Returns the NEW socket for the transport to swap in. A failed reopen raises
+        ConnectionError from _connect — never a silent fixture fallback (rule 0.5,
+        no-silent-fallback).
+        """
+        self._pending_reconnect = False
+        logger.info(
+            "[kraken_v2_book] RECONNECT: closing and reopening the live socket after "
+            "5 consecutive checksum failures (FR-018)"
+        )
+        try:
+            await websocket.close()
+        except Exception as exc:
+            # A close failure on an already-dead socket must not block the reopen.
+            logger.warning("[kraken_v2_book] error closing socket during reconnect: %s", exc)
+        new_websocket = await self._connect()
+        # Fresh connection => fresh subscription for a fresh snapshot. Hand off to the
+        # committed producer (design B), which the transport's resync path also uses.
+        self._pending_resubscribe = True
+        await self._maybe_resubscribe(new_websocket)
+        logger.info("[kraken_v2_book] RECONNECT complete: fresh socket subscribed; awaiting fresh snapshot")
+        return new_websocket
+
+--- _connect() [lines 1046-1063] ---
+    async def _connect(self):
+        """
+        Open the public v2 WebSocket. Raises on failure — NEVER falls back.
+
+        No credentials of any kind are sent: no headers, no key, no token. The
+        Kraken public book channel requires none, and needing one would signal
+        something deeply wrong (rule 0.5).
+        """
+        import websockets
+
+        logger.info("[kraken_v2_book] connecting to %s (public, unauthenticated)", self.WS_URL)
+        try:
+            return await websockets.connect(self.WS_URL, open_timeout=15, close_timeout=5)
+        except Exception as exc:
+            # RAISE. A failed connection must never silently replay fixtures.
+            raise ConnectionError(
+                f"Kraken v2 connection FAILED: {type(exc).__name__}: {exc}. "
+                f"Refusing to continue — a live run must never fall back to fixtures."
+
+--- checksum-failure branch that re-arms reconnect [lines 809-819] ---
+        if computed_checksum != quote_update.checksum:
+            self._local_book.record_failure()
+            self._log_error(
+                f"Checksum validation failed: symbol={quote_update.symbol} "
+                f"type={quote_update.message_type} "
+                f"expected={quote_update.checksum}, computed={computed_checksum}"
+            )
+            if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
+                self._reconnect()
+            self._enter_resync("post-update checksum mismatch")
+            return None
+
+ANSWER (0.1): THERE IS NO BACKOFF. FINDING — reported, NOT implemented.
+  * _perform_reconnect closes then immediately calls _connect(); there is no
+    sleep, no retry, no attempt counter, no rate limit.
+  * On reconnect FAILURE: _connect() raises ConnectionError (line ~1061), which
+    propagates out of get_live_market_data and ENDS the capture. No retry — so a
+    single failed reopen is not a storm; it is a hard stop.
+  * On reconnect SUCCESS but a still-invalid book: consecutive_failures remains
+    >= 5 (see 0.2), so the NEXT failed snapshot re-enters line 816 (>=5) and calls
+    _reconnect() again with ZERO delay. Back-to-back reconnects as fast as frames
+    arrive = a reconnect STORM against Kraken.
+  * Amplified by §1: keepalive adds ~116 heartbeat-triggered reconnects / 24h
+    (1 disc / 742s). A flapping or persistently-bad connection under keepalive +
+    checksum triggers, with no backoff, risks Kraken rate-limiting or a ban —
+    which would end a corpus run. This is why §0 surfaces it BEFORE §1.
+  PROPOSED POLICY (do NOT implement without approval — production behavior):
+    exponential backoff with jitter between reopen attempts (e.g. 1s,2s,4s,... cap
+    ~30s), PLUS a circuit breaker: max-reconnects-per-rolling-window that FAILS
+    LOUD (reason code) when exceeded rather than silently hammering. Exact figures
+    to be calibrated to Kraken's published WS connection/subscription rate limits
+    (0.1e — HTTPS doc fetch permitted; not fetched here since the finding stands
+    without the exact number and implementation is deferred pending approval).
+
+================================================================
+0.2 — COUNTER RESET SEMANTICS AFTER SUCCESSFUL RECONNECT
+================================================================
+--- the ONLY reset site: validated checksum [lines 820-830] ---
+
+        # Confirmed valid: this is the ONLY place the failure streak is cleared.
+        self._local_book.consecutive_failures = 0
+
+        # A validated SNAPSHOT is the only thing that closes the window.
+        if quote_update.is_snapshot and self._awaiting_resync:
+            self._awaiting_resync = False
+            logger.info(
+                "[kraken_v2_book] resync complete: fresh snapshot validated; "
+                "emission resumed"
+            )
+
+--- apply_snapshot does NOT reset (WO-008b-A1 §1) [lines 167-171] ---
+        # WO-008b-A1 §1: consecutive_failures is NOT cleared here. Under
+        # apply-then-validate ordering, APPLYING a frame no longer means it was
+        # VALID — validation happens afterwards, over the post-update ladder.
+        # The counter is cleared only on a confirmed checksum match.
+
+
+--- reset_for_resync (discard) deliberately PRESERVES it [lines 249-268] ---
+    def reset_for_resync(self) -> None:
+        """
+        Discard book state for resync.
+
+        WO-008b-A1 §1 — consecutive_failures is DELIBERATELY PRESERVED.
+
+        It previously reset to 0 here, which meant the recovery path wiped the
+        very counter that gates it: every failure discarded the book, the discard
+        zeroed the count, and FR-018's "5 consecutive failures trigger
+        reconnection" could therefore NEVER fire. The threshold was unreachable
+        by construction (rule 0.1d).
+
+        The counter now survives the discard and is cleared only by a confirmed
+        checksum match, which is what "consecutive" requires.
+        """
+        self.bids = []
+        self.asks = []
+        self.last_sequence = 0
+        self.last_checksum = 0
+
+
+ANSWER (0.2): YES — reset, but ONLY on a checksum-VALIDATING snapshot (line 822).
+  * After reconnect -> fresh snapshot -> checksum validates: line 822
+    consecutive_failures = 0 ('the ONLY place the failure streak is cleared').
+    So the happy path resets correctly. NOT a finding.
+  * apply_snapshot and reset_for_resync deliberately do NOT reset it (A1's fix:
+    applying is not validating; the discard must not wipe the gate). Correct.
+  * INTERACTION with 0.1: if the post-reconnect snapshot does NOT validate, the
+    counter stays latched at >=5 and every further failure re-triggers reconnect
+    immediately. The counter semantics are RIGHT; the missing guard is BACKOFF
+    (0.1), not a reset. Reported together.
+
+================================================================
+0.3 — WATCHDOG THRESHOLD UNDER MULTI-FRAME ITERATIONS
+================================================================
+--- transport loop: one recv, one process, one service per iteration [1105-1188] ---
+            deadline = time.time() + duration_seconds
+            while time.time() < deadline:
+                # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
+                # process_raw_frame (the FR-018 checksum-failure branch); the servicing
+                # step below consumes it in the SAME iteration. THRESHOLD: zero-iteration
+                # latency — a correctly plumbed flag is cleared before the loop returns
+                # here. If it is still set at this boundary, a reconnect was requested
+                # and NOT effected: silent non-action, the WO-008b-B defect class this
+                # WO exists to kill. Fail loudly rather than press on against a discarded
+                # book (rule 0.1i / 0.1g).
+                if self._pending_reconnect:
+                    raise RuntimeError(
+                        "RECONNECT_FLAG_STRANDED: a reconnect was requested "
+                        "(_pending_reconnect set by _reconnect() at 5 consecutive "
+                        "checksum failures) but the transport did not effect it before "
+                        "the next loop boundary. Recovery must never silently no-op."
+                    )
+
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                try:
+                    message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+
+                # LAYER 1: feed boundary. Count EVERY raw frame received, before
+                # any filtering, validation or pause check — the same semantic
+                # position proven on fixtures in WO-008a-R2.
+                self._raw_received += 1
+
+                try:
+                    # WO-008b-A3 §1.1: PRESERVE the venue's transmitted digits.
+                    # parse_float/parse_int receive the RAW TEXT of each number,
+                    # so Kraken's "0.00005100" stays "0.00005100". Plain
+                    # json.loads would float it and Decimal(str(float)) would
+                    # render "0.000051", dropping the trailing zeros the CRC32
+                    # digits require. We do NOT re-render into an assumed format
+                    # (e.g. fixed 8dp): that would encode an uncited assumption
+                    # about venue behaviour (rule 0.1e) that holds for BTC/USD
+                    # today and breaks silently on the first symbol Kraken
+                    # renders differently.
+                    raw_frame = json.loads(
+                        message, parse_float=Decimal, parse_int=Decimal
+                    )
+                except json.JSONDecodeError as exc:
+                    self._log_error(f"Non-JSON frame from venue: {exc}")
+                    continue
+
+                # Retain the RAW WIRE TEXT for the durable ground-truth fixture.
+                # WO-008b-A3: A2 stored the POST-parse structure, which had
+                # already lost trailing zeros — the exact information the
+                # checksum depends on. Store the text as received.
+                self.captured_raw_text.append(message)
+
+                # LAYER 3: the SHARED entry point. Identical to the fixture path.
+                logger.debug(
+                    "[kraken_v2_book] live frame -> process_raw_frame() "
+                    "(SHARED entry point, no live-only branch)"
+                )
+                market_states = await self.process_raw_frame(raw_frame)
+
+                # WO-014b-1: RECONNECT takes priority over same-socket resubscribe.
+                # Five consecutive checksum failures (FR-018) set _pending_reconnect via
+                # _reconnect(); we close/reopen the socket and resubscribe on the FRESH
+                # one, swapping it in for the rest of the capture. This is the effect
+                # WO-008b-B's `pass` never produced.
+                #
+                # Otherwise (WO-014 §2.1) a single checksum failure's resync request is
+                # served on the SAME socket by the committed Phase 2.1 producer; without
+                # it the no-emission window latched off forever (WO-008b-B). Reconnect
+                # SUBSUMES resubscribe — the fresh socket already gets a fresh
+                # subscription — so we never also resubscribe the socket being replaced.
+                # The consumer path above is untouched (design B).
+                if self._pending_reconnect:
+                    websocket = await self._perform_reconnect(websocket)
+                else:
+                    await self._maybe_resubscribe(websocket)
+
+                # LAYER 4: yield boundary.
+                for market_state in market_states:
+                    self._market_states_emitted += 1
+                    yield market_state
+
+
+ANSWER (0.3): ONE frame per iteration — NO spurious fire possible. NOT a finding.
+  * Each iteration: exactly one asyncio.wait_for(recv()) at line 1127, exactly one
+    process_raw_frame(raw_frame) at line 1165, then the reconnect is serviced in
+    the SAME iteration at lines 1179-1180, BEFORE control returns to the loop-top
+    watchdog (line 1115).
+  * _reconnect() sets the flag inside process_raw_frame (via _process_quote_update
+    line 817). There is no second recv between set and service, so no healthy frame
+    can strand the flag. The watchdog fires ONLY if the servicing step at 1179-1180
+    is bypassed (a code regression) — exactly what test_stranded_reconnect_flag_
+    fails_loudly simulates. It will NOT false-fire during a 60-minute run.
+
+================================================================
+0.4 — HONEST FIXTURE-LIMIT DOCSTRING
+================================================================
+--- _reconnect() docstring tail [lines 903-910] ---
+        defect this method's history embodies, in a new costume. The transport raises
+        RECONNECT_FLAG_STRANDED if the flag survives a loop boundary unconsumed
+        (threshold: zero-iteration latency; see get_live_market_data).
+
+        HONEST FIXTURE LIMIT: the close/reopen and the resubscribe SEND are exercised
+        by simulated transport (evidence/WO-014b/reconnect_to_effect.txt). Only the
+        isolated live re-run confirms Kraken responds to a fresh connection + subscribe
+        with a fresh snapshot.
+
+--- _perform_reconnect() states the same limit [lines 1024-1026] ---
+        Returns the NEW socket for the transport to swap in. A failed reopen raises
+        ConnectionError from _connect — never a silent fixture fallback (rule 0.5,
+        no-silent-fallback).
+
+ANSWER (0.4): PRESENT. Added in WO-014b-1. NOT a finding.
+  The _reconnect docstring carries the 'HONEST FIXTURE LIMIT' paragraph: the
+  close/reopen and resubscribe SEND are fixture-exercised; only the isolated live
+  re-run confirms Kraken answers a fresh connection with a fresh snapshot. The
+  test module header (tests/integration/test_reconnect_to_effect.py) states it too.
+
+################################################################
+# SUMMARY
+#   0.1 backoff ........ FINDING (no backoff; storm risk under §1 keepalive).
+#                        Report + proposed policy; NOT implemented (needs approval).
+#   0.2 counter reset .. OK  (reset only on a validating snapshot; correct).
+#   0.3 watchdog ....... OK  (one frame/iteration; no spurious fire).
+#   0.4 docstring ...... OK  (fixture limit present).
+# Per §0: a production change beyond a trivial fix is required (backoff) -> STOP
+# and report before §1.
+################################################################
