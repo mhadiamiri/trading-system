@@ -1,0 +1,60 @@
+WO-011 BITE PROOFS -> fixture_labels.txt
+(broken -> ACTUAL FAIL -> restore -> PASS -> sha256 exact-restore == empty diff)
+
+==========================================================================
+BITE §6.2 — make redact() a no-op (scan must still catch the identifier)
+  target: src/trading/logkit/redaction.py
+  tests : test_scan_is_clean_after_redaction
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.51s) ---
+    assert "18446744073709551615" not in redacted, "identifier value must be gone"
+E   AssertionError: identifier value must be gone
+E   assert '18446744073709551615' not in '{"channel":...":"2.0.9"}]}'
+E     '18446744073709551615' is contained here:
+E       ction_id":18446744073709551615,"api_version":"v2","system":"online","version":"2.0.9"}]}
+E     ?           ++++++++++++++++++++
+FAILED tests/test_redaction.py::TestRedactionScan::test_scan_is_clean_after_redaction
+============================== 1 failed in 0.07s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.47s) ---
+============================== 1 passed in 0.01s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=3d321c4b7d9c2f33  after-restore=3d321c4b7d9c2f33  match=True
+
+==================================================================
+§6.1 SCRUB — evidence/WO-008b-A2/captured_frames_raw.json
+==================================================================
+connection_id BEFORE: 2881627734335658280 (session id, not a credential)
+     "connection_id": "<REDACTED>"
+scrubbed via trading.logkit.redaction; noted in the A2 fixture label.
+
+==================================================================
+§6.3 FIXTURE LABELS — what each fixture can and cannot prove
+==================================================================
+-- A2 (tests/fixtures/kraken_v2_captured_frames.py) EVIDENTIARY BOUNDS --
+EVIDENTIARY BOUNDS (WO-011 section 6.3)
+---------------------------------------
+This fixture is the POST-PARSE STRUCTURE (Python dicts). It verifies the
+book-maintenance and checksum LOGIC — snapshot and incremental checksums replay
+against Kraken's own values. It STRUCTURALLY CANNOT witness the parse layer:
+by the time these dicts existed, json.loads had already floated the numbers and
+the trailing zeros were gone. Proving the parse/rendering layer needs raw wire
+text — that is what the A3 fixture (kraken_v2_captured_frames_a3.py) is for.
+Doctrine: future captures default to RAW WIRE TEXT.
+
+REDACTION (WO-011 section 6.1)
+------------------------------
+These retained book frames contain no credential, token, or session id. However
+the full raw capture, evidence/WO-008b-A2/captured_frames_raw.json, contained a
+`connection_id` in a status frame (a session identifier, not a credential). It
+was SCRUBBED to "<REDACTED>" under WO-011 section 6.1 via
+trading.logkit.redaction. Noted here so a future diff of A2 against A3's
+redaction does not read as tampering — the scrub is deliberate and recorded.
+
+-- A3 (tests/fixtures/kraken_v2_captured_frames_a3.py) EVIDENTIARY BOUNDS --
+EVIDENTIARY BOUNDS (WO-011 section 6.3)
+---------------------------------------
+This fixture is RAW WIRE TEXT — the bytes as received. Its evidentiary power is
+therefore the widest available: it witnesses EVERYTHING downstream of the wire,
+including the parse/rendering layer that the A2 post-parse fixture structurally
+cannot. Both fixtures are kept (ground truth accretes); A2 proves book/checksum
+LOGIC, A3 proves that plus RENDERING. Doctrine: future captures default to raw
+wire text, and redaction is applied mechanically via trading.logkit.redaction.

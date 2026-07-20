@@ -1,0 +1,96 @@
+WO-011 RULING 8 — SOURCE-INSPECTION AUDIT (REPORT ONLY, no fixes this WO)
+Question per test: would it still pass if the mechanism it certifies were
+DISABLED-BUT-STRING-PRESENT (the 0.1d failure mode a source grep cannot see)?
+Baseline SHA context: work atop 1ef7447
+
+== every code-text assertion in the suite (inspect.getsource / 'in source') ==
+tests/integration/test_cost_bite_proof.py:143:    source = inspect.getsource(test_filled_order_has_strictly_positive_costs)
+tests/integration/test_cost_bite_proof.py:146:    assert "> 0" in source or "StrictPositive" in source, \
+tests/integration/test_cost_bite_proof.py:148:    assert "total_costs" in source, "Test must check total_costs"
+tests/integration/test_cost_bite_proof.py:149:    assert "assert" in source, "Test must have assertions"
+tests/integration/test_live_loop.py:623:            # Verify guard exists in source
+tests/integration/test_live_loop.py:625:            source = inspect.getsource(PaperExecutionClient.__init__)
+tests/integration/test_live_loop.py:628:            assert "is_paper_trading()" in source or "TRADING_ENV" in source, \
+tests/integration/test_live_loop.py:632:            assert "ValueError" in source, \
+tests/integration/test_live_loop.py:675:        source = inspect.getsource(PaperExecutionClient.__init__)
+tests/integration/test_live_loop.py:678:        assert "Settings.is_paper_trading()" in source, \
+tests/integration/test_live_loop.py:680:        assert "ValueError" in source, \
+tests/integration/test_live_loop.py:682:        assert "CANNOT be used" in source, \
+tests/integration/test_live_loop.py:718:            # Test: Verify guard exists in source code
+tests/integration/test_live_loop.py:724:            source = inspect.getsource(Settings.validate)
+tests/integration/test_live_loop.py:727:            assert 'if cls.TRADING_ENV == "mainnet":' in source, \
+tests/integration/test_live_loop.py:731:            assert "raise ValueError" in source, \
+tests/integration/test_live_loop.py:733:            assert "BLOCKED" in source, \
+tests/integration/test_live_loop.py:735:            assert "constitution" in source.lower(), \
+tests/integration/test_live_loop.py:769:        source = inspect.getsource(Settings.validate)
+tests/integration/test_live_loop.py:772:        assert 'if cls.TRADING_ENV == "mainnet":' in source, \
+tests/integration/test_live_loop.py:774:        assert "raise ValueError" in source, \
+tests/integration/test_live_loop.py:776:        assert "BLOCKED" in source, \
+tests/integration/test_live_loop.py:778:        assert "constitution" in source.lower(), \
+tests/test_backtest_costs.py:343:        `"market_state.spread" in inspect.getsource(...)` — a source-string match.
+tests/test_boundaries.py:78:            source = inspect.getsource(module)
+tests/test_boundaries.py:79:            assert "trading.execution.adapters" not in source, f"{module.__name__} imports from execution.adapters"
+tests/test_reason_code_vocabulary.py:67:        f'"{code}"' in source_text
+tests/test_reason_code_vocabulary.py:68:        or f"'{code}'" in source_text
+tests/test_reason_code_vocabulary.py:69:        or f'"{code}:' in source_text
+tests/test_reason_code_vocabulary.py:70:        or f"'{code}:" in source_text
+
+NOTE: tests/test_backtest_costs.py:342 (test_code_review_no_synthetic_spread)
+was the SEVENTH member of this class; WO-011 RULING 7 already replaced it with a
+behavioral guard, so it no longer appears above.
+
+==================================================================
+PER-TEST VERDICTS
+==================================================================
+[1] test_live_loop.py::TestPaperModeGuardSection2_2::test_paper_mode_guard_persists...
+    (inspect PaperExecutionClient.__init__, ~line 625-633)
+    Mixed. It DOES behaviorally construct PaperExecutionClient() under
+    TRADING_ENV=paper (real). But the MAINNET-BLOCKING half is only source-grepped
+    ("is_paper_trading()"/"TRADING_ENV"/"ValueError" in source).
+    VERDICT: YES for the blocking half — neuter the guard (e.g. `if False and not
+    Settings.is_paper_trading():`) and the strings remain, so it still passes.
+
+[2] test_live_loop.py::TestPaperModeGuardSection2_2::test_paper_mode_guard_fail_then_pass_proof
+    (inspect __init__, ~line 675-683)
+    PURE source grep ("Settings.is_paper_trading()"/"ValueError"/"CANNOT be used"
+    in source). Its own docstring calls it "a DOCUMENTATION test showing the proof
+    pattern." VERDICT: YES — false guarantee. A neutered guard with intact strings
+    passes.
+
+[3] test_live_loop.py::TestMainnetGuardSection2_3::test_mainnet_guard_is_intact
+    (inspect Settings.validate, ~line 724-736)
+    Mixed. Real check: current TRADING_ENV in (paper,test). The GUARD-FUNCTIONS
+    claim is source-grepped ('if cls.TRADING_ENV == "mainnet":'/"raise ValueError"/
+    "BLOCKED"/"constitution"). VERDICT: YES for the guard-functions half.
+
+[4] test_live_loop.py::TestMainnetGuardSection2_3::test_mainnet_guard_source_is_intact
+    (inspect Settings.validate, ~line 769+)
+    PURE source grep. VERDICT: YES — false guarantee.
+
+[5] test_boundaries.py::test_data_cannot_import_execution_adapters (inspect 3 data
+    modules, line 78-79): NEGATIVE grep — asserts "trading.execution.adapters" NOT
+    in source of three named modules. An import IS a string, so a real import would
+    be caught in those three. BUT it is (a) incomplete — only three modules, a new
+    one is unchecked, and (b) redundant with import-linter contract 2, which
+    enforces this structurally for the whole layer. VERDICT: WEAK-YES — cannot be
+    "disabled but present" for the named three, but it is a source-grep proxy for a
+    property import-linter already guarantees; its independent value is low.
+
+[6] test_cost_bite_proof.py::test_cost_bite_bites_when_zero (inspect a TEST
+    function, line 143-149): greps the SIBLING test's source for "> 0"/"total_costs"/
+    "assert". Certifies a test's TEXT, not a production mechanism; docstring admits
+    "documents the proof pattern." VERDICT: YES — a documentation test. Its sibling
+    test_filled_order_has_strictly_positive_costs is the real behavioral guard.
+
+==================================================================
+CONCLUSION
+==================================================================
+"Yes" (still passes with the mechanism disabled-but-present) for MORE THAN ONE:
+tests [1], [2], [3], [4], and [6]. Per RULING 8 that is a CLUSTER and gets its own
+work order — NOT fixed here. [5] is weaker (a redundant negative grep) but belongs
+in the same cleanup. The guard SURFACES ([1]-[4], the paper/mainnet safety guards,
+Principle IX) matter most: their real enforcement should be behavioral (construct
+in the wrong mode -> expect ValueError), not a string search. test_mainnet_guard.py
+and test_no_silent_fallback.py already contain behavioral coverage of some of this;
+the cluster WO should reconcile the source-grep tests against that behavioral
+coverage and delete or convert each.

@@ -1,0 +1,19 @@
+WO-011 BITE PROOFS -> ruling7_behavioral_guard_bite.txt
+(broken -> ACTUAL FAIL -> restore -> PASS -> sha256 exact-restore == empty diff)
+
+==========================================================================
+BITE RULING 7 — synthetic constant spread (a grep could not catch this)
+  target: src/trading/execution/costs.py
+  tests : test_code_review_no_synthetic_spread
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.55s) ---
+    assert wide.spread_cost == Decimal("5.00"), wide.spread_cost
+E   AssertionError: Decimal('1.00')
+E   assert Decimal('1.00') == Decimal('5.00')
+E    +  where Decimal('1.00') = CostBreakdown(fees=Decimal('65.010000'), spread_cost=Decimal('1.00'), slippage_cost=Decimal('65.010000'), total_cost=Decimal('130.020000')).spread_cost
+E    +  and   Decimal('5.00') = Decimal('5.00')
+FAILED tests/test_backtest_costs.py::TestObservedSpreadCostModel::test_code_review_no_synthetic_spread
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.49s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True

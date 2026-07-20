@@ -1,0 +1,28 @@
+WO-011 BITE PROOFS -> reconciliation_bite.txt
+(broken -> ACTUAL FAIL -> restore -> PASS -> sha256 exact-restore == empty diff)
+
+==========================================================================
+BITE §4 — diverge the paper path only (double its fees)
+  target: src/trading/execution/paper.py
+  tests : test_backtest_and_paper_reconcile_to_the_cent
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.56s) ---
+    assert _cent(paper["fees"]) == _cent(cb.fees), f"{label}: fees"
+E   AssertionError: sell, normal spread 5.00: fees
+E   assert Decimal('324.99') == Decimal('162.49')
+E    +  where Decimal('324.99') = _cent(324.9875)
+E    +  and   Decimal('162.49') = _cent(Decimal('162.493750'))
+E    +    where Decimal('162.493750') = CostBreakdown(fees=Decimal('162.493750'), spread_cost=Decimal('6.250'), slippage_cost=Decimal('162.493750'), total_cost=Decimal('324.987500')).fees
+    assert _cent(paper["fees"]) == _cent(cb.fees), f"{label}: fees"
+E   AssertionError: edge: wide spread ~4.6%, small size: fees
+E   assert Decimal('1.32') == Decimal('0.66')
+E    +  where Decimal('1.32') = _cent(1.32)
+E    +  and   Decimal('0.66') = _cent(Decimal('0.6600000'))
+E    +    where Decimal('0.6600000') = CostBreakdown(fees=Decimal('0.6600000'), spread_cost=Decimal('15.0000'), slippage_cost=Decimal('0.6600000'), total_cost=Decimal('1.3200000')).fees
+FAILED tests/integration/test_cost_reconciliation.py::test_backtest_and_paper_reconcile_to_the_cent[BUY-64997.50-65002.50-size0-buy, normal spread 5.00]
+FAILED tests/integration/test_cost_reconciliation.py::test_backtest_and_paper_reconcile_to_the_cent[SELL-64997.50-65002.50-size1-sell, normal spread 5.00]
+FAILED tests/integration/test_cost_reconciliation.py::test_backtest_and_paper_reconcile_to_the_cent[BUY-63000.00-66000.00-size2-edge: wide spread ~4.6%, small size]
+============================== 3 failed in 0.10s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.51s) ---
+============================== 3 passed in 0.06s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=a6e66cc21ccfd494  after-restore=a6e66cc21ccfd494  match=True

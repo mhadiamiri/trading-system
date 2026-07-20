@@ -17,7 +17,8 @@ class Fill:
     Executed trade result (simulated or real).
 
     Invariants:
-    - total_cost = spread_cost + slippage_cost + fees
+    - total_cost = fees + slippage_cost (WO-008a-R6, reaffirmed D14; unified WO-011 §1)
+    - spread_cost is ATTRIBUTION of fill_price (already embedded), NOT part of total_cost
     - All cost components are non-negative
     - cad_value is calculated for Canadian tax records
 
@@ -33,5 +34,5 @@ class Fill:
     spread_cost: Decimal
     slippage_cost: Decimal
     fees: Decimal
-    total_cost: Decimal  # spread_cost + slippage_cost + fees
+    total_cost: Decimal  # fees + slippage_cost (spread is attribution, WO-008a-R6)
     cad_value: Decimal  # For Canadian tax records

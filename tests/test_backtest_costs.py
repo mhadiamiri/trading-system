@@ -16,214 +16,220 @@ from trading.backtest.costs import CostModel, Side, CostBreakdown
 from trading.data.market_state import MarketState
 
 
-@pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
 class TestCostModel:
-    """Test suite for Sprint 1 cost model (DEPRECATED - T028)."""
+    """
+    Sprint-1 cost properties, re-expressed against the UNIFIED ruled model (WO-011 §3).
+
+    These 8 tests were xfail because they exercised the deprecated
+    calculate_costs()/get_fill_price() (T028, synthetic-spread era). They are
+    flipped to hard passes by driving the SAME properties through the unified ruled
+    model (calculate_costs_from_market_state / compute_execution_costs) that the
+    paper venue also uses. Every assertion interacts with the LIVE mechanism (rule
+    0.1d): a real MarketState in, the real cost breakdown out. Where a test asserted
+    the superseded additive total, it is corrected to the ruled model
+    (total = fees + slippage) under the WO-011 §2 framing / RULING 1 — noted per test.
+    """
 
     def setup_method(self):
         """Set up test fixtures."""
         self.cost_model = CostModel()
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
+    @staticmethod
+    def _ms(bid: str, ask: str) -> MarketState:
+        """Build a MarketState with an observed bid/ask (bid < ask required)."""
+        return MarketState(
+            timestamp=datetime.now(UTC),
+            symbol="BTC/USD",
+            best_bid=Decimal(bid),
+            best_ask=Decimal(ask),
+            best_bid_size=Decimal("10.0"),
+            best_ask_size=Decimal("10.0"),
+            trade_count=0,
+            total_volume=Decimal("0"),
+            last_price=Decimal(bid),
+        )
+
     def test_fees_applied_to_every_trade(self):
         """
-        Test fees applied to every trade.
+        Test fees applied to every trade (unified model).
 
         Constitutional requirements:
             - SC-008: Fees applied to every trade
             - Manual calculation matches within 0.01%
         """
-        # Buy order
-        costs = self.cost_model.calculate_costs(
-            side=Side.BUY,
-            size=Decimal("1.0"),
-            price=Decimal("65000.00"),
+        ms = self._ms("64997.50", "65002.50")  # mid 65000, spread 5
+        costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=Decimal("1.0"), market_state=ms
         )
+        # BUY executes at ask; fees = executed notional * rate (0.1%).
+        expected_fees = Decimal("1.0") * ms.best_ask * (Decimal("0.1") / Decimal("100"))
+        assert costs.fees == expected_fees, f"Fees {costs.fees} != expected {expected_fees}"
+        assert costs.fees > 0, "Every trade must incur a fee"
 
-        # Manual calculation: 65000 * 0.1% = 65.00
-        expected_fees = Decimal("65000.00") * Decimal("0.1") / Decimal("100")
-        assert abs(costs.fees - expected_fees) < Decimal("0.01"), \
-            f"Fees {costs.fees} != expected {expected_fees}"
-
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_fees_calculation_accuracy(self):
         """
-        Test fee calculation accuracy within 0.01%.
+        Test fee calculation accuracy within 0.01% (unified model).
 
         Constitutional requirements:
             - SC-008: Manual calculation matches within 0.01%
+
+        Fees are charged on the executed notional (BUY at ask, SELL at bid).
         """
+        # (side, size, bid, ask, expected_fees) — executed price is ask/bid.
         test_cases = [
-            (Side.BUY, Decimal("0.5"), Decimal("60000.00"), Decimal("30.00")),
-            (Side.SELL, Decimal("1.0"), Decimal("70000.00"), Decimal("70.00")),
-            (Side.BUY, Decimal("2.5"), Decimal("50000.00"), Decimal("125.00")),
+            (Side.BUY, Decimal("0.5"), "59999.00", "60000.00", Decimal("30.00")),
+            (Side.SELL, Decimal("1.0"), "70000.00", "70001.00", Decimal("70.00")),
+            (Side.BUY, Decimal("2.5"), "49999.00", "50000.00", Decimal("125.00")),
         ]
 
-        for side, size, price, expected_fees in test_cases:
-            costs = self.cost_model.calculate_costs(side, size, price)
+        for side, size, bid, ask, expected_fees in test_cases:
+            costs = self.cost_model.calculate_costs_from_market_state(
+                side=side, size=size, market_state=self._ms(bid, ask)
+            )
             error_pct = abs(costs.fees - expected_fees) / expected_fees * 100
             assert error_pct < Decimal("0.01"), \
-                f"Fee error {error_pct}% exceeds 0.01% threshold"
+                f"Fee error {error_pct}% exceeds 0.01% threshold ({costs.fees} vs {expected_fees})"
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_spread_applied_on_entry_and_exit(self):
         """
-        Test spread applied on both entry and exit.
+        Test spread applied on both entry and exit (unified model).
 
         Constitutional requirements:
             - Spread applied on both entry and exit
         """
-        # Entry (buy)
-        entry_costs = self.cost_model.calculate_costs(
-            side=Side.BUY,
-            size=Decimal("1.0"),
-            price=Decimal("65000.00"),
+        entry_costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=Decimal("1.0"), market_state=self._ms("64997.50", "65002.50")
+        )
+        exit_costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.SELL, size=Decimal("1.0"), market_state=self._ms("65997.50", "66002.50")
         )
 
-        # Exit (sell)
-        exit_costs = self.cost_model.calculate_costs(
-            side=Side.SELL,
-            size=Decimal("1.0"),
-            price=Decimal("66000.00"),
-        )
-
-        # Both should have spread cost
+        # Both should have spread cost (attribution of the executed price).
         assert entry_costs.spread_cost > 0, "Entry should have spread cost"
         assert exit_costs.spread_cost > 0, "Exit should have spread cost"
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_slippage_reduces_fill_prices(self):
         """
-        Test slippage reduces fill prices.
+        Test slippage grows with order size (unified model).
 
         Constitutional requirements:
-            - Slippage reduces fill prices
+            - Larger orders incur more slippage
+
+        Ruled slippage = notional x factor (assumed constant fraction, WO-008a-R5).
+        Notional scales with size, so a larger order still incurs strictly more
+        slippage — without the discarded volume-scaling elaboration (RULING 4).
         """
-        # Small order (low slippage)
-        small_costs = self.cost_model.calculate_costs(
-            side=Side.BUY,
-            size=Decimal("0.1"),
-            price=Decimal("65000.00"),
-            avg_volume=Decimal("1000"),
+        ms = self._ms("64997.50", "65002.50")
+        small_costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=Decimal("0.1"), market_state=ms
+        )
+        large_costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=Decimal("5.0"), market_state=ms
         )
 
-        # Large order (high slippage)
-        large_costs = self.cost_model.calculate_costs(
-            side=Side.BUY,
-            size=Decimal("5.0"),
-            price=Decimal("65000.00"),
-            avg_volume=Decimal("1000"),
-        )
-
-        # Large order should have more slippage
         assert large_costs.slippage_cost > small_costs.slippage_cost, \
             "Large orders should have more slippage"
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_total_cost_equals_sum_of_components(self):
         """
-        Test total cost equals sum of components.
+        Test total cost equals the RULED sum of additive components (unified model).
 
         Constitutional requirements:
             - All costs listed as separate line items
+
+        SUPERSEDED-MODEL CORRECTION (WO-011 §3 / §2 framing / RULING 1): this test
+        previously asserted total == fees + spread + slippage. Corrected to the
+        ruled model — total == fees + slippage — because spread is ATTRIBUTION of
+        the executed price (WO-008a-R6), not an additive component. The behavior
+        already implements the ruled model; only the assertion is corrected.
         """
-        costs = self.cost_model.calculate_costs(
-            side=Side.BUY,
-            size=Decimal("1.0"),
-            price=Decimal("65000.00"),
+        costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=Decimal("1.0"), market_state=self._ms("64997.50", "65002.50")
         )
 
-        expected_total = costs.fees + costs.spread_cost + costs.slippage_cost
+        expected_total = costs.fees + costs.slippage_cost  # ruled: spread excluded
         assert costs.total_cost == expected_total, \
-            f"Total {costs.total_cost} != sum of components {expected_total}"
+            f"Total {costs.total_cost} != fees + slippage {expected_total}"
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_no_cost_free_code_path(self):
         """
-        Test no cost-free code path exists.
+        Test no cost-free code path exists (unified model).
 
         Constitutional requirements:
             - No cost-free code path exists (Principle V)
         """
-        # All trades should have non-zero total cost
-        # Use trade sizes that will definitely incur costs (notional > $10)
+        # All trades should have non-zero total cost (notional > $10).
         test_cases = [
-            (Side.BUY, Decimal("0.1"), Decimal("100.00")),  # $10 notional
-            (Side.SELL, Decimal("10.0"), Decimal("100000.00")),
-            (Side.BUY, Decimal("1.0"), Decimal("50000.00")),
+            (Side.BUY, Decimal("0.1"), "99.99", "100.00"),
+            (Side.SELL, Decimal("10.0"), "100000.00", "100001.00"),
+            (Side.BUY, Decimal("1.0"), "49999.00", "50000.00"),
         ]
 
-        for side, size, price in test_cases:
-            costs = self.cost_model.calculate_costs(side, size, price)
-            assert costs.total_cost > 0, f"Trade should have cost: {side} {size} @ {price}"
+        for side, size, bid, ask in test_cases:
+            costs = self.cost_model.calculate_costs_from_market_state(
+                side=side, size=size, market_state=self._ms(bid, ask)
+            )
+            assert costs.total_cost > 0, \
+                f"Trade should have cost: {side} {size} @ {bid}/{ask} -> {costs.total_cost}"
 
-    @pytest.mark.xfail(reason="T028: calculate_costs() deprecated - use calculate_costs_from_market_state()")
     def test_manual_calculation_matches_system(self):
         """
-        Test manual calculation matches system within 0.01%.
+        Test manual calculation matches system exactly (unified model).
 
         Constitutional requirements:
-            - SC-008: Manual calculation matches within 0.01%
+            - SC-008: Manual calculation matches the system
+
+        SUPERSEDED-MODEL CORRECTION (WO-011 §3 / §2 framing / RULING 1): the manual
+        total previously summed spread (additive), and slippage used the discarded
+        volume-scaling. Corrected to the ruled model: executed price = ask (BUY),
+        slippage = notional x factor (constant), total = fees + slippage. The
+        unified model is exact Decimal arithmetic, so equality is exact (no rounding
+        tolerance needed).
         """
-        # Sample trade (large enough to have meaningful costs)
         size = Decimal("1.5")
-        price = Decimal("63500.00")
-        side = Side.BUY
+        ms = self._ms("63497.00", "63503.00")  # spread 6
+        costs = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=size, market_state=ms
+        )
 
-        # System calculation
-        costs = self.cost_model.calculate_costs(side, size, price)
-
-        # Manual calculation (same as system)
-        notional = size * price
+        # Manual calculation mirroring the ruled model exactly.
+        executed_price = ms.best_ask  # BUY fills at ask
+        notional = size * executed_price
         manual_fees = notional * Decimal("0.1") / Decimal("100")
-        manual_spread = notional * Decimal("0.01") / Decimal("100")
-        manual_slippage = notional * Decimal("0.001") * (size / Decimal("1000"))
+        manual_spread = (ms.spread / Decimal("2")) * size  # attribution
+        manual_slippage = notional * Decimal("0.001")      # constant, no volume term
+        manual_total = manual_fees + manual_slippage       # ruled: spread excluded
 
-        # Round to 2 decimal places to match system
-        manual_fees = manual_fees.quantize(Decimal("0.01"))
-        manual_spread = manual_spread.quantize(Decimal("0.01"))
-        manual_slippage = manual_slippage.quantize(Decimal("0.01"))
-        manual_total = (manual_fees + manual_spread + manual_slippage).quantize(Decimal("0.01"))
+        assert costs.fees == manual_fees, f"fees {costs.fees} != {manual_fees}"
+        assert costs.spread_cost == manual_spread, f"spread {costs.spread_cost} != {manual_spread}"
+        assert costs.slippage_cost == manual_slippage, f"slippage {costs.slippage_cost} != {manual_slippage}"
+        assert costs.total_cost == manual_total, f"total {costs.total_cost} != {manual_total}"
 
-        # Verify each component within reasonable tolerance (accounting for rounding)
-        for component, manual_value in [
-            ("fees", manual_fees),
-            ("spread_cost", manual_spread),
-            ("slippage_cost", manual_slippage),
-            ("total_cost", manual_total),
-        ]:
-            system_value = getattr(costs, component)
-            # Allow small rounding difference (at most 0.01)
-            assert abs(system_value - manual_value) <= Decimal("0.01"), \
-                f"{component}: system={system_value}, manual={manual_value}"
-
-    @pytest.mark.xfail(reason="T028: get_fill_price() deprecated - use calculate_costs_from_market_state()")
     def test_buy_at_ask_sell_at_bid(self):
         """
-        Test buy at ask, sell at bid.
+        Test buy at ask, sell at bid (unified model's executed price).
 
         Constitutional requirements:
-            - Buy at ask (mid + spread/2)
-            - Sell at bid (mid - spread/2)
+            - Buy at ask (above mid)
+            - Sell at bid (below mid)
+
+        The ruled executed price lives on the unified model
+        (compute_execution_costs), so this asserts it directly: BUY fills at the
+        observed ask, SELL at the observed bid (R6 / RULING 5).
         """
-        mid_price = Decimal("65000.00")
+        from trading.execution.costs import compute_execution_costs
+
+        ms = self._ms("64997.50", "65002.50")  # mid 65000
         size = Decimal("1.0")
+        rate, slip = Decimal("0.1"), Decimal("0.001")
 
-        # Buy fill price should be higher than mid
-        buy_fill_price = self.cost_model.get_fill_price(
-            side=Side.BUY,
-            mid_price=mid_price,
-            size=size,
-        )
-        assert buy_fill_price > mid_price, "Buy fill price should be above mid (ask)"
+        buy = compute_execution_costs("BUY", size, ms, rate, slip)
+        sell = compute_execution_costs("SELL", size, ms, rate, slip)
 
-        # Sell fill price should be lower than mid
-        sell_fill_price = self.cost_model.get_fill_price(
-            side=Side.SELL,
-            mid_price=mid_price,
-            size=size,
-        )
-        assert sell_fill_price < mid_price, "Sell fill price should be below mid (bid)"
+        assert buy.executed_price == ms.best_ask, "BUY must fill at the observed ask"
+        assert sell.executed_price == ms.best_bid, "SELL must fill at the observed bid"
+        assert buy.executed_price > ms.mid_price, "Buy fill price should be above mid (ask)"
+        assert sell.executed_price < ms.mid_price, "Sell fill price should be below mid (bid)"
 
 
 class TestCostBreakdownValidation:
@@ -231,26 +237,33 @@ class TestCostBreakdownValidation:
 
     def test_cost_breakdown_validation(self):
         """
-        Test CostBreakdown validates components.
+        Test CostBreakdown validates components against the RULED model.
 
         Constitutional requirements:
-            - Cost breakdown validates total equals sum
+            - Cost breakdown validates total == fees + slippage (WO-008a-R6,
+              reaffirmed D14; unified WO-011 §1). Spread is ATTRIBUTION of the
+              executed price and is NOT summed into the total.
+
+        The valid/invalid totals below previously encoded the superseded additive
+        model (total == fees + spread + slippage). They are corrected to the ruled
+        specification the CostBreakdown invariant already enforces
+        (WO-011 §2 / RULING 1) — not tuned to green.
         """
-        # Valid cost breakdown
+        # Valid cost breakdown: total == fees + slippage (spread excluded).
         CostBreakdown(
             fees=Decimal("10.00"),
             spread_cost=Decimal("5.00"),
             slippage_cost=Decimal("2.00"),
-            total_cost=Decimal("17.00"),
+            total_cost=Decimal("12.00"),  # fees + slippage (spread is attribution)
         )
 
-        # Invalid total should raise
+        # Additive total (fees + spread + slippage = 17) is now INVALID and raises.
         with pytest.raises(AssertionError):
             CostBreakdown(
                 fees=Decimal("10.00"),
                 spread_cost=Decimal("5.00"),
                 slippage_cost=Decimal("2.00"),
-                total_cost=Decimal("20.00"),  # Wrong total
+                total_cost=Decimal("17.00"),  # additive — superseded, must raise
             )
 
         # Negative cost should raise
@@ -323,41 +336,68 @@ class TestObservedSpreadCostModel:
 
     def test_code_review_no_synthetic_spread(self):
         """
-        Test: Code review verifies no synthetic spread path exists in NEW method.
+        BEHAVIORAL guard: spread cost is derived from the OBSERVED bid/ask, never
+        synthetic (FR-015a).
 
-        Verifies:
-        - calculate_costs_from_market_state uses NO constant spread
-        - No fallback spread when market_state.spread is unavailable
-        - No cached-stale spread usage in NEW method
+        WO-011 RULING 7 (0.1d REMEDIATION): this test previously asserted
+        `"market_state.spread" in inspect.getsource(...)` — a source-string match.
+        That proved a string appeared in a file, not that the spread was observed:
+        `spread = market_state.spread * 0` would have passed it unchanged (rule
+        0.1d — a bite proof must INTERACT with the mechanism it certifies). The
+        source grep was also invalidated when WO-011 §1 moved the arithmetic into
+        trading.execution.costs.compute_execution_costs.
 
-        Constitutional requirements:
-        - FR-015a: No synthetic spread anywhere (in the NEW observed-spread method)
-
-        NOTE: This test reads the NEW cost model method source code to verify
-        no synthetic spread patterns exist. The old calculate_costs method
-        (Sprint 1) still has DEFAULT_SPREAD_PCT for backward compatibility.
+        This replacement is STRICTLY STRONGER: it fails in every case the grep
+        failed (a synthetic/constant spread) PLUS cases the grep could never detect
+        (a spread that is a string-present-but-zeroed or otherwise not the observed
+        one). The name is retained as the frozen member of the 0.1d-remediation
+        category (RULING 7).
         """
-        import inspect
-        # Only check the NEW method, not the old Sprint 1 method
-        source = inspect.getsource(self.cost_model.calculate_costs_from_market_state)
+        size = Decimal("1.0")
 
-        # Check for forbidden patterns (synthetic spread indicators)
-        forbidden_patterns = [
-            "DEFAULT_SPREAD",  # No constant spread
-            "FALLBACK_SPREAD",  # No fallback spread
-            "CACHED_SPREAD",  # No cached spread
-            "ASSUMED_SPREAD",  # No assumed spread
-            "FIXED_SPREAD",  # No fixed spread
-            "_spread_pct",  # No internal spread percentage variable
-        ]
+        def _ms(bid: str, ask: str) -> MarketState:
+            return MarketState(
+                timestamp=datetime.now(UTC),
+                symbol="BTC/USD",
+                best_bid=Decimal(bid),
+                best_ask=Decimal(ask),
+                best_bid_size=Decimal("1.5"),
+                best_ask_size=Decimal("2.0"),
+                trade_count=0,
+                total_volume=Decimal("0"),
+                last_price=Decimal(bid),
+            )
 
-        for pattern in forbidden_patterns:
-            assert pattern not in source, \
-                f"Found synthetic spread pattern '{pattern}' in new cost model method"
+        # (1) Distinct OBSERVED spreads must produce distinct spread_cost values
+        # that TRACK the observed bid/ask. A synthetic/constant spread cannot.
+        narrow = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=size, market_state=_ms("65000.00", "65002.00")  # spread 2
+        )
+        wide = self.cost_model.calculate_costs_from_market_state(
+            side=Side.BUY, size=size, market_state=_ms("65000.00", "65010.00")  # spread 10
+        )
+        assert narrow.spread_cost == Decimal("1.00"), narrow.spread_cost
+        assert wide.spread_cost == Decimal("5.00"), wide.spread_cost
+        assert wide.spread_cost > narrow.spread_cost, \
+            "spread_cost must track the observed spread (a synthetic constant cannot)"
 
-        # Verify spread is derived from market_state
-        assert "market_state.spread" in source, \
-            "New cost model method must use market_state.spread"
+        # (2) spread_cost is TRACEABLE to the actual bid/ask on the tick:
+        # spread_cost == (ask - bid) / 2 * size, for arbitrary observed values.
+        for bid, ask in [("64000.00", "64003.50"), ("70000.00", "70012.00")]:
+            ms = _ms(bid, ask)
+            costs = self.cost_model.calculate_costs_from_market_state(
+                side=Side.BUY, size=size, market_state=ms
+            )
+            expected = (ms.best_ask - ms.best_bid) / Decimal("2") * size
+            assert costs.spread_cost == expected, \
+                f"spread_cost {costs.spread_cost} must equal observed half-spread {expected}"
+
+        # (3) An abnormal (>5%) OBSERVED spread is REJECTED with the declared
+        # reason code — never priced against a synthetic spread (FR-015b, RULING 3).
+        with pytest.raises(ValueError, match="ABNORMAL_SPREAD_REJECT"):
+            self.cost_model.calculate_costs_from_market_state(
+                side=Side.BUY, size=size, market_state=_ms("50000.00", "60000.00")  # 20%
+            )
 
     def test_abnormal_spread_zero_rejected(self):
         """

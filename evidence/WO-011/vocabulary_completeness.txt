@@ -1,0 +1,54 @@
+WO-011 BITE PROOFS -> vocabulary_completeness.txt
+(broken -> ACTUAL FAIL -> restore -> PASS -> sha256 exact-restore == empty diff)
+
+==========================================================================
+BITE §5 property 1 — undeclare a code that is still raised
+  target: src/trading/logkit/decision.py
+  tests : test_every_raised_code_is_declared
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.52s) ---
+    assert undeclared == [], (
+E   AssertionError: codes RAISED in production but NOT DECLARED in VALID_REASON_CODES: ['EXEC_STALE_MARKET_STATE']. The audit trail would speak words the dictionary lacks (WO-011 §5 property 1).
+E   assert ['EXEC_STALE_MARKET_STATE'] == []
+E     Left contains one more item: 'EXEC_STALE_MARKET_STATE'
+E     Use -v to get more diff
+FAILED tests/test_reason_code_vocabulary.py::TestReasonCodeCompleteness::test_every_raised_code_is_declared
+============================== 1 failed in 0.07s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.47s) ---
+============================== 1 passed in 0.02s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=2f278b18082e1d9b  after-restore=2f278b18082e1d9b  match=True
+
+==========================================================================
+BITE §5 property 2 — declare a NEW code no code path produces
+  target: src/trading/logkit/decision.py
+  tests : test_every_declared_code_is_producible
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.54s) ---
+    assert new_unproducible == set(), (
+E   AssertionError: NEW declared codes that no code path can produce: ['NEVER_EMITTED_XYZ']. Rule 0.1d in vocabulary form (WO-011 §5 property 2). Report; do not delete without asking. Known/reported set: ['KILL_SWITCH_ENGAGED', 'LONG_SIGNAL', 'SHORT_SIGNAL'].
+E   assert {'NEVER_EMITTED_XYZ'} == set()
+E     Extra items in the left set:
+E     'NEVER_EMITTED_XYZ'
+E     Use -v to get more diff
+FAILED tests/test_reason_code_vocabulary.py::TestReasonCodeCompleteness::test_every_declared_code_is_producible
+============================== 1 failed in 0.08s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.47s) ---
+============================== 1 passed in 0.02s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=2f278b18082e1d9b  after-restore=2f278b18082e1d9b  match=True
+
+==========================================================================
+BITE §5 property 3 — declare a code that is a prefix of another
+  target: src/trading/logkit/decision.py
+  tests : test_declared_and_raised_codes_are_jointly_prefix_free
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.52s) ---
+    assert collisions == [], (
+E   AssertionError: REASON CODE PREFIX COLLISION across declared+raised codes: [('ORDER', 'ORDER_FILLED'), ('ORDER', 'ORDER_REJECTED')].
+E   assert [('ORDER', 'O...ER_REJECTED')] == []
+E     Left contains 2 more items, first extra item: ('ORDER', 'ORDER_FILLED')
+E     Use -v to get more diff
+FAILED tests/test_reason_code_vocabulary.py::TestReasonCodePrefixFreedom::test_declared_and_raised_codes_are_jointly_prefix_free
+============================== 1 failed in 0.07s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.47s) ---
+============================== 1 passed in 0.02s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=2f278b18082e1d9b  after-restore=2f278b18082e1d9b  match=True

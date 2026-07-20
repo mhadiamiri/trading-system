@@ -13,7 +13,9 @@ Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
 - Strategy layer: NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL
-- Execution layer: ORDER_FILLED, ORDER_REJECTED
+- Execution layer: ORDER_FILLED, ORDER_REJECTED,
+  EXEC_NO_MARKET_STATE, EXEC_MARKET_STATE_TIMESTAMP_MISSING, EXEC_STALE_MARKET_STATE
+  (paper-venue staleness guards; declared WO-011 §5)
 """
 
 from datetime import datetime, UTC
@@ -63,6 +65,12 @@ VALID_REASON_CODES = {
     "EXECUTION": [
         "ORDER_FILLED",  # Order successfully filled
         "ORDER_REJECTED",  # Order rejected by exchange
+        # Paper-venue staleness guards (WO-008a-R6). Declared in WO-011 §5: they
+        # were raised in production (paper.py) but never declared — the exact
+        # raised-but-undeclared gap the vocabulary-completeness check now closes.
+        "EXEC_NO_MARKET_STATE",  # place_order before set_market_state
+        "EXEC_MARKET_STATE_TIMESTAMP_MISSING",  # staleness-guard invariant violation
+        "EXEC_STALE_MARKET_STATE",  # MarketState older than the staleness threshold
     ],
 }
 

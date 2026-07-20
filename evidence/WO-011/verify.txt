@@ -1,0 +1,21 @@
+WO-011 section 8 — FINAL VERIFICATION (atop baseline 1ef7447)
+
+== pytest DETERMINISTIC (pytest tests/ -p no:randomly) ==
+======================= 139 passed in 237.05s (0:03:57) =======================
+== pytest RANDOMIZED (--randomly-seed=20260719) ==
+======================= 139 passed in 236.88s (0:03:56) =======================
+
+REQUIRED: 0 failed, 0 xfailed, 0 xpassed -> MET (139 passed both orders).
+Delta vs baseline (119 passed + 8 xfailed = 127 collected):
+  +8  the 8 TestCostModel xfails flipped to hard passes (section 3)
+  +12 new tests: 4 test_cost_reconciliation, 4 test_redaction,
+      4 test_reason_code_vocabulary (TestReasonCodeCompleteness)
+  -8  xfailed -> 0 (the flipped 8). 119+8+12 = 139 passed, 0 xfailed.
+  test_cost_inclusive_pnl_report PASSED in the randomized full run (section 2).
+
+== import-linter ==
+Contracts: 6 kept, 0 broken.
+== contract count ==
+PASS: import-linter evaluated 6 contracts (expected 6)
+== ruff ==
+All checks passed!

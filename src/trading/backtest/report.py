@@ -61,10 +61,14 @@ class PnLReport:
             size: Trade size
             fill_price: Fill price
             fees: Trading fees (observed)
-            spread_cost: Bid/ask spread cost (observed)
+            spread_cost: Bid/ask spread cost (observed) — attribution, NOT additive
             slippage_cost: Slippage adjustment (assumed 0.1%)
         """
-        total_cost = fees + spread_cost + slippage_cost
+        # Ruled model (WO-008a-R6, unified WO-011 §1): spread is attribution of the
+        # executed price, never summed into the total. This matches the paper Fill's
+        # total_cost and generate_report()'s aggregate; before WO-011 this per-trade
+        # line disagreed with both (RULING 6: the live path disagreed with itself).
+        total_cost = fees + slippage_cost
         self._trades.append(
             TradeSummary(
                 timestamp=timestamp,

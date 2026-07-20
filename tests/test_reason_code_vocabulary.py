@@ -48,6 +48,54 @@ def _prefix_collisions(codes):
     return [(a, b) for a, b in itertools.permutations(codes, 2) if b.startswith(a)]
 
 
+_DECLARATION_SITE = "decision.py"  # where VALID_REASON_CODES lives
+
+
+def _production_source_text():
+    """
+    Production source concatenated, EXCLUDING the vocabulary declaration site.
+
+    A code's DECLARATION in VALID_REASON_CODES is not a code path emitting it. If
+    the declaration counted as production, property 2 could never fail (it would be
+    a 0.1d false guarantee — declaring a code would 'prove' it producible). So the
+    declaration module is excluded, and producibility means EMITTED elsewhere.
+    """
+    return "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in SRC.rglob("*.py")
+        if p.name != _DECLARATION_SITE
+    )
+
+
+# Declared codes that NO current code path emits as a reason_code string. Reported
+# under WO-011 §5 property 2 ("Report any; do not delete without asking"): retained
+# pending a lead ruling, NOT deleted. Each names a mechanism that exists but does
+# not emit this string today.
+_KNOWN_UNPRODUCIBLE = {
+    "KILL_SWITCH_ENGAGED": "kill switch raises KillSwitchEngagedError (a class), never logs this string",
+    "LONG_SIGNAL": "strategy returns a DesiredPosition; does not emit this reason_code string",
+    "SHORT_SIGNAL": "strategy returns a DesiredPosition; does not emit this reason_code string",
+}
+
+
+def _is_producible(code, source_text):
+    """
+    A declared code is producible if it appears as a STRING LITERAL in production.
+
+    Broader than _raised_codes() (which only sees colon-form raise strings): risk
+    and strategy codes like PASS/VETO/NO_SIGNAL are produced as reason_code values
+    and enum members, never raised with a colon. A declared code that appears
+    nowhere in production as a literal is one no code path can produce (rule 0.1d
+    in vocabulary form).
+    """
+    return (
+        f'"{code}"' in source_text
+        or f"'{code}'" in source_text
+        or f'"{code}:' in source_text
+        or f"'{code}:" in source_text
+    )
+
+
 class TestReasonCodePrefixFreedom:
     """The ruled naming constraint, enforced mechanically."""
 
@@ -95,3 +143,68 @@ class TestReasonCodePrefixFreedom:
             ("EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP")
         ]
         assert _prefix_collisions(["ALPHA", "BETA"]) == []
+
+
+class TestReasonCodeCompleteness:
+    """
+    WO-011 §5: the vocabulary in use and the vocabulary on file must agree.
+
+    Three properties (property 3, prefix-freedom across the union, is enforced by
+    TestReasonCodePrefixFreedom above):
+      1. Every code RAISED in production is DECLARED.
+      2. Every DECLARED code is producible by some code path.
+    """
+
+    def test_every_raised_code_is_declared(self):
+        """Property 1: no code is raised in production without being declared."""
+        declared = set(_declared_codes())
+        raised = _raised_codes()
+        assert raised, "no reason codes found in production sources"
+        undeclared = sorted(set(raised) - declared)
+        assert undeclared == [], (
+            f"codes RAISED in production but NOT DECLARED in VALID_REASON_CODES: "
+            f"{undeclared}. The audit trail would speak words the dictionary lacks "
+            f"(WO-011 §5 property 1)."
+        )
+
+    def test_every_declared_code_is_producible(self):
+        """
+        Property 2: every declared code is producible by a code path, EXCEPT a small
+        documented set of known declared-but-unproducible codes reported to the lead
+        (WO-011 §5: report, do not delete without asking). Bites on any NEW
+        unproducible code outside that set.
+        """
+        source = _production_source_text()
+        declared = set(_declared_codes())
+        assert declared, "reason-code vocabulary is empty"
+        unproducible = {c for c in declared if not _is_producible(c, source)}
+
+        # Keep the known set honest: every entry must still be declared AND still
+        # unproducible — no stale suppression hiding a now-producible or removed code.
+        stale = {
+            c for c in _KNOWN_UNPRODUCIBLE
+            if c not in declared or c not in unproducible
+        }
+        assert not stale, (
+            f"stale _KNOWN_UNPRODUCIBLE entries (now producible or undeclared): {sorted(stale)}"
+        )
+
+        new_unproducible = unproducible - set(_KNOWN_UNPRODUCIBLE)
+        assert new_unproducible == set(), (
+            f"NEW declared codes that no code path can produce: {sorted(new_unproducible)}. "
+            f"Rule 0.1d in vocabulary form (WO-011 §5 property 2). Report; do not delete "
+            f"without asking. Known/reported set: {sorted(_KNOWN_UNPRODUCIBLE)}."
+        )
+
+    def test_property1_check_actually_detects_an_undeclared_raised_code(self):
+        """Rule 0.1d: prove property 1's mechanism fires on a real gap."""
+        declared = {"ALPHA"}
+        raised = ["ALPHA", "BETA_UNDECLARED"]
+        assert sorted(set(raised) - declared) == ["BETA_UNDECLARED"]
+        assert sorted({"ALPHA"} - {"ALPHA"}) == []
+
+    def test_property2_check_actually_detects_an_unproducible_code(self):
+        """Rule 0.1d: prove property 2's mechanism fires on a real gap."""
+        source = 'reason_code = "ALPHA_USED"\n'
+        assert _is_producible("ALPHA_USED", source)
+        assert not _is_producible("GAMMA_NEVER_EMITTED", source)

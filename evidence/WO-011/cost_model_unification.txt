@@ -1,0 +1,34 @@
+WO-011 §1 — COST MODEL UNIFICATION: one model, one module, two callers.
+
+== THE SINGLE IMPLEMENTATION: src/trading/execution/costs.py ==
+25:Abnormal spread (> 5% of mid) is REJECTED with the declared ABNORMAL_SPREAD_REJECT
+58:def compute_execution_costs(
+83:        ValueError: ABNORMAL_SPREAD_REJECT when spread > 5% of mid (FR-015b).
+90:        raise ValueError(
+91:            f"ABNORMAL_SPREAD_REJECT: Spread {spread_pct:.2f}% exceeds "
+99:        executed_price = market_state.best_ask
+101:        executed_price = market_state.best_bid
+104:    notional = size * executed_price
+107:    fees = notional * (fee_rate_pct / Decimal("100"))
+111:    spread_cost = (market_state.spread / Decimal("2")) * size
+114:    slippage_cost = notional * slippage_factor
+117:    total_cost = fees + slippage_cost
+
+== CALLER 1: paper venue (execution/paper.py) delegates ==
+18:from trading.execution.costs import compute_execution_costs
+275:        costs = compute_execution_costs(
+
+== CALLER 2: backtest CostModel (backtest/costs.py) delegates ==
+19:from trading.execution.costs import compute_execution_costs
+190:        costs = compute_execution_costs(
+
+== no residual second implementation (old additive/mid/volume math is gone) ==
+mid_price notional in costs.py:   0 (0 = removed)
+volume_ratio in costs.py:         0 (0 = removed)
+additive total in report.py:      0 (0 = removed)
+
+== import-linter (6 kept / 0 broken) ==
+
+Contracts: 6 kept, 0 broken.
+== contract count ==
+PASS: import-linter evaluated 6 contracts (expected 6)

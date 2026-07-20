@@ -15,6 +15,7 @@ import asyncio
 
 from trading.execution.interface import ExchangeClient, KillSwitchEngagedError
 from trading.execution.fill import Fill
+from trading.execution.costs import compute_execution_costs
 from trading.data.market_state import MarketState
 
 
@@ -237,11 +238,15 @@ class PaperExecutionClient(ExchangeClient):
         """
         Simulate fill with realistic cost modeling (computed internally).
 
-        The paper venue computes all fill economics from the current MarketState:
+        Fill economics come from the SINGLE unified cost model (WO-011 §1):
+        trading.execution.costs.compute_execution_costs. The backtest CostModel
+        calls the same function, so paper and backtest are identical by
+        construction, not by two implementations agreeing.
         - Executed price reflects spread crossing (BUY pays ask, SELL gets bid)
-        - Fees computed from notional (additive cost)
+        - Fees computed from executed notional (additive cost)
         - Spread cost from observed bid/ask (ATTRIBUTION, not additive - WO-008a-R6)
         - Slippage as assumed constant (additive cost - WO-008a-R5 labeling required)
+        - Abnormal spread (>5%) is REJECTED (FR-015b / WO-011 RULING 3)
 
         Args:
             symbol: Trading pair
@@ -259,40 +264,24 @@ class PaperExecutionClient(ExchangeClient):
 
         Raises:
             ValueError: If MarketState not registered
+            ValueError: ABNORMAL_SPREAD_REJECT if spread > 5% (FR-015b, WO-011 RULING 3)
         """
         if self._current_market_state is None:
             raise ValueError("MarketState not registered. Call set_market_state() first.")
 
         size_dec = Decimal(str(size))
-        ms = self._current_market_state
 
-        # EXECUTED PRICE: Reflect spread crossing
-        # BUY orders cross the spread and pay the ask
-        # SELL orders cross the spread and receive the bid
-        if side == "BUY":
-            executed_price = ms.best_ask  # Buyer pays ask
-        else:  # SELL
-            executed_price = ms.best_bid  # Seller receives bid
-
-        # Calculate notional from EXECUTED price (not order intent price)
-        notional = size_dec * executed_price
-
-        # 1. Trading fee (from notional)
-        fees = notional * (self._fee_rate_pct / Decimal("100"))
-
-        # 2. Spread cost (from observed bid/ask - half spread × size)
-        # Buy pays (ask - mid) = half spread, Sell receives (mid - bid) = half spread
-        spread_cost = (ms.spread / Decimal("2")) * size_dec
-
-        # 3. Slippage cost (assumed 0.1% of notional - labeled per WO-008a-R5)
-        slippage_cost = notional * self._slippage_factor
-
-        # Total cost (WO-008a-R6: spread is ATTRIBUTION, not additive)
-        # Executed price (ask/bid) already includes spread crossing cost
-        # Total cost = fees + slippage only (actual additive costs)
-        total_cost = fees + slippage_cost
+        # Unified ruled cost model (WO-011 §1) — the SOLE implementation.
+        costs = compute_execution_costs(
+            side=side,
+            size=size_dec,
+            market_state=self._current_market_state,
+            fee_rate_pct=self._fee_rate_pct,
+            slippage_factor=self._slippage_factor,
+        )
 
         # CAD value (assume 1 USD = 1.35 CAD for simplicity)
+        notional = size_dec * costs.executed_price
         cad_value = notional * Decimal("1.35")
 
         return Fill(
@@ -300,10 +289,10 @@ class PaperExecutionClient(ExchangeClient):
             symbol=symbol,
             side=side,
             size=size_dec,
-            fill_price=executed_price,  # Reflects spread crossing
-            spread_cost=spread_cost,
-            slippage_cost=slippage_cost,
-            fees=fees,
-            total_cost=total_cost,
+            fill_price=costs.executed_price,  # Reflects spread crossing
+            spread_cost=costs.spread_cost,
+            slippage_cost=costs.slippage_cost,
+            fees=costs.fees,
+            total_cost=costs.total_cost,
             cad_value=cad_value,
         )

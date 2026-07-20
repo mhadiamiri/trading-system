@@ -1,0 +1,75 @@
+WO-011 FINDING — enumeration gap disclosed BEFORE writing code (RULING 1).
+Baseline SHA: 1ef74474484fdcdc4740bda18bd6f5fa5c5299b6   |   no code written this turn.
+
+RULING 1 froze the legalized set at 3 tests + the 8 xfails and directed:
+  'anything else that breaks after you start writing code is a FINDING ...
+   if your enumeration was incomplete, I need to know.'
+My first escalation enumerated only ADDITIVE-TOTAL ASSERTIONS. I have now
+re-scanned for tests coupled to the OLD IMPLEMENTATION DETAILS the approved
+design changes (source-inspection, mid-notional, volume slippage, rounding,
+CostBreakdown constructions). Exactly ONE additional test breaks. It is NOT an
+additive-model assertion, so it is a genuinely different category.
+
+==================================================================
+THE ONE ADDITIONAL BREAKAGE
+  tests/test_backtest_costs.py::TestObservedSpreadCostModel
+                             ::test_code_review_no_synthetic_spread  (line 342)
+  LIVE (not xfailed). Passes today; breaks under RULING 2's approved design.
+==================================================================
+It inspects the SOURCE TEXT of calculate_costs_from_market_state:
+        # Only check the NEW method, not the old Sprint 1 method
+        source = inspect.getsource(self.cost_model.calculate_costs_from_market_state)
+
+        # Check for forbidden patterns (synthetic spread indicators)
+        forbidden_patterns = [
+            "DEFAULT_SPREAD",  # No constant spread
+            "FALLBACK_SPREAD",  # No fallback spread
+            "CACHED_SPREAD",  # No cached spread
+            "ASSUMED_SPREAD",  # No assumed spread
+            "FIXED_SPREAD",  # No fixed spread
+            "_spread_pct",  # No internal spread percentage variable
+        ]
+
+        for pattern in forbidden_patterns:
+            assert pattern not in source, \
+                f"Found synthetic spread pattern '{pattern}' in new cost model method"
+
+        # Verify spread is derived from market_state
+        assert "market_state.spread" in source, \
+            "New cost model method must use market_state.spread"
+
+WHY IT BREAKS: RULING 2 approved moving the spread arithmetic into
+compute_execution_costs(). calculate_costs_from_market_state then becomes a thin
+delegator whose source contains 'market_state=market_state' but NOT
+'market_state.spread' -> the line-360 assertion fails. The forbidden-pattern
+checks above it still pass. This is a location-coupled source grep invalidated
+by an APPROVED refactor, not a superseded-model assertion.
+
+==================================================================
+EVERYTHING ELSE I RE-CHECKED IS SAFE (so this is the ONLY delta):
+==================================================================
+ - test_double_count_bite_proof.py : exercises paper venue, asserts RULED total;
+     unchanged math -> stays green (spread 5.0 on ~65977 = 0.008%, no reject).
+ - test_boundaries.py:78           : inspects DATA modules for adapter imports; unrelated.
+ - test_live_loop.py 618/668/717/762: inspect __init__ / Settings.validate; NOT modified.
+ - TestObservedSpreadCostModel :468/:478 spread_cost asserts (ask-mid)==spread/2; unchanged.
+ - the 3 frozen tests + 8 xfails    : already legalized.
+
+==================================================================
+RULING REQUESTED
+==================================================================
+How should the anti-synthetic-spread guard be re-expressed once its logic lives
+in compute_execution_costs()? (0.1: there is a real design choice; 0.4: the guard
+must not be weakened.) Options:
+ A (recommended) Re-point the source check at compute_execution_costs (its new
+     home) AND assert calculate_costs_from_market_state delegates to it. Same
+     intent, follows the code. FR-015a still enforced, just at the right function.
+ B  Replace the source grep with a BEHAVIORAL guard: two distinct observed
+     spreads -> spread_cost tracks each; an abnormal spread -> rejection. Stronger,
+     less brittle, but a larger rewrite of a test outside the frozen set.
+ C  Keep it on calculate_costs_from_market_state but assert it CALLS
+     compute_execution_costs and that compute_execution_costs is synthetic-free.
+
+Not editing it without your ruling (RULING 1). STOPPING BEFORE CODE. Working tree:
+ M instructions.md
+?? evidence/WO-011/

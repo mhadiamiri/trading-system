@@ -1,0 +1,108 @@
+WO-011 BITE PROOFS -> xfail_to_bite_proofs.txt
+(broken -> ACTUAL FAIL -> restore -> PASS -> sha256 exact-restore == empty diff)
+
+==========================================================================
+BITE §3.1+3.2+3.7 — fees mechanism (zero the fee)
+  target: src/trading/execution/costs.py
+  tests : test_fees_applied_to_every_trade test_fees_calculation_accuracy test_manual_calculation_matches_system
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.58s) ---
+    assert costs.fees == expected_fees, f"Fees {costs.fees} != expected {expected_fees}"
+E   AssertionError: Fees 0 != expected 65.002500
+E   assert Decimal('0') == Decimal('65.002500')
+E    +  where Decimal('0') = CostBreakdown(fees=Decimal('0'), spread_cost=Decimal('2.500'), slippage_cost=Decimal('65.002500'), total_cost=Decimal('65.002500')).fees
+    assert error_pct < Decimal("0.01"), \
+E   AssertionError: Fee error 100% exceeds 0.01% threshold (0 vs 30.00)
+E   assert Decimal('100') < Decimal('0.01')
+E    +  where Decimal('0.01') = Decimal('0.01')
+    assert costs.fees == manual_fees, f"fees {costs.fees} != {manual_fees}"
+E   AssertionError: fees 0 != 95.2545
+E   assert Decimal('0') == Decimal('95.2545')
+E    +  where Decimal('0') = CostBreakdown(fees=Decimal('0'), spread_cost=Decimal('4.500'), slippage_cost=Decimal('95.254500'), total_cost=Decimal('95.254500')).fees
+FAILED tests/test_backtest_costs.py::TestCostModel::test_fees_applied_to_every_trade
+FAILED tests/test_backtest_costs.py::TestCostModel::test_fees_calculation_accuracy
+FAILED tests/test_backtest_costs.py::TestCostModel::test_manual_calculation_matches_system
+============================== 3 failed in 0.11s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.49s) ---
+============================== 3 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True
+
+==========================================================================
+BITE §3.3 — spread mechanism (zero the spread cost)
+  target: src/trading/execution/costs.py
+  tests : test_spread_applied_on_entry_and_exit
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.55s) ---
+    assert entry_costs.spread_cost > 0, "Entry should have spread cost"
+E   AssertionError: Entry should have spread cost
+E   assert Decimal('0') > 0
+E    +  where Decimal('0') = CostBreakdown(fees=Decimal('65.002500'), spread_cost=Decimal('0'), slippage_cost=Decimal('65.002500'), total_cost=Decimal('130.005000')).spread_cost
+FAILED tests/test_backtest_costs.py::TestCostModel::test_spread_applied_on_entry_and_exit
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.48s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True
+
+==========================================================================
+BITE §3.4 — slippage mechanism (make it size-independent)
+  target: src/trading/execution/costs.py
+  tests : test_slippage_reduces_fill_prices
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.53s) ---
+    assert large_costs.slippage_cost > small_costs.slippage_cost, \
+E   AssertionError: Large orders should have more slippage
+E   assert Decimal('0.001') > Decimal('0.001')
+E    +  where Decimal('0.001') = CostBreakdown(fees=Decimal('325.012500'), spread_cost=Decimal('12.500'), slippage_cost=Decimal('0.001'), total_cost=Decimal('325.013500')).slippage_cost
+E    +  and   Decimal('0.001') = CostBreakdown(fees=Decimal('6.500250'), spread_cost=Decimal('0.250'), slippage_cost=Decimal('0.001'), total_cost=Decimal('6.501250')).slippage_cost
+FAILED tests/test_backtest_costs.py::TestCostModel::test_slippage_reduces_fill_prices
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.49s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True
+
+==========================================================================
+BITE §3.5 — ruled total (revert to additive)
+  target: src/trading/execution/costs.py
+  tests : test_total_cost_equals_sum_of_components
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.54s) ---
+    assert self.total_cost == self.fees + self.slippage_cost, \
+E   AssertionError: Total cost must equal fees + slippage (spread is attribution, WO-008a-R6)
+FAILED tests/test_backtest_costs.py::TestCostModel::test_total_cost_equals_sum_of_components
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.50s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True
+
+==========================================================================
+BITE §3.6 — no cost-free path (zero the notional -> total 0 legally)
+  target: src/trading/execution/costs.py
+  tests : test_no_cost_free_code_path
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.54s) ---
+    assert costs.total_cost > 0, \
+E   AssertionError: Trade should have cost: Side.BUY 0.1 @ 99.99/100.00 -> 0.000
+E   assert Decimal('0.000') > 0
+E    +  where Decimal('0.000') = CostBreakdown(fees=Decimal('0.000'), spread_cost=Decimal('0.0005'), slippage_cost=Decimal('0.000'), total_cost=Decimal('0.000')).total_cost
+FAILED tests/test_backtest_costs.py::TestCostModel::test_no_cost_free_code_path
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.49s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True
+
+==========================================================================
+BITE §3.8 — buy@ask/sell@bid (fill at mid instead)
+  target: src/trading/execution/costs.py
+  tests : test_buy_at_ask_sell_at_bid
+--- ARTIFACT 1+2: BROKEN -> ACTUAL FAILING OUTPUT (rc=1, 0.55s) ---
+    assert buy.executed_price == ms.best_ask, "BUY must fill at the observed ask"
+E   AssertionError: BUY must fill at the observed ask
+E   assert Decimal('65000.00') == Decimal('65002.50')
+E    +  where Decimal('65000.00') = ExecutionCosts(executed_price=Decimal('65000.00'), fees=Decimal('65.000000'), spread_cost=Decimal('2.500'), slippage_cost=Decimal('65.000000'), total_cost=Decimal('130.000000')).executed_price
+E    +  and   Decimal('65002.50') = MarketState(timestamp=datetime.datetime(2026, 7, 20, 0, 52, 50, 940803, tzinfo=datetime.timezone.utc), symbol='BTC/USD...=Decimal('65000.00'), spread=Decimal('5.00'), trade_count=0, total_volume=Decimal('0'), last_price=Decimal('64997.50')).best_ask
+FAILED tests/test_backtest_costs.py::TestCostModel::test_buy_at_ask_sell_at_bid
+============================== 1 failed in 0.09s ==============================
+--- ARTIFACT 3: RESTORED -> PASS (rc=0, 0.49s) ---
+============================== 1 passed in 0.03s ==============================
+--- ARTIFACT 4: EXACT RESTORE (sha256 pre==post; 'empty diff' equivalent) ---
+  before-break=374bdaa844965f2b  after-restore=374bdaa844965f2b  match=True

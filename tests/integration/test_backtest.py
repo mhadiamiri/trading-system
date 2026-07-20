@@ -74,6 +74,15 @@ class TestBacktestIntegration:
         Constitutional requirements:
             - SC-004: P&L report explicitly lists all cost components
             - Principle I: Truth Before Profit
+
+        RULED MODEL (WO-008a-R6, reaffirmed D14; unified WO-011 §1): total costs =
+        fees + slippage. Spread is ATTRIBUTION of the executed price (already
+        embedded in it), reported separately and never summed into the total. This
+        assertion previously encoded the superseded additive model
+        (fees + spread + slippage); it is corrected here to the ruled specification
+        the behavior already implements (WO-011 §2 / RULING 1) — not tuned to green.
+        The old assertion was order-dependent green: it passed only when no trade
+        (or a zero spread) occurred, and failed by exactly one spread otherwise.
         """
         runner = BacktestRunner()
         result = await runner.run(max_events=100)
@@ -88,10 +97,13 @@ class TestBacktestIntegration:
         assert "net_pnl" in pnl
         assert "gross_pnl" in pnl
 
-        # Verify all costs are accounted for
-        expected_total = pnl["total_fees"] + pnl["total_spread_cost"] + pnl["total_slippage_cost"]
+        # RULED total = fees + slippage (spread is attribution, NOT summed in).
+        expected_total = pnl["total_fees"] + pnl["total_slippage_cost"]
         assert abs(pnl["total_costs"] - expected_total) < 0.01, \
-            "Total costs must equal sum of components"
+            "Total costs must equal fees + slippage (spread is attribution, WO-008a-R6)"
+
+        # Spread cost is still reported as a separate line item (attribution).
+        assert "total_spread_cost" in pnl, "Spread must be reported as attribution"
 
         # Verify net P&L is gross minus costs
         expected_net = pnl["gross_pnl"] - pnl["total_costs"]

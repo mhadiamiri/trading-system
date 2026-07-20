@@ -29,8 +29,24 @@ dropping trailing zeros the checksum digits require; Kraken's own rendering is
 fixed-point 8dp, "0.00005100". Reproducing these checksums therefore requires
 fixed-point rendering, NOT str(Decimal(float)).
 
-NOTHING REDACTED. Public market data; no credential, token or session id exists
-in this feed. Nothing credential-shaped was present to remove.
+EVIDENTIARY BOUNDS (WO-011 section 6.3)
+---------------------------------------
+This fixture is the POST-PARSE STRUCTURE (Python dicts). It verifies the
+book-maintenance and checksum LOGIC — snapshot and incremental checksums replay
+against Kraken's own values. It STRUCTURALLY CANNOT witness the parse layer:
+by the time these dicts existed, json.loads had already floated the numbers and
+the trailing zeros were gone. Proving the parse/rendering layer needs raw wire
+text — that is what the A3 fixture (kraken_v2_captured_frames_a3.py) is for.
+Doctrine: future captures default to RAW WIRE TEXT.
+
+REDACTION (WO-011 section 6.1)
+------------------------------
+These retained book frames contain no credential, token, or session id. However
+the full raw capture, evidence/WO-008b-A2/captured_frames_raw.json, contained a
+`connection_id` in a status frame (a session identifier, not a credential). It
+was SCRUBBED to "<REDACTED>" under WO-011 section 6.1 via
+trading.logkit.redaction. Noted here so a future diff of A2 against A3's
+redaction does not read as tampering — the scrub is deliberate and recorded.
 """
 
 CAPTURED_UTC = "2026-07-19T17:26:53.817753+00:00"

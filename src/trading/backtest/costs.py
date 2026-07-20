@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import Dict, Optional, TYPE_CHECKING
 from enum import Enum
 
+from trading.execution.costs import compute_execution_costs
+
 # Avoid circular import
 if TYPE_CHECKING:
     from trading.data.market_state import MarketState
@@ -37,17 +39,25 @@ class CostBreakdown:
         - No cost-free code path exists (Principle V)
     """
     fees: Decimal
-    spread_cost: Decimal
+    spread_cost: Decimal  # attribution of the executed price; NOT part of total
     slippage_cost: Decimal
-    total_cost: Decimal
+    total_cost: Decimal  # fees + slippage_cost (WO-008a-R6, reaffirmed D11/D14)
 
     def __post_init__(self):
-        """Validate cost breakdown."""
+        """
+        Validate cost breakdown against the RULED model.
+
+        total_cost == fees + slippage_cost. Spread is ATTRIBUTION of the executed
+        price (already embedded in it) and is never summed into the total
+        (WO-008a-R6, reaffirmed D14; unified in WO-011 §1). This is not a weakened
+        guard (rule 0.4): the invariant is corrected to the ruled definition the
+        behavior already implements, not relaxed.
+        """
         assert self.fees >= 0, "Fees cannot be negative"
         assert self.spread_cost >= 0, "Spread cost cannot be negative"
         assert self.slippage_cost >= 0, "Slippage cost cannot be negative"
-        assert self.total_cost == self.fees + self.spread_cost + self.slippage_cost, \
-            "Total cost must equal sum of components"
+        assert self.total_cost == self.fees + self.slippage_cost, \
+            "Total cost must equal fees + slippage (spread is attribution, WO-008a-R6)"
 
 
 class CostModel:
@@ -165,42 +175,28 @@ class CostModel:
             - FR-011: Spread cost computed from observed bid/ask
             - FR-015a: No synthetic spread anywhere
             - FR-015b: REJECT trade on abnormal spread (>5%)
+
+        WO-011 §1: this delegates to the SINGLE unified cost model
+        (trading.execution.costs.compute_execution_costs) that the paper venue
+        also calls. The former mid-price notional, volume-scaled slippage, and
+        additive total lived here only; they are superseded by the ruled model
+        (RULING 4/5/6). The discarded volume-scaling is preserved in
+        docs/open-cleanup.md.
+
+        Note:
+            avg_volume is retained for signature compatibility (rule 0.1a). The
+            ruled constant-slippage model (WO-008a-R5) does not use it.
         """
-        # Calculate notional
-        notional = size * market_state.mid_price
-
-        # 1. Trading fees (taker fee for momentum strategy)
-        fees = notional * (self._fee_rate_pct / Decimal("100"))
-
-        # 2. Check for abnormal spread before calculating spread cost
-        spread_pct = (market_state.spread / market_state.mid_price) * 100
-        if spread_pct > 5:
-            raise ValueError(
-                f"ABNORMAL_SPREAD_REJECT: Spread {spread_pct:.2f}% exceeds 5% threshold. "
-                f"Bid: {market_state.best_bid}, Ask: {market_state.best_ask}, "
-                f"Spread: {market_state.spread}"
-            )
-
-        # 3. Spread cost using OBSERVED spread (not synthetic)
-        # Buy at ask: pay (ask - mid) = half spread
-        # Sell at bid: pay (mid - bid) = half spread
-        spread_cost = (market_state.spread / Decimal("2")) * size
-
-        # 4. Slippage (linear function of order size vs liquidity)
-        volume_ratio = size / avg_volume if avg_volume > 0 else Decimal("0")
-        slippage_cost = notional * self._slippage_factor * volume_ratio
-
-        # Round to 2 decimal places
-        fees_rounded = fees.quantize(Decimal("0.01"))
-        spread_rounded = spread_cost.quantize(Decimal("0.01"))
-        slippage_rounded = slippage_cost.quantize(Decimal("0.01"))
-
-        # Calculate total from rounded components
-        total_rounded = (fees_rounded + spread_rounded + slippage_rounded).quantize(Decimal("0.01"))
-
+        costs = compute_execution_costs(
+            side=side.value,
+            size=size,
+            market_state=market_state,
+            fee_rate_pct=self._fee_rate_pct,
+            slippage_factor=self._slippage_factor,
+        )
         return CostBreakdown(
-            fees=fees_rounded,
-            spread_cost=spread_rounded,
-            slippage_cost=slippage_rounded,
-            total_cost=total_rounded,
+            fees=costs.fees,
+            spread_cost=costs.spread_cost,
+            slippage_cost=costs.slippage_cost,
+            total_cost=costs.total_cost,
         )

@@ -40,7 +40,7 @@ FIX USED: json.loads(message, parse_float=Decimal, parse_int=Decimal)
 
 ################ §1.5 THE 1071 vs 1070 DISCREPANCY — ACCOUNTED EXACTLY ################
   channels among the 1071 type==update frames: {'status': 1, 'book': 1070}
-  the extra frame: {"channel": "status", "type": "update", "data": [{"version": "2.0.10", "system": "online", "api_version": "v2", "connection_id": 2881627734335658280}]
+  the extra frame: {"channel": "status", "type": "update", "data": [{"version": "2.0.10", "system": "online", "api_version": "v2", "connection_id": "<REDACTED>"}]
   => 1070 book updates + 1 channel='status' update = 1071.
      A2's report counted by TYPE alone, conflating a connection-status
      message with book updates. The parser correctly ignored it

@@ -1,0 +1,37 @@
+WO-011 section 4 -- RECONCILIATION TO THE CENT (both paths call compute_execution_costs)
+==============================================================================
+
+CASE: BUY, spread 5.00
+  input: side=BUY bid=64997.50 ask=65002.50 size=1.0 mid=65000.00 spread=5.00 (0.01% of mid)
+  component                PAPER VENUE    BACKTEST CostModel   match
+  executed_price              65002.50              65002.50      OK
+  fees                           65.00                 65.00      OK
+  spread (attrib)                 2.50                  2.50      OK
+  slippage                       65.00                 65.00      OK
+  total                         130.00                130.00      OK
+  ruled check: total == fees+slippage -> 130.00 == 130.00  (spread 2.50 is attribution, NOT summed)
+
+CASE: SELL, spread 5.00
+  input: side=SELL bid=64997.50 ask=65002.50 size=2.5 mid=65000.00 spread=5.00 (0.01% of mid)
+  component                PAPER VENUE    BACKTEST CostModel   match
+  executed_price              64997.50              64997.50      OK
+  fees                          162.49                162.49      OK
+  spread (attrib)                 6.25                  6.25      OK
+  slippage                      162.49                162.49      OK
+  total                         324.99                324.99      OK
+  ruled check: total == fees+slippage -> 324.99 == 324.99  (spread 6.25 is attribution, NOT summed)
+
+CASE: EDGE: wide spread ~4.6%, size 0.01
+  input: side=BUY bid=63000.00 ask=66000.00 size=0.01 mid=64500.00 spread=3000.00 (4.65% of mid)
+  component                PAPER VENUE    BACKTEST CostModel   match
+  executed_price              66000.00              66000.00      OK
+  fees                            0.66                  0.66      OK
+  spread (attrib)                15.00                 15.00      OK
+  slippage                        0.66                  0.66      OK
+  total                           1.32                  1.32      OK
+  ruled check: total == fees+slippage -> 1.32 == 1.32  (spread 15.00 is attribution, NOT summed)
+
+==============================================================================
+ABNORMAL (>5%) SPREAD — bid 50000 / ask 60000 (20%):
+  paper venue: rejected -> ABNORMAL_SPREAD_REJECT: Spread 18.18% exceeds 5% threshold. Bid: 50000
+  backtest CostModel: rejected -> ABNORMAL_SPREAD_REJECT: Spread 18.18% exceeds 5% threshold. Bid: 50000

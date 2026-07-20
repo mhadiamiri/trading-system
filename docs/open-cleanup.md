@@ -44,3 +44,41 @@ book-state machine loses its notion of "not yet initialised."
 
 **Suggested scope**: a small standalone work order, or a rider on whichever work order next
 has legitimate reason to touch `LocalBookData`.
+
+---
+
+## Discarded slippage elaboration: volume-scaling
+
+**Raised**: WO-011 (2026-07-19) · **Ruled by**: WO-011 RULING 4 · **Owner**: unassigned
+
+When the cost model was unified into `trading.execution.costs.compute_execution_costs`
+(WO-011 §1), two slippage formulas had to collapse into one:
+
+```
+paper venue (ruled, live path) : slippage = notional × factor                 (constant)
+backtest CostModel (superseded): slippage = notional × factor × volume_ratio  (volume-scaled)
+                                 where volume_ratio = size / avg_volume
+```
+
+**Ruling (RULING 4): the CONSTANT form ships.** It is the live path; WO-008a-R5 labels
+slippage an *assumed 0.1%* and the constant form is what that label describes (the
+volume-scaled form contradicted its own "ASSUMED CONSTANT" label). Volume-scaling lived
+only in `CostModel.calculate_costs_from_market_state`, which the runner never called;
+adopting it would be *building* a slippage model, which §1 forbids.
+
+**The discarded formula, preserved verbatim** so a future slippage-model work order can
+retrieve it rather than reinvent it:
+
+```python
+# superseded (backtest/costs.py, pre-WO-011):
+volume_ratio  = size / avg_volume if avg_volume > 0 else Decimal("0")
+slippage_cost = notional * self._slippage_factor * volume_ratio
+# components were then quantized to Decimal("0.01").
+```
+
+`CostModel.calculate_costs_from_market_state` keeps its `avg_volume` parameter for
+signature stability (rule 0.1a); the ruled constant model ignores it. A future work order
+that reintroduces a volume-sensitive slippage model would consume `avg_volume` again.
+
+**Do not silently delete** `avg_volume` from the signature — that is a 0.1a event and the
+parameter is the retrieval hook for this discarded elaboration.

@@ -18,6 +18,15 @@ snapshot checksum reproduced, and 1253 of 1253 incremental checksums reproduced.
 
 connection_id REDACTED from the status frame (session identifier, not a
 credential). Nothing else altered.
+
+EVIDENTIARY BOUNDS (WO-011 section 6.3)
+---------------------------------------
+This fixture is RAW WIRE TEXT — the bytes as received. Its evidentiary power is
+therefore the widest available: it witnesses EVERYTHING downstream of the wire,
+including the parse/rendering layer that the A2 post-parse fixture structurally
+cannot. Both fixtures are kept (ground truth accretes); A2 proves book/checksum
+LOGIC, A3 proves that plus RENDERING. Doctrine: future captures default to raw
+wire text, and redaction is applied mechanically via trading.logkit.redaction.
 """
 
 CAPTURED_UTC = "2026-07-19T17:54:37.034140+00:00"

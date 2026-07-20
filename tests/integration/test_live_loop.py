@@ -524,6 +524,12 @@ class TestEndToEndQuoteCentricPipeline:
         Constitutional requirements:
         - FR-011: Spread cost computed from observed bid/ask
         - FR-015a: No synthetic spread anywhere
+
+        RULED MODEL (WO-008a-R6, reaffirmed D14; unified WO-011 §1): total =
+        fees + slippage. Spread is ATTRIBUTION of the executed price, never summed
+        into the total. The total assertion below previously encoded the superseded
+        additive model; it is corrected to the ruled specification the behavior
+        already implements (WO-011 §2 / RULING 1) — not tuned to green.
         """
         from trading.backtest.costs import CostModel, Side
 
@@ -561,8 +567,9 @@ class TestEndToEndQuoteCentricPipeline:
         assert costs.fees > 0, "Fees should be calculated"
         assert costs.spread_cost > 0, "Spread cost should be calculated"
         assert costs.slippage_cost > 0, "Slippage cost should be calculated"
-        assert costs.total_cost == costs.fees + costs.spread_cost + costs.slippage_cost, \
-            "Total cost should equal sum of components"
+        # RULED total = fees + slippage; spread is attribution, not summed in.
+        assert costs.total_cost == costs.fees + costs.slippage_cost, \
+            "Total cost must equal fees + slippage (spread is attribution, WO-008a-R6)"
 
 
 class TestPaperModeGuardSection2_2:

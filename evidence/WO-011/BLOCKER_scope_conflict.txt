@@ -1,0 +1,110 @@
+WO-011 BLOCKER — SCOPE CONFLICT ESCALATION
+Captured: redirected command output below is real; analysis annotates it (rule 0.6a).
+Baseline SHA: 1ef74474484fdcdc4740bda18bd6f5fa5c5299b6
+
+==================================================================
+FACT 1 — Deterministic full suite is GREEN (no failing test).
+  from background run bwjkjfaab, pytest tests/ -p no:randomly:
+==================================================================
+================= 119 passed, 8 xfailed in 237.79s (0:03:57) ==================
+
+==================================================================
+FACT 2 — The WO baseline '1 FAILING' is ORDER-DEPENDENT.
+  A3 captured the exact failure (evidence/WO-008b-A3/order_dependent_failure.txt):
+==================================================================
+E   AssertionError: Total costs must equal sum of components
+E   assert 0.32500000000000107 < 0.01
+E    +  where 0.32500000000000107 = abs((13.000658 - 13.325658))
+
+==================================================================
+FACT 3 — Every site that encodes the SUPERSEDED additive total
+  (grep across src/ and tests/):
+==================================================================
+src/trading/backtest/costs.py:49:        assert self.total_cost == self.fees + self.spread_cost + self.slippage_cost, \
+src/trading/backtest/report.py:67:        total_cost = fees + spread_cost + slippage_cost
+src/trading/execution/fill.py:20:    - total_cost = spread_cost + slippage_cost + fees
+src/trading/execution/fill.py:36:    total_cost: Decimal  # spread_cost + slippage_cost + fees
+tests/integration/test_live_loop.py:564:        assert costs.total_cost == costs.fees + costs.spread_cost + costs.slippage_cost, \
+
+  (grep above missed prefixed forms; complete categorized list below)
+
+==================================================================
+COMPLETE BLAST RADIUS of the §1 ruled-model unification
+==================================================================
+-- test_backtest.py:92 (the additive assertion in the named test) --
+92:        expected_total = pnl["total_fees"] + pnl["total_spread_cost"] + pnl["total_slippage_cost"]
+-- test_backtest_costs.py:136 (one of the 8 xfails) --
+136:        expected_total = costs.fees + costs.spread_cost + costs.slippage_cost
+-- test_backtest_costs.py TestCostBreakdownValidation (NOT xfailed) --
+229:class TestCostBreakdownValidation:
+239:        # Valid cost breakdown
+244:            total_cost=Decimal("17.00"),
+
+==================================================================
+CATEGORIZATION AGAINST WO-011 LEGALIZED SCOPE
+==================================================================
+§2 legalizes updating exactly ONE assertion: test_cost_inclusive_pnl_report.
+    "only this one. Every other assertion in this WO remains under rule 0.8."
+§3 extends that to "the 8" xfails in TestCostModel (test_backtest_costs.py).
+
+IN SCOPE (WO authorizes the change):
+  [PROD §1]  costs.py:49        CostBreakdown.__post_init__ additive invariant -> ruled
+  [PROD §1]  report.py:67       add_trade per-trade total additive -> ruled
+  [PROD §1]  fill.py:20,36      docstring/comment additive -> ruled (honesty)
+  [TEST §2]  test_backtest.py:92            test_cost_inclusive_pnl_report
+  [TEST §3]  test_backtest_costs.py:136     test_total_cost_equals_sum_of_components (xfail #5 of 8)
+
+OUT OF SCOPE — broken by §1's MANDATED changes, but NOT in the §2/§3 legalized set:
+  [BLOCKER 1] tests/integration/test_live_loop.py:564
+      test_observed_spread_used_in_cost_calculation  (LIVE, not xfailed)
+      asserts: costs.total_cost == costs.fees + costs.spread_cost + costs.slippage_cost
+      -> false once CostModel returns the ruled total (fees+slippage). spread here = 5.00.
+
+  [BLOCKER 2] tests/test_backtest_costs.py:232  (class TestCostBreakdownValidation, LIVE, not xfailed)
+      test_cost_breakdown_validation constructs CostBreakdown(fees=10, spread=5, slippage=2, total=17)
+      and expects it VALID. The ruled __post_init__ (total==fees+slippage==12) REJECTS total=17.
+      -> this "valid" construction would now raise AssertionError.
+
+Neither is test_cost_inclusive_pnl_report; neither is one of the 8 xfails in TestCostModel.
+I will not edit an assertion §2 explicitly reserved under 0.8 without a ruling.
+
+==================================================================
+PROPOSED UNIFICATION DESIGN (for approval; NOT yet implemented)
+==================================================================
+ONE ruled implementation in ONE new module, two callers:
+  NEW  src/trading/execution/costs.py
+       def compute_execution_costs(side:str, size, market_state, fee_rate_pct, slippage_factor)
+         - abnormal-spread guard (>5%) preserved here (0.4) -> now applies to BOTH callers
+         - executed_price = ask(BUY)/bid(SELL); notional = size*executed_price
+         - fees = notional*rate; spread_cost = spread/2*size (ATTRIBUTION);
+           slippage = notional*factor (constant, WO-008a-R5); total = fees+slippage
+  paper.py::_simulate_fill      -> delegates to it (behavior UNCHANGED; math already identical)
+  backtest/costs.py::CostModel  -> delegates to it (behavior CHANGES to ruled)
+Dependency direction: backtest -> execution (already exists via runner->paper). No import-linter break.
+No public signature changes (Side/CostBreakdown/CostModel still import from trading.backtest.costs;
+CostModel.calculate_costs_from_market_state keeps its signature). => no 0.1a signature trigger.
+
+TWO consequences of unification worth the lead's awareness:
+  (a) Paper venue GAINS the >5% abnormal-spread rejection (a strengthening; today only CostModel
+      rejects). Real BTC/USD spreads are far under 5%, so the 24h corpus is unaffected in practice.
+  (b) CostModel's slippage changes from notional*factor*volume_ratio (superseded) to notional*factor
+      (ruled, matches paper and its own "ASSUMED CONSTANT" label). Its consumers assert spread_cost,
+      not slippage, so no test depends on the volume_ratio form.
+
+==================================================================
+RULING REQUESTED (one answer unblocks the whole WO)
+==================================================================
+Q1. Does the §2/§3 legalization (update an assertion that encodes the SUPERSEDED model to the
+    RULED model) extend to BLOCKER 1 (test_live_loop.py:564) and BLOCKER 2
+    (test_backtest_costs.py:232 test_cost_breakdown_validation)? They are the identical situation
+    §2 describes, but §2 said "only this one" and these were not named.
+    If YES: I update both to the ruled model, citing R6/D14, same as §2.
+    If NO:  §1 cannot reach §8's "0 failed" and the WO is blocked as written.
+
+Q2. Approve the unification design above, including consequence (a) — paper venue gaining the
+    >5% rejection? If you want the guard kept OUT of the paper path, say so and the two callers
+    will differ on that one policy (a documented, intentional exception rather than a fork).
+
+Per rule 0.2a and the Authority line ("Conflict -> STOP and escalate"): STOPPING BEFORE any code
+change. No production or test file modified this turn. Working tree carries only this evidence file
+and instructions.md.
