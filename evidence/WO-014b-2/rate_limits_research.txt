@@ -1,0 +1,67 @@
+WO-014b-2 §2.1 — KRAKEN WEBSOCKET RATE-LIMIT RESEARCH (0.1e)
+Generated: 2026-07-20 (documentation research over HTTPS; NO venue connection)
+
+PURPOSE: cite Kraken's published WS connection/subscription rate limits to calibrate
+the backoff schedule and circuit-breaker threshold (Ruling A). Rule 0.1e: cite from
+evidence competent to support the claim; do not dress a guess as a citation.
+
+════════════════════════════════════════════════════════════════════════
+WHAT WAS FETCHED (documentation host, NOT the venue feed)
+════════════════════════════════════════════════════════════════════════
+Source A — Kraken WebSocket API FAQ (support.kraken.com):
+  https://support.kraken.com/articles/360022326871-kraken-websocket-api-frequently-asked-questions
+  VERBATIM:
+    - "The WebSocket API limits the maximum number of simultaneous connections to
+       provide protection against misuse (such as DDoS attacks, for example)."
+       -> NO specific number stated on the page.
+    - {"Error": "Exceeded msg rate"} "when the message rate limit is exceeded."
+      "The message rate limit of a single WebSocket API connection will vary depending
+       upon the load on the system." -> NO number; explicitly load-dependent.
+    - "Your code may be reconnecting too often or when it has no need to." -> a hint in
+       a connection-limit error; NO formal backoff guidance or interval given.
+
+Source B — web search summaries (secondary, NOT an official page; recorded for honesty,
+  NOT cited): claim a Cloudflare connection/re-connection limit of "~150 attempts per
+  rolling 10 minutes per IP -> 10-minute ban," and Level-3 subscription counts (200
+  standard / 500 pro; 200 symbols per connection).
+
+════════════════════════════════════════════════════════════════════════
+FINDING: DOCUMENTED SILENCE ON SPECIFIC WS CONNECTION-RATE FIGURES
+════════════════════════════════════════════════════════════════════════
+Kraken DOCUMENTS that connection and message limits EXIST, and that reconnecting "too
+often" is a real failure mode. It does NOT publish, on the official pages reachable
+here, a specific numeric WS connection/re-connection rate limit or ban duration.
+
+The "~150 / 10 min" Cloudflare figure is plausible and widely repeated, but it could
+NOT be confirmed verbatim on an official Kraken page in this pass. Per 0.1e it is
+therefore treated as UNCITED — it may inform a conservative choice but MUST NOT be
+presented as a Kraken citation. This is DOCUMENTED SILENCE (weaker than documented
+absence — the A3/WO-014 distinction), not a published limit.
+
+CONSEQUENCE (Ruling A, silent branch): backoff and breaker figures are DECLARED
+ENGINEERING JUDGMENT, stated as such at the point of claim, NOT dressed as a citation.
+
+════════════════════════════════════════════════════════════════════════
+PROPOSED FIGURES — DECLARED ENGINEERING JUDGMENT (for the implementation session)
+════════════════════════════════════════════════════════════════════════
+Anchored to what IS documented (reconnecting "too often" is penalized; limits are
+load-dependent) and to the conservative, unconfirmed ~150/10min ceiling:
+
+  * Exponential backoff with full jitter between reopen attempts:
+      base 1s, factor 2 (1,2,4,8,16,...), CAP 30s, jitter = random in [0, current].
+      Reasoning: 30s cap keeps a recovered venue's reconnect latency bounded while
+      spacing attempts so a sustained outage cannot approach a ~150/10min ceiling.
+      Even at the 30s cap that is 20 attempts / 10 min << 150 — an order of magnitude
+      of headroom against the unconfirmed figure, which is the right posture when the
+      limit is silent.
+  * Circuit breaker: max 10 reopen attempts per rolling 10-minute window. On trip ->
+      FAIL LOUD with a declared reason code and STOP the capture (Ruling B; pending-veto
+      STOP semantics). Reasoning: 10/10min tolerates ordinary venue hiccups and the
+      anticipated ~116 keepalive reconnects/24h (~0.8/10min average) with wide margin,
+      while still bounding a pathological storm far below the conservative ceiling.
+
+  ALL FIGURES ABOVE ARE ENGINEERING JUDGMENT under documented silence, to be stated as
+  such in the backoff code's docstring — not as a Kraken citation.
+
+STATUS: research only. No production code changed. Implementation (backoff + breaker +
+keepalive) is the fresh-session work per the checkpoint below.
