@@ -113,3 +113,15 @@ PRECISE HISTORY:
 NO annotation required. Unlike the sequence fiction, this proof was sound
 when it was made and is sound now. The only defect was one I introduced
 and caught within the same work order.
+
+################ WO-014b-1 ANNOTATION (2026-07-20) ################
+[Appended, not rewritten. The text above is preserved verbatim.]
+
+The claim this artifact certifies — the counter reaches five and _reconnect is
+CALLED — is true and remains true; the threshold WAS reachable. What it does not
+and cannot certify is that recovery OCCURS, because the callee _reconnect() was a
+`pass` stub at the time and until WO-014b. This certification proved the counter
+reaches five and the escalation fires. It did not prove recovery occurs: the proof
+terminated at a call-site. Superseded for the recovery claim by WO-014b-1's
+effect-terminating proof (evidence/WO-014b/reconnect_to_effect.txt) per rule 0.1i.
+See docs/decisions/2026-07-20-reconnect-never-worked-in-production.md.

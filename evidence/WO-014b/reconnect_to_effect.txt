@@ -1,0 +1,69 @@
+################################################################
+# WO-014b-1 BITE PROOF — _reconnect() PROVEN TO EFFECT (rule 0.1i)
+# Generated: 2026-07-20T14:02:38Z
+# Target test drives 5 REAL checksum failures through get_live_market_data()
+# and asserts the END STATE (fresh connection opened + emission resumes),
+# NOT that _reconnect was called. Simulated transport; NO network.
+################################################################
+
+===== sha256 BEFORE (production file, fix in place) =====
+f1e9ff03143b5e4e3bf9fc71363fdedcea7175870deb08e1c0ea39937719fa62  src/trading/data/adapters/kraken_v2_book.py
+
+===== ARTIFACT 1 of 4 — PASS (fix in place) =====
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+===== MUTATION — revert _reconnect() body to the WO-008b-B no-op (`pass`) =====
+reverted _reconnect() body to `pass` -- the exact defect WO-008b-B shipped
+
+===== ARTIFACT 2 of 4 — ACTUAL FAIL with real assertion text (no-op reconnect) =====
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes FAILED [100%]
+
+================================== FAILURES ===================================
+___________ test_five_real_failures_reconnect_and_emission_resumes ____________
+tests\integration\test_reconnect_to_effect.py:69: in test_five_real_failures_reconnect_and_emission_resumes
+    assert factory.connect_count == 2, (
+E   AssertionError: reconnect must close the failed socket and OPEN A FRESH ONE; only 1 connection(s) were opened
+E   assert 1 == 2
+E    +  where 1 = <tests.fixtures.fake_ws_transport.ScriptedConnectionFactory object at 0x000001F28AE4B380>.connect_count
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:925 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+=========================== short test summary info ===========================
+FAILED tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes
+============================== 1 failed in 0.10s ==============================
+
+===== RESTORE production file from backup =====
+
+===== ARTIFACT 4 of 4 — sha256 AFTER restore (must EQUAL before) =====
+f1e9ff03143b5e4e3bf9fc71363fdedcea7175870deb08e1c0ea39937719fa62  src/trading/data/adapters/kraken_v2_book.py
+EXACT-RESTORE OK: sha256 identical before and after (rule 0.7).
+
+===== ARTIFACT 3 of 4 — PASS after restore =====
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+################################################################
+# END BITE PROOF
+################################################################

@@ -1134,6 +1134,9 @@ python -m trading.backtest.runner
 - Valid checksum passes and updates book ✅
 - Corrupted checksum rejected and logged ✅
 - 5 consecutive failures trigger resync ✅
+  - **WO-014b-1 ANNOTATION (2026-07-20, appended not rewritten):** the ✅ certified the
+    counter/escalation, not that `_reconnect()` recovers — it was a `pass` no-op until
+    WO-014b. Recovery is now proven to effect: `evidence/WO-014b/reconnect_to_effect.txt`.
 - Sequence gap triggers resnapshot ✅
 - LocalBookState initialization ✅
 - LocalBookState transitions ✅
@@ -1364,6 +1367,11 @@ python -m trading.loop.live
 4. **Recovery Logic** ✅
    - Sequence gap detection → discard book + request snapshot (proven)
    - 5 consecutive failures → resync/reconnect (proven)
+     - **WO-014b-1 ANNOTATION (2026-07-20, appended not rewritten):** "proven" here
+       covered the counter reaching five and the escalation firing — NOT that recovery
+       occurs. `_reconnect()` was a `pass` no-op at the time and until WO-014b, and the
+       proof terminated at a call-site. Superseded for the recovery claim by WO-014b-1's
+       effect-terminating proof (`evidence/WO-014b/reconnect_to_effect.txt`) per rule 0.1i.
    - <5 failures does NOT trigger resync (proven)
 
 5. **Tests Updated** ✅

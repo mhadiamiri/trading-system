@@ -518,6 +518,12 @@ class KrakenV2BookAdapter:
         # WO-008b-A1 §1: no-emission window. True from a checksum failure until a
         # fresh snapshot is applied AND its checksum validates (FR-018a(d)).
         self._awaiting_resync = False
+        # WO-014b-1: full-reconnect request flag. Set by _reconnect() (reached at 5
+        # consecutive checksum failures, FR-018) and consumed by the transport, which
+        # closes/reopens the socket. Mirrors _request_snapshot's committed flag
+        # pattern (design B). A set-but-never-consumed flag is silent non-action and
+        # the transport fails loudly on it (RECONNECT_FLAG_STRANDED).
+        self._pending_reconnect = False
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -873,10 +879,37 @@ class KrakenV2BookAdapter:
         self._pending_resubscribe = True
 
     def _reconnect(self) -> None:
-        """Reconnect to Kraken WebSocket."""
-        # This would close and reopen the WebSocket connection
-        # For now, this is a placeholder for the connection logic
-        pass
+        """
+        Request a full transport reconnect: close the live socket and reopen it,
+        then resubscribe for a fresh snapshot.
+
+        WO-014b-1 (rule 0.1i). This was `pass` from Phases 1-3 through WO-008b-A1b.
+        The FR-018 5-consecutive-checksum-failure recovery therefore CALLED this and
+        NOTHING HAPPENED — WO-008b-B ran sixty minutes with a no-op reconnect. The
+        A1b certification proved the counter reaches five and this method is CALLED;
+        it did not — could not — prove recovery, because the callee did nothing. The
+        proof terminated at a call-site. That gap is exactly why rule 0.1i exists.
+
+        Design mirrors _request_snapshot's committed flag pattern (approved design B):
+        setting a flag the transport (get_live_market_data) consumes is a REAL action,
+        not a no-op (rule 0.1g). _reconnect is called synchronously from
+        _process_quote_update (the checksum-failure branch), which holds no socket —
+        only the transport does. The transport closes/reopens and hands off to
+        _maybe_resubscribe (the committed Phase 2.1 producer) for the fresh
+        subscription. Setting a flag keeps this method synchronous: no private-method
+        async signature change (0.1a).
+
+        WATCHDOG: a flag the transport never consumes is silent non-action — the very
+        defect this method's history embodies, in a new costume. The transport raises
+        RECONNECT_FLAG_STRANDED if the flag survives a loop boundary unconsumed
+        (threshold: zero-iteration latency; see get_live_market_data).
+
+        HONEST FIXTURE LIMIT: the close/reopen and the resubscribe SEND are exercised
+        by simulated transport (evidence/WO-014b/reconnect_to_effect.txt). Only the
+        isolated live re-run confirms Kraken responds to a fresh connection + subscribe
+        with a fresh snapshot.
+        """
+        self._pending_reconnect = True
 
     def _log_error(self, message: str) -> None:
         """
@@ -972,6 +1005,44 @@ class KrakenV2BookAdapter:
         await websocket.send(json.dumps(self._build_subscribe_message()))
         logger.info("[kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot")
 
+    async def _perform_reconnect(self, websocket):
+        """
+        WO-014b-1 EFFECT: close the current socket, open a FRESH one, resubscribe.
+
+        The transport calls this when _reconnect() (reached at 5 consecutive checksum
+        failures, FR-018) has set _pending_reconnect. This is the close/reopen that
+        WO-008b-B never performed — its _reconnect was `pass`, so at five failures the
+        code "reconnected" by doing nothing and continued against a discarded book.
+
+        Reuses the committed Phase 2.1 producer for the fresh subscription rather than
+        inventing a second subscribe mechanism (note 1): it sets _pending_resubscribe
+        and hands off to _maybe_resubscribe, which sends unsubscribe+subscribe. On a
+        FRESH socket the unsubscribe has nothing to cancel — Kraken answers it with a
+        non-book error frame the parser already filters — and the subscribe delivers
+        the fresh snapshot. One code path serves "get a fresh snapshot onto a socket".
+
+        Returns the NEW socket for the transport to swap in. A failed reopen raises
+        ConnectionError from _connect — never a silent fixture fallback (rule 0.5,
+        no-silent-fallback).
+        """
+        self._pending_reconnect = False
+        logger.info(
+            "[kraken_v2_book] RECONNECT: closing and reopening the live socket after "
+            "5 consecutive checksum failures (FR-018)"
+        )
+        try:
+            await websocket.close()
+        except Exception as exc:
+            # A close failure on an already-dead socket must not block the reopen.
+            logger.warning("[kraken_v2_book] error closing socket during reconnect: %s", exc)
+        new_websocket = await self._connect()
+        # Fresh connection => fresh subscription for a fresh snapshot. Hand off to the
+        # committed producer (design B), which the transport's resync path also uses.
+        self._pending_resubscribe = True
+        await self._maybe_resubscribe(new_websocket)
+        logger.info("[kraken_v2_book] RECONNECT complete: fresh socket subscribed; awaiting fresh snapshot")
+        return new_websocket
+
     async def _connect(self):
         """
         Open the public v2 WebSocket. Raises on failure — NEVER falls back.
@@ -1033,6 +1104,22 @@ class KrakenV2BookAdapter:
 
             deadline = time.time() + duration_seconds
             while time.time() < deadline:
+                # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
+                # process_raw_frame (the FR-018 checksum-failure branch); the servicing
+                # step below consumes it in the SAME iteration. THRESHOLD: zero-iteration
+                # latency — a correctly plumbed flag is cleared before the loop returns
+                # here. If it is still set at this boundary, a reconnect was requested
+                # and NOT effected: silent non-action, the WO-008b-B defect class this
+                # WO exists to kill. Fail loudly rather than press on against a discarded
+                # book (rule 0.1i / 0.1g).
+                if self._pending_reconnect:
+                    raise RuntimeError(
+                        "RECONNECT_FLAG_STRANDED: a reconnect was requested "
+                        "(_pending_reconnect set by _reconnect() at 5 consecutive "
+                        "checksum failures) but the transport did not effect it before "
+                        "the next loop boundary. Recovery must never silently no-op."
+                    )
+
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     break
@@ -1077,11 +1164,22 @@ class KrakenV2BookAdapter:
                 )
                 market_states = await self.process_raw_frame(raw_frame)
 
-                # WO-014 §2.1: if that frame's checksum failure opened a resync
-                # window, RESUBSCRIBE now to obtain a fresh snapshot (the producer
-                # `_request_snapshot` requested). Without this the window latched off
-                # forever (WO-008b-B). The consumer path above is untouched.
-                await self._maybe_resubscribe(websocket)
+                # WO-014b-1: RECONNECT takes priority over same-socket resubscribe.
+                # Five consecutive checksum failures (FR-018) set _pending_reconnect via
+                # _reconnect(); we close/reopen the socket and resubscribe on the FRESH
+                # one, swapping it in for the rest of the capture. This is the effect
+                # WO-008b-B's `pass` never produced.
+                #
+                # Otherwise (WO-014 §2.1) a single checksum failure's resync request is
+                # served on the SAME socket by the committed Phase 2.1 producer; without
+                # it the no-emission window latched off forever (WO-008b-B). Reconnect
+                # SUBSUMES resubscribe — the fresh socket already gets a fresh
+                # subscription — so we never also resubscribe the socket being replaced.
+                # The consumer path above is untouched (design B).
+                if self._pending_reconnect:
+                    websocket = await self._perform_reconnect(websocket)
+                else:
+                    await self._maybe_resubscribe(websocket)
 
                 # LAYER 4: yield boundary.
                 for market_state in market_states:

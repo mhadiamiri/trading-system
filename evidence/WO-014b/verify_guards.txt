@@ -1,0 +1,13 @@
+=== ruff ===
+All checks passed!
+EXIT=0
+=== import-linter (console script) ===
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code KEPT
+Contracts: 6 kept, 0 broken.
+=== contract count ===
+PASS: import-linter evaluated 6 contracts (expected 6)

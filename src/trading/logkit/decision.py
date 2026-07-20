@@ -8,7 +8,7 @@ Constitutional Principles:
 - IX. Secrets and Safety Rails: No secrets in logs
 
 Valid Reason Codes (LAYER_VERB_DETAIL vocabulary):
-- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE
+- Data layer: CHECKSUM_RESYNC, PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_FLAG_STRANDED
   (SEQUENCE_GAP_RESNAPSHOT withdrawn 2026-07-19, WO-009b — see below)
 - Cost model: ABNORMAL_SPREAD_REJECT
 - Risk layer: PASS, CLAMP, VETO, KILL_SWITCH_ENGAGED
@@ -37,6 +37,12 @@ class Layer(Enum):
 VALID_REASON_CODES = {
     "DATA": [
         "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
+        # WO-014b-1: raised by get_live_market_data when a reconnect was requested
+        # (_reconnect() set _pending_reconnect at 5 consecutive checksum failures) but
+        # the transport failed to effect it before the next loop boundary. Silent
+        # non-action recovery is the WO-008b-B defect class; this code makes the
+        # watchdog's loud failure part of the audit vocabulary (Principle VIII).
+        "RECONNECT_FLAG_STRANDED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this
