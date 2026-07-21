@@ -1,0 +1,317 @@
+WO-014c-2 §1 — GAP SCHEMA + CAUSE TAXONOMY (DECLARATIVE; NO CODE)
+================================================================================
+Baseline: f74459f (WO-014c-1 COMPLETE). Authority: .specify/memory/constitution.md.
+This file is the SCHEMA-FIRST ruling made concrete: the declarative record that the
+gap-recording implementation (§2) and the future corpus READER (a later WO) are BOTH
+built to satisfy — so neither inherits "whatever the capture happened to write"
+(research.md:23 defect class, one altitude up). It is committed and pushed STANDALONE
+before any §2 capture code exists (WO §1 instruction; rule 0.9 named seam).
+
+All line numbers are src/trading/data/adapters/kraken_v2_book.py @ f74459f (VERIFIED THIS
+SESSION; they differ from evidence/WO-014b-2/gap_attachment_points.txt, which was written
+at bdb5052 before the WO-014c-1 instruments were inserted — that doc's line numbers are
+stale, its FIELD analysis is not).
+
+Convention (unchanged from the attachment-points doc): a GAP is a half-open interval
+[t_open, t_close) during which NO validated MarketState is emitted. "Validated" = a
+snapshot/incremental whose POST-update CRC32 matched the venue's (only place a MarketState
+is returned, _process_quote_update:1103). An unverified book prices nothing (Principle V).
+
+
+================================================================================
+§1.1  CAUSE TAXONOMY — the ruled set of four, each mapped to its EXACT emission site
+================================================================================
+The taxonomy is RULED and EXHAUSTIVE. It is not extended here. Each cause below names the
+production code location that OPENS the no-emission window, where it CLOSES, and the
+declared reason code (decision.py) that already names it in the audit vocabulary.
+
+────────────────────────────────────────────────────────────────────────────────
+CAUSE 1 — KEEPALIVE_RECONNECT   (heartbeat absence)      reason_code: HEARTBEAT_ABSENCE
+────────────────────────────────────────────────────────────────────────────────
+OPEN site : get_live_market_data, heartbeat-absence branch — line 1665
+            `if mono - last_frame >= self._heartbeat_absence_timeout:` (log 1666-1670,
+            reconnect 1671-1674). The window OPENS at the LAST FRAME ACTUALLY RECEIVED,
+            i.e. at `last_frame` (monotonic), NOT at the moment the threshold trips —
+            emission actually stopped one frame earlier.
+CLOSE site: first validated MarketState after the reconnect (_process_quote_update return,
+            line 1103). NOTE (carried from attachment-points, STILL TRUE at f74459f): the
+            absence path has NO explicit close hook of its own — unlike the checksum path's
+            `_awaiting_resync = False` toggle. §2 MUST place the close at the first
+            post-reconnect validated emit (the schema's `resumed`/`close_monotonic`), or
+            route the absence path through the same _awaiting_resync window. This is a
+            required §2 action, flagged here so it cannot evaporate.
+OPEN bound: `last_frame` is MONOTONIC (line 1637/1744). Wall-clock locatability comes from
+            the once-per-run anchor (§1.2), NOT from a per-gap wall timestamp.
+Duration  : if the reconnect itself retries, its span is the BREAKER_RETRY_LADDER (CAUSE 3),
+            attached as `retry_ladder`.
+
+────────────────────────────────────────────────────────────────────────────────
+CAUSE 2 — CHECKSUM_RESYNC                                reason_code: CHECKSUM_RESYNC
+────────────────────────────────────────────────────────────────────────────────
+OPEN site : _enter_resync — line 1022 `self._awaiting_resync = True` (book discarded 1027,
+            resubscribe requested 1028). Reached from the checksum-mismatch branch of
+            _process_quote_update: the mismatch is detected at 1072, the 5th-consecutive
+            failure ALSO sets _pending_reconnect via _reconnect() at 1080, and
+            _enter_resync("post-update checksum mismatch") is called at 1081.
+CLOSE site: line 1097 `self._awaiting_resync = False` — the validated FRESH SNAPSHOT closes
+            the window and emission resumes at 1103. THIS IS THE CLEANEST OPEN/CLOSE PAIR in
+            the codebase: both edges are explicit flag toggles already present.
+OPEN bound: the failing frame's `quote_update.timestamp` (server wall-clock) is in scope at
+            1072; but per §1.2 the AUTHORITATIVE bound is monotonic (captured at _enter_resync
+            entry). The server ts MAY be retained as `open_server_ts` corroboration.
+Escalation: whether this crossed the 5-failure threshold into a FULL reconnect (consecutive_
+            failures >= CHECKSUM_FAILURE_THRESHOLD at 1079) determines whether a retry_ladder
+            attaches (single failure = same-socket resubscribe, empty ladder; 5th = reconnect).
+
+────────────────────────────────────────────────────────────────────────────────
+CAUSE 3 — BREAKER_RETRY_LADDER   (reconnect backoff)     reason_code: (attaches to 1/2/4)
+────────────────────────────────────────────────────────────────────────────────
+EMISSION site: _perform_reconnect backoff loop — line 1348
+            `self._reconnect_ladder.append({"attempt","at","delay_s","error"})`, ONE entry
+            per FAILED reopen. Ladder reset per reconnect operation at 1327; streak_start
+            stamped at the first failed reopen (1341-1342); duration-breaker check 1333-1335.
+NOT A STANDALONE TRIGGER. This cause does not OPEN a gap on its own — it is the DURATION and
+            forensic detail of a gap already opened by CAUSE 1, 2, or 4. Its span is how long
+            the reconnect itself contributed to that gap. It is CROSS-CUTTING: the same ladder
+            structure attaches to a keepalive gap, a checksum-escalated gap, or a venue-close
+            gap. In the schema it is therefore a FIELD (`retry_ladder`) of the gap record, not
+            a separate interval — while remaining one of the four ruled cause names so the
+            taxonomy stays closed.
+IN SCOPE (per attempt): attempt index, wall-clock "at" (ISO), delay_s (jittered backoff),
+            error string — exactly the dict shape already written at 1348-1353.
+
+────────────────────────────────────────────────────────────────────────────────
+CAUSE 4 — VENUE_DISCONNECT                              reason_code: VENUE_CONNECTION_CLOSED
+                                              (terminal: RECONNECT_CIRCUIT_BREAKER_TRIPPED)
+────────────────────────────────────────────────────────────────────────────────
+Three sub-paths. COVERAGE HAS IMPROVED since the attachment-points doc: 4c (explicit venue
+close on recv), DEFERRED there to the §1.3 session, is NOW IMPLEMENTED at f74459f.
+
+4a. TERMINAL — breaker trip (venue presumed gone). RICHEST ALREADY-ASSEMBLED SITE:
+    _trip_circuit_breaker — line 1395 `self.capture_terminated = {...}`, exception raised at
+    1335. capture_terminated ALREADY carries a full terminal-gap record: reason_code,
+    trip_time, trigger, retry_ladder, last_validated_book, frames_captured,
+    evidentiary_bounds (1395-1408). THE GAP SCHEMA IS SHAPED TO MATCH THIS (§1.2). The run
+    STOPS here (terminal=True); no close, the window is open-ended.
+4b. APPLICATION-PING-SEND FAILURE (socket dropped, detected on send). Emission site:
+    get_live_market_data 1690-1700 (`except Exception ... _perform_reconnect(reason=
+    "application ping send failed")` at 1695). A reconnect gap — same fields as CAUSE 1.
+4c. EXPLICIT VENUE CLOSE ON recv (websockets ConnectionClosedError, abnormal code e.g. 1011).
+    NOW COVERED (was the deferred gap): except at 1727, logs VENUE_CONNECTION_CLOSED
+    (1733-1735), routes into _perform_reconnect at 1736-1738. A reconnect gap.
+    CLEAN close (ConnectionClosedOK, code 1000/1001) at 1718-1726 is NOT a gap: it BREAKS the
+    loop and ends the capture without reconnect — an intentional shutdown. It is a capture-END
+    BOUNDARY (see BOUNDARY CONDITIONS below), not an interior no-emission window.
+
+────────────────────────────────────────────────────────────────────────────────
+RULED QUESTION A — is there a gap-producing path that fits NONE of the four?
+────────────────────────────────────────────────────────────────────────────────
+Every no-emission window in the LIVE transport (get_live_market_data, 1579-1827) was
+enumerated. Result: NO fifth cause. Candidates examined and dispositioned:
+
+  • PAUSE_ON_BOOK_UNAVAILABLE (a declared reason code for a no-emission window, FR-019a).
+    NOT REACHABLE IN LIVE CAPTURE. `pause()`/`is_paused` are touched ONLY in the FIXTURE
+    path get_market_data (is_paused check at 1875) and in _trigger_pause_for_test (1975).
+    The live loop never calls self.pause() nor checks is_paused; a live book loss surfaces
+    as heartbeat-absence (CAUSE 1) or venue-close (CAUSE 4), both routed to reconnect. So it
+    is not a fifth LIVE cause. Reported, not invented into the taxonomy (rule 0.1 / §1.1).
+  • RECONNECT_FLAG_STRANDED watchdog (1649-1655). NOT A SILENT GAP — it is a LOUD integrity
+    failure (RuntimeError) that fires if a reconnect was requested but not effected in the
+    same loop iteration. It PREVENTS an undisclosed gap rather than producing one; it is an
+    integrity guard, not a cause. (If it ever fires, that IS a detected-but-uncompletable
+    condition the ledger must surface — see §1.3 completeness.)
+  • Leading edge (connect → first validated snapshot) and trailing edge (clean close /
+    deadline). BOUNDARY CONDITIONS, not interior gaps — handled by run_start_monotonic /
+    run_end_monotonic in the ledger (§1.2) so the reader still bounds emission start/end.
+
+CONCLUSION: the ruled four are exhaustive for the live capture path. No STOP-AND-REPORT
+condition (no fifth cause found).
+
+────────────────────────────────────────────────────────────────────────────────
+RULED QUESTION B — is capture_terminated distinct, or an instance of BREAKER_RETRY_LADDER?
+────────────────────────────────────────────────────────────────────────────────
+capture_terminated is the TERMINAL sub-path of VENUE_DISCONNECT (4a). It is NOT an instance
+of BREAKER_RETRY_LADDER, and BREAKER_RETRY_LADDER is not an instance of it. Reasoning:
+
+  - BREAKER_RETRY_LADDER (CAUSE 3) is the MECHANISM that RAN: the sequence of failed reopen
+    attempts under backoff. A ladder is not terminal by itself — a ladder that SUCCEEDS
+    (_perform_reconnect returns at 1371) RESUMES emission; the gap closes; nothing terminates.
+  - capture_terminated is the CONCLUSION "the venue is gone," reached ONLY when the ladder's
+    continuous-failure streak exceeds T=600s (the DURATION breaker, 1333-1335) and the trip
+    fires. It is the outcome, not the mechanism.
+  - So the two MEET at the trip but are different altitudes: the ladder is EVIDENCE that
+    becomes the `retry_ladder` FIELD of the terminal record; "venue presumed gone / capture
+    STOPPED" is the terminal record itself. capture_terminated therefore classifies as
+    cause=VENUE_DISCONNECT, terminal=True, with the BREAKER_RETRY_LADDER embedded as its
+    retry_ladder. Calling it an instance of BREAKER_RETRY_LADDER would lose the load-bearing
+    fact that only ladder EXHAUSTION (not ladder existence) is terminal.
+
+
+================================================================================
+§1.2  THE GAP SCHEMA — shaped against capture_terminated's already-assembled fields
+================================================================================
+Presented as a dataclass sketch in the house style of the existing self-reporting records
+(LagSampleRecord/PongRecord/ThroughputRecord). DECLARATIVE ONLY — NOT added to production in
+§1; §2 implements it. Field names and the monotonic-clock discipline are the ruling.
+
+RULED CLOCK DISCIPLINE (WO-014c-1 §A.2, reused, NOT re-decided): every gap BOUND is
+time.monotonic() — the SAME clock as the lag sampler, pong observer, and throughput record.
+The entire continuity/discrimination story is a CROSS-RECORD CORRELATION (do gaps coincide
+with message-rate peaks / elevated lag?); correlation across mixed clock bases is the quiet
+methodological hole §A.2 forbids. monotonic() is documented to be unaffected by system-clock
+updates and to never go backwards
+(https://docs.python.org/3/library/time.html#time.monotonic) — the property this relies on.
+
+THE ONCE-PER-RUN WALL ANCHOR (WO §1.2 hard requirement): a SINGLE (wall, monotonic) pair
+captured at ONE instant at capture start. It is the ONLY wall-clock value in the gap records.
+Every monotonic bound is made calendar-locatable by:
+
+        wall(t_mono)  =  run_wall_anchor  +  (t_mono − run_monotonic_anchor)
+
+This gives calendar location WITHOUT ever putting two clock bases inside a gap record and
+WITHOUT correlating across bases (the §A.2 hazard). NOTE for §2: today _start_time is a wall
+stamp (time.time(), line 1605) and the monotonic clocks are stamped a few lines later
+(1637-1639); §2 must capture the anchor PAIR at a single instant, not reuse two separately-
+stamped values.
+
+── PER-GAP RECORD ───────────────────────────────────────────────────────────────
+@dataclass
+class GapRecord:
+    cause: str                         # one of the ruled four (GAP_CAUSES below)
+    reason_code: str                   # the DECLARED audit code emitted (links gap -> vocab)
+    open_monotonic: float              # time.monotonic() at gap OPEN = last frame received /
+                                       #   failing frame (NOT the threshold-trip instant)
+    close_monotonic: Optional[float]   # time.monotonic() at first validated emit after
+                                       #   recovery; None => UNRESOLVED / TERMINAL (open-ended)
+    resumed: bool                      # True once a validated MarketState closed the window
+    terminal: bool                     # True if this gap ENDS the capture (breaker trip 4a);
+                                       #   run STOPS; close_monotonic stays None
+    last_validated_book: Optional[dict]# {best_bid,best_ask,last_checksum,at} at OPEN
+                                       #   (self._last_validated_book, assembled 1088-1093)
+    retry_ladder: list                 # BREAKER_RETRY_LADDER detail: [{attempt,at,delay_s,
+                                       #   error}]; [] for a same-socket checksum resync
+    detail: str                        # human trigger text (e.g. "heartbeat absence 12.3s")
+    open_server_ts: Optional[str]      # CORROBORATION only (venue wall-clock of boundary
+                                       #   frame); the AUTHORITATIVE bound is monotonic
+
+    @property
+    def duration_s(self) -> Optional[float]:
+        # None while unresolved/terminal: an open-ended gap has no closed duration yet.
+        return None if self.close_monotonic is None else self.close_monotonic - self.open_monotonic
+
+MAPPING TO THE WO §1.2 MINIMUM SET:
+    bounding timestamps  -> open_monotonic / close_monotonic (monotonic, §A.2) + run anchor
+    cause                -> cause (+ reason_code for the audit trail)
+    duration             -> duration_s (derived; None while open-ended)
+    last validated book  -> last_validated_book
+    whether emission resumed -> resumed (and terminal for the "never, run stopped" case)
+
+SHAPED-TO capture_terminated (4a) crosswalk (WO ruling: match it, do not retrofit):
+    capture_terminated key   -> GapRecord field
+    reason_code              -> reason_code   (RECONNECT_CIRCUIT_BREAKER_TRIPPED)
+    trip_time                -> open_server_ts / via anchor from open_monotonic; terminal=True
+    trigger                  -> detail
+    retry_ladder             -> retry_ladder
+    last_validated_book      -> last_validated_book
+    frames_captured          -> ledger.frames_captured (run-level, below)
+    evidentiary_bounds       -> ledger.evidentiary_bounds (run-level; two-window doctrine)
+
+── RUN-LEVEL LEDGER ─────────────────────────────────────────────────────────────
+@dataclass
+class GapLedger:
+    run_wall_anchor: str               # ISO-8601 UTC, captured ONCE at capture start
+    run_monotonic_anchor: float        # time.monotonic() at the SAME instant as the anchor
+    run_start_monotonic: float         # emission-window start bound (leading boundary)
+    run_end_monotonic: float           # emission-window end bound (deadline/clean close/trip)
+    gaps: list                         # GapRecord, in OPEN order
+    gaps_detected: int                 # count of gap-OPENS observed (see completeness, §1.3)
+    frames_captured: int               # for the terminal evidentiary tail (4a)
+    evidentiary_bounds: str            # two-window doctrine label when terminal
+
+    # completeness: a detected gap whose record could not be COMPLETED is retained and
+    # flagged, never dropped (§1.3). gaps_recorded == number of COMPLETE records.
+    @property
+    def incomplete(self) -> list:      # detected-but-not-fully-recorded (open seen, no close
+        ...                            #   because the capture died; or a field unpopulated)
+
+GAP_CAUSES = ("KEEPALIVE_RECONNECT", "CHECKSUM_RESYNC",
+              "BREAKER_RETRY_LADDER", "VENUE_DISCONNECT")   # the ruled four, closed set
+
+REASON-CODE NOTE (no code declared in §1): all four causes reuse EXISTING declared codes
+(HEARTBEAT_ABSENCE, CHECKSUM_RESYNC, VENUE_CONNECTION_CLOSED, RECONNECT_CIRCUIT_BREAKER_
+TRIPPED). §2's LEDGER-INTEGRITY loud failure (a detected gap that cannot be completed) will
+likely need ONE new code — proposed GAP_LEDGER_INCOMPLETE (prefix-free against the current
+vocabulary: verified it is neither a prefix of, nor prefixed by, any existing code). Per WO
+§2 it is DECLARED IN THE §2 COMMIT, not here — §1 adds no code (rule: no code in §1).
+
+
+================================================================================
+§1.3  CONTINUITY MUST BE CHECKABLE — how the schema supports the reader's query
+================================================================================
+The corpus READER (a later WO, NOT built here) is DEFAULT-DENY: it may not emit a window
+spanning a gap without explicit acknowledgment. That is implementable ONLY if the schema
+lets the reader answer, cheaply and TOTALLY:
+
+        "does the interval [t0, t1] intersect any recorded gap?"
+
+HOW THE SCHEMA SUPPORTS IT:
+
+1. ONE CLOCK. Gap bounds and corpus-frame timestamps are BOTH time.monotonic() on the same
+   run (§A.2). The reader's query interval and the gap intervals are DIRECTLY comparable — no
+   base conversion, no correlation across clocks. The once-per-run anchor converts to calendar
+   time only for human reporting, never for the intersection test.
+
+2. INTERVAL INTERSECTION, total and cheap. Each gap is half-open [open_monotonic,
+   close_monotonic). Standard test:
+        intersects([t0,t1])  ==  any g:  t0 < (g.close_monotonic or +inf)  AND  g.open_monotonic < t1
+   O(#gaps) as a scan, or O(log n) if the reader keeps gaps sorted by open_monotonic (they are
+   appended in open order, so already sorted). The gap count per run is small (reconnects are
+   rare), so this is trivially cheap.
+
+3. DEFAULT-DENY IS ENCODED, not bolted on. An UNRESOLVED or TERMINAL gap has
+   close_monotonic = None, read as +inf: it intersects EVERY query at or after its open. So a
+   run that ended in a breaker trip (4a) DENIES every window from the trip onward until a human
+   explicitly acknowledges the truncation — exactly the default-deny posture, falling straight
+   out of the None-means-open-ended rule.
+
+4. TOTALITY REQUIRES A KNOWN-COMPLETE LEDGER. "No intersection" is only trustworthy if the
+   ledger is known to hold EVERY gap of the run. So the schema pairs each run with its
+   completeness accounting (GapLedger.gaps_detected vs the count of COMPLETE records, and
+   .incomplete). If a gap was DETECTED but its record could not be COMPLETED (capture died
+   mid-gap; a field unpopulable; the RECONNECT_FLAG_STRANDED watchdog fired), that is STATED —
+   the record is retained and flagged incomplete, and the reader MUST default-deny across the
+   affected span rather than trust a silent "no gap here." This mirrors the WO-014c-1
+   instruments, whose own silence is a POSITIVE signal, never "healthy because quiet."
+
+5. THE COMPLEMENT TILES THE CAPTURE. Emission windows = [run_start_monotonic, run_end_monotonic]
+   MINUS the union of gaps. Because gaps are intervals on the shared clock and the run carries
+   start/end monotonic bounds, the reader can reconstruct exactly the intervals it is allowed to
+   emit, and the leading/trailing boundary conditions are covered by run_start/run_end.
+
+WHAT THE READER WILL NEED (specified, NOT built — WO §1.3):
+   (a) the full GapRecord list on the shared monotonic clock (already sorted by open);
+   (b) the run anchor pair (run_wall_anchor, run_monotonic_anchor) for calendar reporting only;
+   (c) run_start_monotonic / run_end_monotonic (window bounds; leading/trailing edges);
+   (d) the completeness accounting (gaps_detected, complete-record count, .incomplete) so a
+       "no intersection" answer is only ever returned against a ledger known to be total —
+       otherwise the reader default-denies.
+   The reader is OUT OF SCOPE for WO-014c-2 (it is the corpus WO). §1 specifies its contract;
+   it does not implement it.
+
+
+================================================================================
+SUMMARY
+================================================================================
+- Taxonomy: the ruled four map to sites 1665 (keepalive), 1022 (checksum), 1348 (retry
+  ladder — cross-cutting duration field), and 1395/1695/1727 (venue disconnect: terminal /
+  app-ping-fail / venue-close). No fifth cause (PAUSE is fixture-only; STRANDED is a loud
+  guard; edges are boundaries). capture_terminated = terminal VENUE_DISCONNECT with the
+  retry ladder as a field — NOT an instance of BREAKER_RETRY_LADDER.
+- Schema: GapRecord (monotonic bounds + cause + reason_code + duration + last_validated_book
+  + resumed/terminal + retry_ladder) and a run-level GapLedger carrying the ONCE-per-run
+  (wall, monotonic) anchor plus completeness accounting. Shaped to capture_terminated.
+- Continuity: one clock => a total, cheap interval-intersection query; None-close = +inf =
+  default-deny; a known-complete ledger is required for a trustworthy "no gap," and an
+  incompletable gap is stated, not dropped.
+- Two production supports §2 MUST add (flagged, not built): (i) an explicit gap-CLOSE hook on
+  the keepalive-absence path (it has none today); (ii) the anchor PAIR captured at one instant.

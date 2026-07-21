@@ -1,191 +1,152 @@
-# WORK ORDER — WO-008b-A3: Fix Checksum Input Rendering; Sweep Substring Assertions; Re-run Smoke
+# WORK ORDER — WO-014c-2: Gap Recording (Schema + Taxonomy) + Failure-Targeted Capture
 
-**Status:** ACTIVE. Precedes WO-008b-B.
+**Status:** ACTIVE. Fresh session. WO-014c-1 COMPLETE at `f74459f`.
+**READ FIRST:** `evidence/WO-014b-2/gap_attachment_points.txt` (emission sites, in-scope
+fields, and the note that `capture_terminated` at line 1203 is the richest
+already-assembled site), then `evidence/WO-014c-1/thresholds_and_branches.txt`.
 **Authority:** `.specify/memory/constitution.md` governs. Conflict → STOP and escalate.
-**Baseline:** `ebdfcbd` — 119 collected, 111 passed, 8 xfailed, 0 failed, 0 xpassed.
-import-linter 6/6, contract count 6/6, ruff clean.
-**Standing rules 0.1–0.9 apply in full, unchanged.**
+**Baseline:** `f74459f` — 158 passed deterministic AND randomized (seed 20260725),
+0 failed / 0 xfailed / 0 xpassed. import-linter 6/6, contract 6/6, ruff clean.
+**NO VENUE CONNECTION.** Simulated transport only. HTTPS doc fetching permitted.
 
-## CONTEXT
-WO-008b-A2's smoke failed at criteria 2–4 and CONFIRMED the post-update ordering
-fix against live data (1070/1070 post, 0/1070 pre, with negative control). Root
-cause of the checksum mismatch is parse-layer rendering: `json.loads` floats
-Kraken's numbers before project code runs, so `Decimal(str(5.1e-05))` yields
-"0.000051" where Kraken rendered "0.00005100". Declining to fix it after seeing
-the number was correct discipline and is why this is a separate work order.
+═══════════════════════════════════════════════════════════════
+STANDING RULES — permanent
+═══════════════════════════════════════════════════════════════
+- **0.1** Unspecified → STOP and ask.
+- **0.1a** Public interface signature changes, `object.__setattr__`, `# type: ignore`,
+  monkey-patching, or any constraint-bypass mechanism → STOP and ask.
+- **0.1b** No enforcement-class test may be `xfail`/`skip`/excluded without escalation.
+- **0.1c** No `Mock`, stub, fake, or test double in production code paths.
+- **0.1d** An enforcement test whose trigger cannot occur is a false guarantee; a
+  regression sentinel is legitimate but must be LABELLED.
+- **0.1e** Claims about protocols, APIs, venue OR LIBRARY behavior CITE DOCUMENTATION at
+  the point of claim. Docs/RFC are THE CLAIM; source inspection is CORROBORATION only.
+- **0.1f** Source inspection may SUPPLEMENT a behavioral guarantee; never CONSTITUTE one.
+- **0.1g** A stub or unimplemented production path MUST FAIL LOUDLY.
+- **0.1h** Bite proofs exercise the PRODUCTION TRIGGER PATH.
+- **0.1i** A PROOF OF ESCALATION MUST TERMINATE IN AN OBSERVABLE EFFECT.
+- **0.2 / 0.2a** Blockers escalate. Cannot reach gate state → STOP BEFORE PUSH.
+- **0.4** Never weaken a guard, invariant, assertion, or threshold.
+- **0.5** Never print `.env` or any credential.
+- **0.6a–d** Evidence is redirected output; bite proofs carry the summary line WITH
+  DURATION; preflight per 0.6c; fabricated evidence invalidates the WO.
+- **0.7** Bite proofs EXECUTED: PASS, ACTUAL FAIL with real assertion text, PASS after
+  restore, **`sha256` exact-restore**.
+- **0.8** Do not tune to green.
+- **0.9** "I could not complete X" is a successful outcome. Checkpoint rather than
+  half-implement — correct nine times running. **Named seam: after §1 (schema declared
+  and committed), before §2.**
 
-## 1. FIX THE RENDERING AT THE PARSE BOUNDARY
+## WHY THIS EXISTS
 
-### 1.1 Principle — preserve, do not re-render
-The checksum must be computed over **the venue's transmitted representation**,
-not over a numeric value we re-render to a format we assume.
+Two ruled deliverables, both of which are **impossible retroactively**:
 
-Two candidates were named. They are NOT equivalent:
-- `json.loads(..., parse_float=Decimal)` — preserves Kraken's exact digits,
-  trailing zeros included. Venue-agnostic; carries no assumption.
-- Fixed-point 8dp rendering — assumes Kraken always emits 8 decimal places. True
-  for BTC/USD; an unverified assumption for other symbols and magnitudes, and
-  under rule 0.1e an uncited assumption about venue behavior.
+**Gap recording.** ~116 reconnects/24h was measured with no working keepalive and should
+now drop — but every reconnect is still a book discard, resubscribe, resnapshot. STOP
+prevents one undisclosed multi-hour hole; it does nothing about many disclosed-to-nobody
+multi-second ones. Ruled: *"a gap not recorded when it happens cannot be reconstructed
+later."*
 
-**Ops direction: use `parse_float=Decimal` (preserve) unless you find a concrete
-reason it cannot work.** If you find one, STOP AND ASK rather than falling back to
-the heuristic.
+**Failure-targeted capture.** WO-008b-B's 3 checksum failures (3 of 14,251 = 0.021%) were
+lost to positional sampling. After A3's 1254/1254, **that rate is UNDIAGNOSED and NOT
+PRESUMED BENIGN.** By ruling: **no corpus can be blessed until a run's capture shows
+whether these are wire-level anomalies or our residual parse/apply bug.**
 
-### 1.2 Also handle integers
-A `qty` of `0` arrives as a JSON integer, not a float, so `parse_float` alone will
-not cover it. Determine whether `parse_int` (or equivalent) is needed, and report
-what Kraken actually sends for zero-quantity deletions — cite the captured frames,
-which are now ground truth for exactly this question.
+**SCHEMA-FIRST IS THE RULING.** Specify the schema before either side is built —
+otherwise the reader inherits whatever the capture happened to write, which is
+fixtures-shaped-to-the-implementation one layer up. Same defect class as `research.md:23`,
+at a different altitude.
 
-### 1.3 Prove it against BOTH ground truths
-- Documented snapshot checksum `3310070434` (Kraken docs) — must still reproduce.
-- Live snapshot checksum `3372482100` (captured A2 frames) — must now reproduce.
-- All captured incremental frames — Kraken's own checksums must validate.
-Paste all three. A fix that satisfies the live value but breaks the documented one
-is not a fix.
+## OUT OF SCOPE
+- The corpus READER and its default-deny acknowledgment API — the corpus WO.
+- Stub-lint and the widened precondition sweep (014c-3).
+- The 60-minute re-run. **NO VENUE CONNECTION.**
 
-### 1.4 Bite proof — four artifacts
-Test asserting the checksum input preserves the venue's rendering. Reintroduce the
-float round-trip → **PASTE THE ACTUAL FAILING OUTPUT** with real assertion text →
-restore → PASS → empty diff.
-Evidence → `evidence/WO-008b-A3/rendering_bite_proof.txt`
+## §1 — DECLARE THE GAP SCHEMA AND CAUSE TAXONOMY (no code; commit before §2)
 
-### 1.5 Close the 1071 vs 1070 discrepancy
-A2 reports 1071 updates arrived but 1070 replayed. Account for the difference
-exactly. If it is benign (e.g. the final frame was truncated at disconnect), say
-so with the evidence. Do not leave a one-frame gap unexplained in checksum evidence.
+### 1.1 Cause taxonomy — ruled set, exhaustive
+`KEEPALIVE_RECONNECT`, `CHECKSUM_RESYNC`, `BREAKER_RETRY_LADDER`, `VENUE_DISCONNECT`.
+- Map each to the **exact emission site** already identified in
+  `gap_attachment_points.txt`.
+- If a gap-producing path exists that fits none of these, **STOP AND REPORT** — do not
+  invent a fifth cause. The taxonomy is ruled.
+- State whether `capture_terminated` (the richest assembled site) is a distinct cause or
+  an instance of `BREAKER_RETRY_LADDER`, with reasoning.
 
-## 2. SWEEP SUBSTRING ASSERTIONS — systemic 0.1d check
+### 1.2 Schema — shaped against real emission sites
+Per record, at minimum: **bounding timestamps** (`time.monotonic()`, the shared clock
+from 014c-1 — plus a wall-clock anchor recorded ONCE per run so gaps are locatable in
+calendar time without correlating across mixed bases), **cause**, **duration**, **last
+validated book state**, and whether emission resumed.
 
-`test_no_market_state_guard` passes with its guard disabled because
-`EXEC_NO_MARKET_STATE` is a substring of `EXEC_NO_MARKET_STATE_TIMESTAMP` raised by
-an adjacent guard. The defect is not that one test — it is **substring matching in
-assertions**, which cannot distinguish a code from its own prefix.
+Shape it against `capture_terminated`'s already-assembled fields rather than inventing a
+schema and retrofitting.
 
-- Sweep the full test suite for assertions matching reason codes, error codes, or
-  log messages by substring/`in`/`startswith` rather than equality.
-- For EACH hit: can it pass when the mechanism it certifies is disabled? Report
-  every instance and your determination.
-- Convert to exact-match assertions where the answer is yes.
-- **Prove the fix bites** for `test_no_market_state_guard` specifically: disable
-  its guard → **PASTE THE ACTUAL FAILING OUTPUT** → restore → PASS → empty diff.
-- Also check the reason-code vocabulary itself: are any codes prefixes of others?
-  If so, that naming is a latent trap independent of any test. Report; do not
-  rename without asking (rule 0.1a).
-Evidence → `evidence/WO-008b-A3/substring_assertion_sweep.txt`
+### 1.3 The schema must make CONTINUITY CHECKABLE
+The corpus reader is default-deny: it cannot emit a window spanning a gap without
+explicit acknowledgment. That is only implementable if the schema lets a reader answer
+*"does the interval [t0, t1] intersect any recorded gap?"* cheaply and totally.
+- State how the schema supports that query.
+- **Do NOT build the reader.** Specify what it will need.
 
-## 3. RE-RUN THE SMOKE TEST — 2 MINUTES
+Evidence → `evidence/WO-014c-2/gap_schema.txt`
+**Commit and push §1 standalone before §2.** It is the declarative record two work orders
+depend on, and it should exist independently of the capture code.
 
-Full preflight gate first, including the randomized-order suite run with its seed.
-Same five pass criteria, same pre-ruled failure interpretation:
+## §2 — IMPLEMENT GAP RECORDING
 
-**If checksums still fail, do NOT tune and do NOT retry to green.** Stop, capture
-frames, diagnose offline. Report the failure.
+Emit a record at every site in the taxonomy.
+- **Every gap-producing path emits, or the path is reported as unable to** — a silently
+  unrecorded gap is the failure this WO exists to prevent.
+- **Bite proof per cause, four artifacts each**, `sha256`, terminating in the observable
+  effect (0.1i): drive the real production trigger, observe the record written with all
+  schema fields populated. **Do not hand-feed** (0.1h).
+- **Completeness accounting**, consistent with 014c-1's instruments: the gap ledger
+  reports its own integrity — if a gap was detected but its record could not be completed,
+  that is stated, not dropped.
+- Declare any new reason code in the same commit.
 
-Report checksums attempted / passed / failed explicitly, plus raw received,
-MarketStates emitted, `venue_name`, staleness firings, reconnects.
+## §3 — FAILURE-TARGETED CHECKSUM CAPTURE
 
-**Retain this run's frames as an additional ground-truth fixture**, labeled with
-its own UTC timestamp and run ID. Do not overwrite A2's — two independently
-captured windows are stronger evidence than one.
+On **every** checksum failure, persist:
+- the **raw wire text** of the failing frame, verbatim
+- the **local book state** at failure — both ladders, at subscribed depth
+- **expected** (Kraken's) and **computed** checksums
+- the **preceding N frames** for reconstruction — **state and justify N**
+- UTC timestamp **and** monotonic timestamp, plus sequence position in the run
 
-## 4. VERIFY, COMMIT, PUSH
-    pytest tests/ -rX
-    import-linter lint
+Redact via the mechanical redaction module.
+**Bite proof:** inject a synthetic checksum failure through the production path and show
+the full artifact written with every field. Four artifacts, `sha256`.
+
+**Do not sample positionally.** Positional sampling is precisely what lost the three
+failures we now need.
+
+## §4 — VERIFY, COMMIT, PUSH
+    pytest tests/ -p no:randomly -rX
+    pytest tests/ --randomly-seed=<state it> -rX
+    lint-imports
     python tools/contract_count_check.py
     ruff check .
-Explain every test-count delta against `ebdfcbd`. Secret scan including captured
-frames. Push, paste local vs remote HEAD.
+0 failed / 0 xfailed / 0 xpassed BOTH orders. Explain every delta against `f74459f`.
+Per 0.2a stop before push if you cannot reach it. Secret scan, push, paste HEADs.
 
-## 5. FINAL REPORT — then STOP
-1. Which rendering fix did you use, and why? Confirm no assumption about Kraken's
-   decimal places was encoded.
-2. Integers/`qty: 0` — what does Kraken actually send? Cite the captured frames.
-3. Paste all three ground-truth reproductions: documented `3310070434`, live
-   `3372482100`, and captured incrementals.
-4. Rendering bite proof — four artifacts with durations.
-5. **The 1071 vs 1070 discrepancy — accounted for exactly.**
-6. Substring sweep — every hit, every determination, the conversions made, the
-   `test_no_market_state_guard` bite proof, and whether any reason code is a
-   prefix of another.
-7. **Smoke results vs all five criteria**, numbers pasted. Checksums attempted /
-   passed / failed.
-8. Raw received, emitted, `venue_name`, staleness firings, reconnects. Label any
-   rate a smoke observation.
-9. New frames retained? Paste the fixture header. Confirm A2's were not overwritten.
-10. Paste §4 verification with the delta explained.
-11. **Did any credential appear in ANY output, log, evidence file, or captured
-    frame?** YES/NO.
-12. **Was any order placed at any venue?** YES/NO.
-13. **Is any file in `evidence/WO-008b-A3/` prose standing in for output?** YES/NO.
-14. **What did you change that you were not asked to change?** Every file, or "none."
-15. **What could not be completed, and why?**
+## §5 — FINAL REPORT — then STOP
+1. **Taxonomy** — all four causes mapped to emission sites. Any path fitting none? Is
+   `capture_terminated` distinct or an instance?
+2. **Schema** — paste it. Confirm the monotonic clock plus the once-per-run wall anchor.
+   How does it support the reader's interval-intersection query?
+3. **Gap recording** — bite proof per cause, four artifacts each, exercising the
+   production trigger.
+4. **Ledger completeness** — can it report a gap whose record could not be completed?
+5. **Failure capture** — paste a synthetic failure artifact showing every field. What N,
+   and why?
+6. Reason codes declared in the same commit?
+7. Verification: both runs with seeds and durations, deltas, linter, contract count,
+   ruff, local/remote HEAD.
+8. **Venue connection?** YES/NO. **HTTPS doc fetch?** YES/NO.
+9. **Prose standing in for output?** YES/NO.
+10. **Changed but not asked?** Every file, or "none."
+11. **What could not be completed, and why?**
 
-ADDENDUM TO WO-008b-A3 — three additions, ruled by the project lead.
-WO-008b-A3 is APPROVED AS DRAFTED. Everything in it stands. These add to it.
-
-=== A. FR-018a AMENDMENT — rides with this WO, no separate order ===
-Add to FR-018a, as a principle rather than an implementation note. Ruled text:
-
-  "Checksum input MUST derive from the venue's transmitted representation;
-   re-rendering a parsed numeric value into an assumed format is prohibited as
-   checksum input."
-
-Reasoning to record with it: an 8dp re-rendering is an UNCITED ASSUMPTION ABOUT
-VENUE BEHAVIOR — rule 0.1e applied to number formatting instead of protocol
-fields. It holds for BTC/USD today and breaks silently on the first symbol or
-price magnitude Kraken renders differently. "Breaks silently" here means every
-checksum mismatches and the book never validates — we now know exactly what that
-looks like, because we watched it for two minutes.
-
-`parse_float=Decimal` is CONFIRMED as the ruled fix, with the STOP-and-ask
-fallback exactly as §1.1 states. Run /speckit-analyze after amending and confirm
-no sibling artifact contradicts the new clause.
-
-=== B. PREFIX-FREEDOM IS NOW A NAMING RULE — pre-ruled, do not stall ===
-§2 told you to report-not-rename on the reason-code vocabulary. Ruling in advance:
-
-  NO REASON CODE MAY BE A PREFIX OF ANOTHER REASON CODE.
-
-- Add a mechanical check: a test iterating the full reason-code vocabulary and
-  asserting prefix-freedom. It goes in the suite so the rule outlives everyone's
-  memory of why it exists.
-- Rationale beyond the current bug: even with every assertion converted to
-  exact-match, prefix-overlapping codes stay a latent trap for every future grep,
-  log query, and dashboard filter. The VOCABULARY must be safe, not merely today's
-  assertions against it.
-- If the sweep finds EXEC_NO_MARKET_STATE / EXEC_NO_MARKET_STATE_TIMESTAMP is the
-  ONLY collision, you may execute the rename under this ruling — with the standard
-  grep-for-orphans completeness check afterward (every consumer, log parser, doc,
-  and test updated; zero references to the old code remain).
-- If there are MULTIPLE collisions, report them and STOP before renaming — a
-  cluster is its own work order.
-- Bite proof for the new check, four artifacts: introduce a deliberate prefix
-  collision -> PASTE THE ACTUAL FAILING OUTPUT -> remove -> PASS -> empty diff.
-
-=== C. REPORT ITEM 3 CARRIES ITS OWN DENOMINATOR ===
-State the COUNT of captured incrementals validated, not just "incrementals
-validate." Evidence should carry its denominator: "N of N captured incremental
-checksums reproduced" — so the claim is auditable without opening the fixture.
-
-=== D. DECISION LOG — two entries, verbatim where quoted ===
-1. "Fixing after seeing the number and re-running to green is exactly how a wrong
-   assumption survives contact." Recorded as the reason WO-008b-A2 declined to fix
-   the rendering defect in the run that discovered it.
-2. "The fixture was more correct than reality." kraken_v2_raw_frames.py warned
-   that a float round-trip would corrupt the checksum and stored prices as strings
-   for that reason; the production parse path was committing exactly that round
-   trip. The fixture-fidelity work from WO-009 was paying before the socket opened.
-
-=== E. STANDING PATTERN RATIFIED ===
-Every live window captured is KEPT, LABELED, and IMMUTABLE. Ground truth accretes;
-it is never replaced. A3's frames are an additional fixture alongside A2's, with
-their own UTC timestamp and run ID.
-
-Everything else in WO-008b-A3 proceeds as written. Do NOT run the 60-minute
-capture. STOP for human review.
-
-
-
-
-
+STOP for review. Do NOT proceed to 014c-3 or the re-run.
