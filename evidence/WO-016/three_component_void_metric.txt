@@ -1,0 +1,69 @@
+WO-016 §B (D27) — THREE-COMPONENT VOID OR-GATE: declared per 0.1j, implemented, this run's values
+================================================================================================
+Implemented in src/trading/data/adapters/kraken_v2_book.py (constants block + LagSampleRecord
+properties + _check_instruments_gappy). 0.4 pre-released on this complete declaration. The lag
+sampler's VOID verdict is now `recorded_gaps OR elevated_lag OR mean_cycle_drift`; the pong
+observer keeps its discrete missed-SENDS gate. Each component owns ONE failure mode by construction.
+
+── THE THREE COMPONENTS (rule 0.1j: per-sample bound + aggregation window + verdict fraction) ──
+(1) DISCRETE — "did the sampler stop recording" (a few long stalls).
+    per-sample bound : a wake is missed when its interval >= LAG_GAP_FACTOR × interval = 0.200 s.
+    aggregation window: the capture window.
+    verdict fraction : VOID if Σ(recorded-gap durations)/window > RECORDED_GAP_VOID_FRACTION = 0.10.
+    derivation       : 10% of the window lost to >=200ms stalls is severe discrete starvation —
+                       same magnitude as the retired gate, now over the CORRECT quantity.
+    THIS RUN         : 2.88 s / 3600.00 s = 0.080 %  -> CLEAN.
+
+(2) SPIKY — many moderate spikes (high COUNT even if total time is low).
+    per-sample bound : lag (wake overrun) > ELEVATED_LAG_THRESHOLD = 0.100 s.
+    aggregation window: samples.
+    verdict fraction : VOID if fraction of samples with lag>100ms > ELEVATED_LAG_VOID_FRACTION = 0.05.
+    derivation       : adopted VERBATIM from WO-014c-1 "ELEVATED = >100ms on >5% of samples".
+    THIS RUN         : 12 / 33,062 = 0.036 %  -> CLEAN.
+    (Note: (1) and (2) share the ~200ms per-sample boundary but DIFFER in aggregation — time-
+     fraction vs count-fraction — so they own different SHAPES: few-long-stalls vs many-spikes.
+     That is why they are not the redundancy the D27 ruling flagged in the two-metric proposal.)
+
+(3) UNIFORM — a uniform slowdown that escapes (1) and (2) (e.g. a 199ms cycle: 0 gaps <200ms,
+    0 elevated <100ms lag, but doubled cycle / halved resolution).
+    bound            : VOID if (mean_cycle − baseline)/baseline > MEAN_CYCLE_DRIFT_VOID_FRACTION =
+                       0.50 (SIGNED — only SLOWDOWN fires; a faster cycle is health).
+    derivation       : below the doubling-point (100% = unambiguous starvation; the 199ms
+                       counterfactual reads +83%), above benign run-to-run variation (≪50%).
+    THIS RUN         : mean_cycle 108.886 ms vs baseline 108.886 ms -> +0 % drift -> CLEAN.
+
+── BASELINE PROTOCOL (RULED) ─────────────────────────────────────────────────────────────────
+FROZEN. THE STANDING BASELINE = this run's OBSERVED mean cycle: span/actual = 3600.00 s / 33,062 =
+0.108886 s (MEAN_CYCLE_BASELINE_SECONDS), from WO-008b-B-RERUN (run WO-008b-B-RERUN-20260721T170944Z).
+Re-declared ONLY on a pipeline change that touches the loop, and that re-declaration is a 0.4 EVENT.
+Reason: a baseline that RE-DERIVES itself each run from that run's early minutes can be DRAGGED by
+slow-onset starvation ("the instrument got slower and we re-baselined around it" — the drift
+metric's own 0.1d); freezing it makes that unwritable. The baseline is OBSERVED, not idealized, so
+per-cycle overhead is already IN it and only CHANGE registers — component (3)'s structural immunity.
+
+── PARTITION, REWRITTEN against the three components (discrete / spiky / uniform → owner) ─────
+The 8.16% naive deficit decomposed (partition_proof.txt): 0.080% recorded missed-wakes + 8.08%
+per-cycle overhead + ~0% disconnect-idle. Mapped to owners:
+  - the 0.080% (real missed wakes)      -> DISCRETE owns it (measured directly, not via overhead).
+  - per-cycle overhead (8.08%)          -> owned by NO VOID component: it is IN the frozen baseline,
+                                           so UNIFORM sees only CHANGE, not the standing overhead.
+  - a hypothetical spike cluster        -> SPIKY owns it (count-fraction).
+  - a uniform slowdown (the escapee)    -> UNIFORM owns it (drift vs baseline).
+The naive metric conflated overhead (bias) and slowdown (signal) into one number; the three-gate
+separates them so each mode is owned and none is laundered through another.
+
+── RESIDUAL, NAMED AS A FLOOR LIMIT (in-the-failure-domain doctrine) ─────────────────────────
+The mode that still escapes all three: DEGRADATION OF THE SAMPLER'S OWN MEASUREMENT such that drift
+reads normal while truth does not — the monotonic clock skewing, or the whole process slowing in
+lockstep with the baseline comparison. Every in-process detector shares its process's domain and
+cannot certify below it. Declared as the instrument's FLOOR LIMIT, not closed. (An out-of-process
+witness — e.g. host-suspend detection's wall-vs-monotonic divergence — is the only thing that can
+see below this floor, and it is a separate instrument.)
+
+── METRIC (b) — connected time / wall time ───────────────────────────────────────────────────
+99.75 % this run; stands unchanged as a separately named corpus-quality figure, unaffected by the
+re-ruling.
+
+THIS RUN under all three components: CLEAN (0.080% / 0.036% / +0% — all below their fractions).
+The WO-008b-B-RERUN Branch-1 discrimination stands and is strengthened: it was never near a VOID it
+had earned; the retired metric put it within 2 points of a VOID it had NOT earned.

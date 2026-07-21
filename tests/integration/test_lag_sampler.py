@@ -77,3 +77,57 @@ async def test_check_instruments_gappy_emits_declared_code(caplog):
     with caplog.at_level(logging.ERROR):
         assert adapter._check_instruments_gappy(clean) is False
     assert "INSTRUMENTS_GAPPY" not in caplog.text
+
+
+# ── WO-016 §B (D27): the three-component OR-gate — each component witnessed in isolation ──
+
+@pytest.mark.asyncio
+async def test_void_gate_uniform_drift_catches_the_counterfactual(caplog):
+    """THE D27 COUNTERFACTUAL. A UNIFORM ~199ms cycle (cycle time doubled, temporal resolution
+    halved) records ZERO gaps (199ms < 200ms) and ZERO elevated samples (lag 99ms < 100ms) — it
+    escapes DISCRETE and SPIKY entirely — yet the mean-cycle-drift component catches it. This is
+    the mode the two-metric proposal would have missed; it is why component (3) exists."""
+    adapter = KrakenV2BookAdapter()
+    rec = LagSampleRecord(interval_s=0.1)
+    rec.started_monotonic = 0.0
+    rec.ended_monotonic = 100.0
+    rec.samples = [(0.199 * i, 0.099) for i in range(502)]   # ~199ms cadence, lag 99ms (<100ms)
+    rec.gaps = []                                            # 199ms < 200ms -> no recorded gaps
+    # the other two components are BLIND to it:
+    assert rec.recorded_gap_fraction == 0.0
+    assert rec.elevated_lag_fraction(adapter.ELEVATED_LAG_THRESHOLD_SECONDS) == 0.0
+    # but drift is unmissable (~83% above the 108.886ms frozen baseline):
+    with caplog.at_level(logging.ERROR):
+        assert adapter._check_instruments_gappy(rec) is True
+    assert "UNIFORM" in caplog.text and "INSTRUMENTS_GAPPY" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_void_gate_spiky_component_fires_on_count_not_time(caplog):
+    """SPIKY: many moderate spikes exceed the >5% COUNT fraction while their total TIME stays
+    under the DISCRETE 10% — the shape recorded-gaps (time-fraction) alone would miss."""
+    adapter = KrakenV2BookAdapter()
+    rec = LagSampleRecord(interval_s=0.1)
+    rec.started_monotonic = 0.0
+    rec.ended_monotonic = 100.0
+    rec.samples = [(0.1 * i, 0.11 if i < 60 else 0.0) for i in range(1000)]  # 6% elevated
+    rec.gaps = [(float(i), float(i) + 0.11, 0.11) for i in range(60)]        # 6.6s = 6.6% < 10%
+    assert rec.recorded_gap_fraction < adapter.RECORDED_GAP_VOID_FRACTION     # DISCRETE clean
+    assert rec.mean_cycle_s < adapter.MEAN_CYCLE_BASELINE_SECONDS             # UNIFORM clean
+    with caplog.at_level(logging.ERROR):
+        assert adapter._check_instruments_gappy(rec) is True
+    assert "SPIKY" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_void_gate_faster_than_baseline_is_not_drift(caplog):
+    """Drift is SIGNED: a cycle FASTER than the frozen baseline is health, not degradation."""
+    adapter = KrakenV2BookAdapter()
+    rec = LagSampleRecord(interval_s=0.1)
+    rec.started_monotonic = 0.0
+    rec.ended_monotonic = 100.0
+    rec.samples = [(0.1 * i, 0.0) for i in range(1000)]   # mean cycle 100ms < 108.886ms baseline
+    rec.gaps = []
+    with caplog.at_level(logging.ERROR):
+        assert adapter._check_instruments_gappy(rec) is False
+    assert "INSTRUMENTS_GAPPY" not in caplog.text

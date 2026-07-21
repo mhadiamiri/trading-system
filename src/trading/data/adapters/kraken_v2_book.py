@@ -103,6 +103,30 @@ class LagSampleRecord:
         exp = self.expected_samples
         return (self.missed_samples / exp) if exp > 0 else 0.0
 
+    # ── WO-016 §B (D27): the three-component VOID quantities ──────────────────────────────
+    @property
+    def mean_cycle_s(self) -> float:
+        """OBSERVED mean sleep-wake-record cycle = span / actual samples (per-cycle overhead
+        included). The drift metric's baseline is derived from THIS, so overhead is IN the
+        baseline and only a CHANGE in cycle time registers (component 3, UNIFORM degradation)."""
+        span = self.ended_monotonic - self.started_monotonic
+        n = self.actual_samples
+        return (span / n) if n > 0 and span > 0 else 0.0
+
+    @property
+    def recorded_gap_fraction(self) -> float:
+        """Σ(recorded missed-wake gap durations) / window — the DISCRETE-failure quantity
+        (component 1). Time the sampler was actually stalled >= LAG_GAP_FACTOR × interval, NOT the
+        overhead-biased span/interval deficit."""
+        span = self.ended_monotonic - self.started_monotonic
+        return (sum(d for (_s, _e, d) in self.gaps) / span) if span > 0 else 0.0
+
+    def elevated_lag_fraction(self, threshold_s: float) -> float:
+        """Fraction of samples whose lag (wake overrun) exceeds threshold_s — the SPIKY-degradation
+        quantity (component 2)."""
+        n = len(self.samples)
+        return (sum(1 for (_ts, lag) in self.samples if lag > threshold_s) / n) if n else 0.0
+
 
 @dataclass
 class PongRecord:
@@ -885,10 +909,48 @@ class KrakenV2BookAdapter:
     # declared engineering judgment under documented silence, anchored to ~26 msg/s (~38ms/frame).
     LAG_SAMPLE_INTERVAL_SECONDS = 0.1   # 100ms: ~10 samples/s; fine enough for sub-second bursts
     LAG_GAP_FACTOR = 2.0                # a wake overrunning to >= 2x the interval missed >=1 wake
-    # "Gappy -> VOID" (branch 5): >10% of expected samples missing means the sampler was itself
-    # starved enough that its surviving record is a biased sample — the quantitative verdict is
-    # VOID (the gap timestamps remain reported evidence).
+    # Pong observer gappiness (missed SENDS) keeps the single-fraction gate — a discrete failure
+    # mode with no overhead bias (attempted-vs-sent, not span/interval).
     INSTRUMENTS_GAPPY_VOID_FRACTION = 0.10
+
+    # ── WO-016 §B (D27): the lag-sampler VOID gate is a THREE-COMPONENT OR-GATE. ─────────────
+    # The old single gate used missed_fraction = (span/interval − actual)/expected, which measures
+    # against an IDEALIZED instantaneous cycle: it was ~8.9% biased on a healthy loop (per-cycle
+    # overhead) AND sensitive to degradation — the same property (D27). Replaced by three
+    # components, each OWNING one failure mode by construction, declared per rule 0.1j (per-sample
+    # bound + aggregation window + verdict fraction). 0.4 pre-released on this complete declaration.
+    #
+    # (1) RECORDED GAPS — owns DISCRETE failure ("did the sampler stop recording").
+    #     per-sample bound: a wake is MISSED when its interval >= LAG_GAP_FACTOR × interval = 0.200s.
+    #     window: the capture window.   verdict fraction: VOID if Σ(recorded-gap durations)/window
+    #     > 0.10. Derivation: 10% of the window lost to >=200ms stalls is severe discrete starvation
+    #     (same magnitude as the retired gate, now over the CORRECT quantity — real missed wakes).
+    RECORDED_GAP_VOID_FRACTION = 0.10
+    # (2) ELEVATED-LAG — owns SPIKY degradation.
+    #     per-sample bound: lag (wake overrun) > 0.100s.  window: samples.  verdict fraction: VOID
+    #     if fraction of samples with lag>100ms > 0.05. Adopted VERBATIM from WO-014c-1's declared
+    #     "ELEVATED = >100ms on >5% of samples" (thresholds_and_branches.txt).
+    ELEVATED_LAG_THRESHOLD_SECONDS = 0.10
+    ELEVATED_LAG_VOID_FRACTION = 0.05
+    # (3) MEAN-CYCLE-TIME DRIFT — owns UNIFORM degradation (the mode that escapes (1) and (2): a
+    #     uniform 199ms cycle records ZERO gaps (<200ms) and ZERO elevated samples (lag 99ms<100ms)
+    #     yet has doubled cycle time / halved temporal resolution). Immunity is STRUCTURAL: the
+    #     baseline is OBSERVED, so per-cycle overhead is already IN it and only CHANGE registers.
+    #     bound: VOID if (mean_cycle − baseline)/baseline > 0.50 (SIGNED — only SLOWDOWN fires; a
+    #     faster cycle is health, not degradation). Derivation: below the doubling-point (100% =
+    #     unambiguous starvation; the 199ms counterfactual reads +83%), above benign run-to-run
+    #     variation (≪50%). BASELINE PROTOCOL (RULED): FROZEN, re-declared ONLY on a pipeline change
+    #     that touches the loop, and that re-declaration is a 0.4 event (a self-re-deriving baseline
+    #     is the drift metric's own 0.1d — "the instrument got slower and we re-baselined around
+    #     it"). THE STANDING BASELINE is this run's OBSERVED mean cycle: span/actual =
+    #     3600.00s / 33,062 = 0.108886 s (WO-008b-B-RERUN, run WO-008b-B-RERUN-20260721T170944Z).
+    MEAN_CYCLE_BASELINE_SECONDS = 0.108886
+    MEAN_CYCLE_DRIFT_VOID_FRACTION = 0.50
+    # RESIDUAL / FLOOR LIMIT (named, not papered over): the mode that still escapes all three is
+    # DEGRADATION OF THE SAMPLER'S OWN MEASUREMENT such that drift reads normal while truth does not
+    # (e.g. the monotonic clock itself skews, or the whole process slows uniformly so the baseline
+    # comparison is fooled in lockstep). This is the in-the-failure-domain floor: every in-process
+    # detector shares its process's domain and cannot certify below it. Declared, not closed.
 
     # ── WO-014c-1 §B.2: protocol-level PONG observer (sanctioned ws.ping() RTT) ──
     # Declared engineering judgment (Phase A, documented silence). 1 ping/s is a control
@@ -1051,6 +1113,21 @@ class KrakenV2BookAdapter:
 
         # Concatenate all parts
         checksum_input = ''.join(parts)
+
+        # WO-016 §A (D27) REGRESSION SENTINEL (rule 0.1d): reject synthesized notation in the
+        # ASSEMBLED input. Scientific notation ('E'/'e') corrupts the CRC — str(Decimal('1.0E-7'))
+        # -> '1.0E-7' -> '10E-7' was the WO-008b-B-RERUN defect (234 failures). The fixed-point
+        # render (_current_ladder_strings) guards ONE site; this one character-class check guards
+        # ALL of them, turning any future render regression into a LOUD NAMED failure instead of a
+        # silent mismatch. Its trigger CANNOT occur while the fix holds — a sentinel, not a
+        # data-path guard. It stays load-bearing after the wire-string WO: it then guards the
+        # invariant ("no synthesized notation reaches the CRC"), not the implementation.
+        if 'e' in checksum_input or 'E' in checksum_input:
+            raise ValueError(
+                "CHECKSUM_INPUT_SYNTHESIZED_NOTATION: assembled checksum input contains "
+                "scientific notation; a formatting regression re-entered the render path. "
+                f"fragment={checksum_input[:64]!r}"
+            )
 
         # Compute CRC-32 (standard polynomial, same as PNG/ZIP)
         crc_value = binascii.crc32(checksum_input.encode('ascii'))
@@ -2048,24 +2125,46 @@ class KrakenV2BookAdapter:
 
     def _check_instruments_gappy(self, lag_record=None, pong_record=None) -> bool:
         """
-        WO-014c-1 branch 5. If EITHER instrument missed more than the VOID fraction of its
-        expected samples/sends, the QUANTITATIVE discrimination is VOID — but the gap
-        timestamps stay REPORTED evidence (they can NOMINATE the starvation hypothesis; only
-        clean instruments CONVICT). For the pong observer, gappiness is missed SENDS only —
-        ABSENT pongs are a signal, excluded by construction. Emits the declared reason code so
-        the run's own report carries its VOID reason. Returns True when either is gappy.
+        WO-014c-1 branch 5, RE-RULED WO-016 §B (D27). The LAG sampler is judged by a
+        THREE-COMPONENT OR-GATE — each component owns one failure mode by construction, so the
+        retired single missed_fraction gate (overhead-biased AND degradation-sensitive: the same
+        property, D27) is replaced without losing sensitivity to any mode:
+          (1) DISCRETE  — recorded missed-wakes (>=200ms) over > RECORDED_GAP_VOID_FRACTION,
+          (2) SPIKY     — lag >100ms on > ELEVATED_LAG_VOID_FRACTION of samples,
+          (3) UNIFORM   — mean-cycle drift above the FROZEN observed baseline (only slowdown fires;
+                          the mode that escapes (1) and (2), e.g. a uniform 199ms cycle).
+        Any component VOIDs the QUANTITATIVE discrimination; the gap timestamps stay REPORTED
+        evidence (they NOMINATE starvation — only clean instruments CONVICT). The pong observer
+        keeps its discrete missed-SENDS gate (ABSENT pongs are a signal, excluded by construction).
+        Emits INSTRUMENTS_GAPPY naming the component. Returns True when any check trips.
         """
         gappy = False
-        if (lag_record is not None
-                and lag_record.missed_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION):
-            self._log_error(
-                f"INSTRUMENTS_GAPPY: lag sampler missed {lag_record.missed_samples} of "
-                f"{lag_record.expected_samples} expected samples "
-                f"({lag_record.missed_fraction:.0%} > {self.INSTRUMENTS_GAPPY_VOID_FRACTION:.0%}); "
-                f"quantitative discrimination VOID. {len(lag_record.gaps)} gap(s) retained as "
-                f"reported evidence (may NOMINATE starvation; only clean instruments convict)."
-            )
-            gappy = True
+        if lag_record is not None:
+            rgf = lag_record.recorded_gap_fraction
+            if rgf > self.RECORDED_GAP_VOID_FRACTION:
+                self._log_error(
+                    f"INSTRUMENTS_GAPPY: lag DISCRETE — recorded missed-wake fraction {rgf:.1%} > "
+                    f"{self.RECORDED_GAP_VOID_FRACTION:.0%} ({len(lag_record.gaps)} gap(s) >=200ms); "
+                    f"quantitative discrimination VOID. Gaps retained as reported evidence "
+                    f"(may NOMINATE starvation; only clean instruments convict)."
+                )
+                gappy = True
+            elf = lag_record.elevated_lag_fraction(self.ELEVATED_LAG_THRESHOLD_SECONDS)
+            if elf > self.ELEVATED_LAG_VOID_FRACTION:
+                self._log_error(
+                    f"INSTRUMENTS_GAPPY: lag SPIKY — {elf:.1%} of samples elevated (>100ms lag) > "
+                    f"{self.ELEVATED_LAG_VOID_FRACTION:.0%}; quantitative discrimination VOID."
+                )
+                gappy = True
+            base = self.MEAN_CYCLE_BASELINE_SECONDS
+            drift = (lag_record.mean_cycle_s - base) / base if base > 0 else 0.0
+            if drift > self.MEAN_CYCLE_DRIFT_VOID_FRACTION:
+                self._log_error(
+                    f"INSTRUMENTS_GAPPY: lag UNIFORM — mean cycle {lag_record.mean_cycle_s*1000:.1f}ms "
+                    f"drifted {drift:+.0%} above the frozen {base*1000:.3f}ms baseline > "
+                    f"{self.MEAN_CYCLE_DRIFT_VOID_FRACTION:.0%}; quantitative discrimination VOID."
+                )
+                gappy = True
         if (pong_record is not None
                 and pong_record.missed_send_fraction > self.INSTRUMENTS_GAPPY_VOID_FRACTION):
             self._log_error(

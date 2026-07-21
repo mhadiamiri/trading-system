@@ -39,6 +39,14 @@ class Layer(Enum):
 VALID_REASON_CODES = {
     "DATA": [
         "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
+        # WO-016 §A (D27): REGRESSION SENTINEL (rule 0.1d — its trigger CANNOT occur while the
+        # fixed-point render holds; legitimate, but labelled, not dressed as a data-path guard).
+        # Raised by compute_checksum when the ASSEMBLED checksum input contains scientific
+        # notation ('E'/'e'). The interim render fix guards one site; this guards the INVARIANT
+        # at all of them — "checksum input contains no synthesized notation" — converting any
+        # future formatting regression from a silent CRC mismatch into a LOUD NAMED failure. It
+        # outlives the wire-string WO because it guards the invariant, not the implementation.
+        "CHECKSUM_INPUT_SYNTHESIZED_NOTATION",
         # WO-014b-1: raised by get_live_market_data when a reconnect was requested
         # (_reconnect() set _pending_reconnect at 5 consecutive checksum failures) but
         # the transport failed to effect it before the next loop boundary. Silent

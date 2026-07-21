@@ -1,0 +1,59 @@
+WO-016 §A (D27) BITE PROOF — 'E'-rejecting checksum sentinel (four artifacts, sha256)
+Target: src/trading/data/adapters/kraken_v2_book.py::compute_checksum
+Reason code: CHECKSUM_INPUT_SYNTHESIZED_NOTATION  (REGRESSION SENTINEL, rule 0.1d)
+sha256 BEFORE: 48a834e1e55d8cede51bea34d3c240a96c09be95234ffd4351c7b40fd00cad9c
+
+-- ARTIFACT 1 — PASS (sentinel present: refuses scientific input w/ reason code) --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_sentinel.py::test_checksum_rejects_scientific_notation_with_reason_code PASSED [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+-- ARTIFACT 2 — ACTUAL FAIL (sentinel disabled: scientific input NOT refused) --
+WEAKENING: `if 'e'... or 'E'...:` -> `if False and (...):`
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_sentinel.py::test_checksum_rejects_scientific_notation_with_reason_code FAILED [100%]
+
+================================== FAILURES ===================================
+_________ test_checksum_rejects_scientific_notation_with_reason_code __________
+tests\integration\test_checksum_sentinel.py:21: in test_checksum_rejects_scientific_notation_with_reason_code
+    with pytest.raises(ValueError, match="CHECKSUM_INPUT_SYNTHESIZED_NOTATION"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_checksum_sentinel.py::test_checksum_rejects_scientific_notation_with_reason_code
+============================== 1 failed in 0.09s ==============================
+
+-- ARTIFACT 3 — PASS (sentinel restored) --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_sentinel.py::test_checksum_rejects_scientific_notation_with_reason_code PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 48a834e1e55d8cede51bea34d3c240a96c09be95234ffd4351c7b40fd00cad9c
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
