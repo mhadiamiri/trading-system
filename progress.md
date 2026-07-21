@@ -38,9 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-20 (WO-014b-1 COMPLETE; WO-014b-2 §0 + §2.1 research CHECKPOINTED)
-**Current Phase**: WO-014 Connection Lifecycle — reconnect proven to effect; keepalive + backoff/breaker pending a fresh session
-**Status**: HEAD `9fbc522` on master, 144 tests green both orders. See **▶ CURRENT STATUS (AUTHORITATIVE)** below.
+**Last Updated**: 2026-07-21 (WO-014c-2 COMPLETE — gap recording schema+taxonomy + failure-targeted capture; awaiting review)
+**Current Phase**: WO-014c — discrimination instruments (014c-1) done; gap recording + failure capture (014c-2) done. NEXT (do NOT start without review): 014c-3 (stub-lint + widened-precondition sweep), then the 60-min live re-run. Corpus READER is a separate WO.
+**Status**: HEAD `e602cb5`+report on master, 167 tests green both orders (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. WO-014c-2 report: `WO-014c-2-FINAL-REPORT.md`. The dated **▶ CURRENT STATUS (AUTHORITATIVE)** block further below is now HISTORICAL (it predates WO-014b-2/014c-1/014c-2).
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
