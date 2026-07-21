@@ -1,0 +1,117 @@
+WO-008b-B-RERUN — RESPONSE TO PROJECT-LEAD UPDATE (instructions.md "update:" block)
+================================================================================================
+Scope per the update: answer Findings 1 & 2 WITH EVIDENCE; Finding 3 becomes its own WO (no
+action); two observations noted. Nothing is fixed — Finding 1 is annotated (no retro-edit of
+thresholds_and_branches.txt); Finding 2 is a proposal only (touches a declared threshold → rule 0.4).
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+FINDING 1 — WAS THE PONG RUN-LEVEL FRACTION PRE-DECLARED?  ANSWER: NO (per-sample only).
+════════════════════════════════════════════════════════════════════════════════════════════════
+Exact language quoted verbatim from evidence/WO-014c-1/thresholds_and_branches.txt:
+
+  line 22:  "LATE" pong: rtt > 250 ms
+  line 32:  "ABSENT" pong: no matching pong within 5 s of the ping
+  line 69:    pong state ∈ { ON-TIME (rtt ≤ 250 ms), LATE (rtt > 250 ms), ABSENT (no pong ≤ 5 s) }
+
+Contrast — the LAG threshold, which DOES declare a run-level fraction:
+  line 37:  "ELEVATED" lag: measured lag > 100 ms on > 5 % of samples
+  line 70:    lag state ∈ { NORMAL (not elevated), ELEVATED (> 100 ms on > 5 % of samples) }
+
+DETERMINATION: The pong state is defined PURELY PER-SAMPLE by RTT (>250 ms = late; no pong ≤5 s =
+absent). There is NO run-level fraction anywhere in the pong language — unlike lag, which carries
+"> 5 % of samples" both in its threshold (line 37) and its state definition (line 70). So the
+run-level pong fraction was NOT pre-declared; it was supplied at interpretation time.
+
+The verdict STANDS ON THE MARGIN and does not depend on the missing fraction:
+  - 27.1 % late (938/3460) clears the lag-analog 5 % fraction by ~5.4x, and clears any plausible
+    fraction one might have declared.
+  - The reduction actually used in the report was STRICTER than a 5 % rule: "ON-TIME iff 0 late AND
+    0 absent" — i.e. ANY late/absent defeats clean ON-TIME. Under that rule the pong state is
+    LATE/ABSENT regardless of the fraction, and both map to Branch 1 under NORMAL lag. The branch
+    is invariant to the (undeclared) fraction.
+
+RECORDED FINDING (annotation only — thresholds_and_branches.txt is NOT edited): the declared
+thresholds carried an INCOMPLETENESS — an asymmetry: lag has a per-sample bound AND a run-level
+fraction; pong has only a per-sample bound and gives no rule for collapsing per-ping classifications
+into a single run-level pong STATE. It did not bite this run (margin 5x), but a closer result would
+have forced a definition after the data arrived — the exact thing pre-declaration exists to prevent.
+Recommend a follow-up WO add a pong run-level fraction (symmetric with lag) to close the gap BEFORE
+any result that lands near it.
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+FINDING 2 — GAPPY THRESHOLD MEASURES THE WRONG THING.  ANSWER: confirmed a defect — and the
+evidence shows the cause is DIFFERENT (and more fundamental) than "idle while disconnected."
+════════════════════════════════════════════════════════════════════════════════════════════════
+Q (from the update): can the expected-sample count exclude disconnected periods, and what would that
+make this run's figure? Answer both, with a correction to the assumed mechanism.
+
+CAN we exclude disconnected periods? YES mechanically — the gap ledger records every gap's monotonic
+bounds (open_monotonic, close_monotonic) by cause; connected time = window − Σ(disconnected durations).
+
+BUT the premise "218.8 s of gaps during which the sampler was correctly NOT sampling" is not what
+happened. EVIDENCE (counting lag samples whose monotonic ts falls INSIDE each ledger gap):
+  VENUE_DISCONNECT gap 0 : dur 4.67s  samples_inside 44  (expected-if-sampling ~47)
+  VENUE_DISCONNECT gap 88: dur 4.49s  samples_inside 41  (~45)
+  CHECKSUM_RESYNC  gap 3 : dur 10.75s samples_inside 99  (~107)
+  CHECKSUM_RESYNC  gaps generally: samples_inside ≈ dur/0.1
+⇒ the lag sampler is a concurrent task and KEPT SAMPLING THROUGH EVERY GAP — venue disconnects
+included (the event loop runs the sampler even while the transport reconnects). Only ~9.16 s of the
+window (the 2 VENUE_DISCONNECT durations) is genuinely "connection down," and even there the sampler
+sampled. The 209.67 s of CHECKSUM_RESYNC are connection-UP (loop active) — not idle at all.
+
+So the naive "exclude ALL gap time" correction (which gives 2.22 %) is INVALID here: it subtracts
+gap time from `expected` while `actual` STILL CONTAINS the samples taken during those gaps — a double
+correction. Excluding only true disconnect (9.16 s) moves the figure 8.16 % → 7.93 % — essentially
+unchanged. Excluding-disconnected-time is therefore NECESSARY-but-INSUFFICIENT; it is not the fix.
+
+THE REAL CAUSE (evidence): mean interval per ACTUAL sample = 108.89 ms vs the 100 ms nominal. The
+sleep-wake-record cycle costs ~8.9 ms each, so over 3600 s the loop yields ~33,061 samples, not the
+idealized 36,000. `expected = span / interval` assumes an instantaneous cycle that no real sleep-loop
+achieves. ⇒ the 8.16 % "missed" is a SYSTEMATIC MEASUREMENT ARTIFACT on a healthy, continuously-
+sampling instrument — not starvation and not disconnect-idle.
+
+The instrument ALREADY carries the correct measure: LagSampleRecord.gaps records intervals where a
+wake was actually missed (overran by ≥ LAG_GAP_FACTOR). This run: 12 recorded gaps totalling 2.88 s
+= 0.08 % of the window — three orders of magnitude below the 10 % VOID line. THAT is the true
+"was the sampler starved" figure; the run was far cleaner than 8.16 % implied.
+
+PROPOSAL (do NOT implement — rule 0.4, lead's ruling):
+  Preferred: compute the VOID gappiness from the sampler's RECORDED gaps (missed wakes ≥
+  LAG_GAP_FACTOR), i.e. 2.88 s / 0.08 % here — not from (span/interval − actual)/expected. This
+  intrinsically ignores per-cycle overhead AND does not fire on connection-down idle, and it does
+  NOT drift toward spurious VOID as the capture lengthens (the corpus-scale hazard the update flags).
+  Fallback: if `expected` must stay count-based, derive it from the instrument's ACHIEVABLE cadence
+  (measured mean cycle), and additionally exclude true-disconnect time — but note that alone would
+  still have left this run at ~7.9 %, so it is the weaker fix.
+
+CORRECTION TO THE RECORD: discrimination.txt attributed the 8.16 % to "the 97 gaps ... during which
+the transport loop is not sampling." The evidence above supersedes that: the sampler sampled through
+the gaps; the deficit is per-cycle overhead. The §4 verdict is UNCHANGED and in fact STRENGTHENED —
+true gappiness 0.08 % ≪ 10 %, so the "clean instruments convict" conclusion holds with far more room.
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+FINDING 3 — CHECKSUM FAILURES = CORPUS BLOCKER.  ACTION: NONE (its own WO; Ops drafts it).
+════════════════════════════════════════════════════════════════════════════════════════════════
+Acknowledged. Not begun. Offline diagnosis against the 200 captured artifacts, no network, per the
+§5 pre-ruling (assume-our-defect-first; do not tune). Concurred ruling recorded: NO CORPUS CAN BE
+BLESSED until resolved. The captured lead (multiple bid levels at the identical price in one update,
+e.g. 4× 66452.7) is preserved in instruments_dump.json → checksum_failure_captures for that WO.
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+TWO OBSERVATIONS
+════════════════════════════════════════════════════════════════════════════════════════════════
+(a) EXECUTION REACHED, NEVER EXERCISED — acknowledged and named: the unified cost model
+    (trading.execution.costs.compute_execution_costs) has still NEVER run against live market data.
+    0 fills, STRAT_NO_SIGNAL ×111,010, staleness guard never invoked (place_order never called).
+    Truthful null. "Data→Strategy→Risk→Execution ran end-to-end" means the WIRING ran end-to-end;
+    the Execution COMPUTATION (fill economics/costs) did not fire on live data. A known gap, not a
+    defect — flag for a future WO that forces at least one live-data fill through the cost model.
+
+(b) PARQUET VOLUME / IS IT THE CORPUS SINK? — data/market_events_20260721.parquet, written by the
+    LiveTradingLoop's per-event persistence (this run: 111,010 rows, 220 MB → ~5.3 GB / 24 h).
+    It is SEPARATE from the discrimination/gap-ledger sink (gap_ledger*.jsonl). Whether it IS the
+    corpus sink is NOT decided here and should be a corpus-WO design decision: the corpus (per the WO
+    framing) is an interval-intersection over the GAP LEDGER via a default-deny reader; the parquet
+    is the raw market-event store the reader would intersect, not itself a "blessed corpus." Planning
+    items to name before the 24 h run: compression/rotation, whether full-depth book events are
+    retained or only tops, and disk budget (~5.3 GB/day, more at higher venue rates).
