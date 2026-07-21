@@ -89,6 +89,20 @@ VALID_REASON_CODES = {
         # ledger; fixture/test paths opt out explicitly. Prefix-free (GAP_PERSIST_ vs
         # GAP_LEDGER_ — neither prefixes the other).
         "GAP_PERSIST_UNCONFIGURED",
+        # WO-015: raised by the live-capture runner's preflight when TRADING_ENV is not 'paper'
+        # — a live capture must never run where the order-capable path could be reachable. The
+        # refusal lives IN the runner (checklist-enforced rules are 0-for-N), before any component
+        # is built. Prefix-free (LIVE_CAPTURE_ is a unique stem).
+        "LIVE_CAPTURE_ENV_REFUSED",
+        # WO-015 addendum A: the RULED FIFTH gap-ledger cause (a lead ruling, not an invented
+        # fifth — so it does NOT trigger WO-014c-2's "STOP if a path fits none of the four").
+        # Emitted when wall-vs-monotonic divergence exceeds the declared drift bound (WO-014c-3
+        # §0.3: ~5s typical, <=43s worst case) — divergence beyond that is a host SUSPEND, not
+        # drift. Without it, a mid-capture suspend MASQUERADES as catastrophic starvation and
+        # sends the discrimination chasing pipeline architecture that isn't the problem. Role in
+        # WO-015/re-run is DIAGNOSTIC (record + report loudly, do not terminate); the corpus WO
+        # makes it load-bearing (invalidate the affected window). Prefix-free (HOST_ is unique).
+        "HOST_SUSPEND",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

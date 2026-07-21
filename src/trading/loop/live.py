@@ -82,13 +82,19 @@ class LiveTradingLoop:
         self._feed_iterator: Optional[AsyncIterator] = None
         self._feed_stoppable = None
 
-    async def run(self, max_updates: int = 100, duration_minutes: float = 10) -> dict:
+    async def run(self, max_updates: int = 100, duration_minutes: float = 10,
+                  feed: Optional[AsyncIterator] = None) -> dict:
         """
         Run the live trading loop.
 
         Args:
             max_updates: Maximum number of market data updates to process
             duration_minutes: Maximum duration to run (for live feed)
+            feed: WO-015 — an explicit MarketState iterator to consume instead of the factory
+                  feed. The live-capture runner passes the INSTRUMENTED transport
+                  (KrakenV2BookAdapter.get_live_market_data), which the factory path
+                  (get_market_data, fixtures) never drove. When None, behavior is unchanged
+                  (create_feed()), so every existing caller/test is unaffected.
 
         Returns:
             Summary dict with processed count, trades count, final pnl, event breakdown
@@ -119,8 +125,11 @@ class LiveTradingLoop:
         # Track venue name for logging
         venue = get_venue_name()
 
-        # Create feed from factory
-        self._feed_iterator = create_feed(decision_logger=self._decision_logger)
+        # Create feed from factory — OR consume the explicit instrumented feed (WO-015).
+        if feed is not None:
+            self._feed_iterator = feed
+        else:
+            self._feed_iterator = create_feed(decision_logger=self._decision_logger)
 
         # Track feed stoppable if available (for live feeds)
         if is_using_live_feed():

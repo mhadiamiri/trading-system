@@ -209,6 +209,12 @@ GAP_CAUSES = (
     "CHECKSUM_RESYNC",
     "BREAKER_RETRY_LADDER",
     "VENUE_DISCONNECT",
+    # WO-015 addendum A: the RULED fifth cause (a lead ruling, not an invented fifth — so it
+    # does NOT trip WO-014c-2's exhaustiveness STOP). A host SUSPEND detected by wall-vs-
+    # monotonic divergence beyond the drift bound. Fits the GapRecord schema UNCHANGED: the
+    # divergence magnitude rides in `detail` (a structured field is the corpus WO's call, when
+    # the role turns from diagnostic to window-invalidating).
+    "HOST_SUSPEND",
 )
 
 
@@ -791,6 +797,16 @@ class KrakenV2BookAdapter:
     MAX_FAILURE_CAPTURES = 200
     MAX_FAILURE_CAPTURE_BYTES = 8 * 1024 * 1024  # 8 MiB
 
+    # ── WO-015 addendum A: HOST_SUSPEND detection threshold ──────────────────
+    # A single loop iteration whose WALL-clock delta and MONOTONIC-clock delta diverge by more
+    # than this is a host SUSPEND (one clock counted the suspend, the other did not), not drift:
+    # legitimate wall/monotonic drift is ~5s TYPICAL and <=43s WORST over a FULL 24h run
+    # (WO-014c-3 §0.3), so a per-iteration divergence beyond the worst-case whole-run bound
+    # cannot be drift. Set to the 43s worst-case bound — conservative (an NTP step is <<43s, so
+    # no false positive) while catching any real suspend (which is seconds-to-hours). Declared
+    # engineering judgment, instance-overridable for ms-scale tests.
+    HOST_SUSPEND_DIVERGENCE_SECONDS = 43.0
+
     # ── WO-014b-2 §2: reconnect backoff + circuit breaker ────────────────────
     # Figures are DECLARED ENGINEERING JUDGMENT, not a citation: Kraken's WS
     # connection/subscription rate limits are DOCUMENTED SILENCE on the reachable
@@ -963,6 +979,12 @@ class KrakenV2BookAdapter:
         # Fixture/test paths opt out EXPLICITLY by setting this True; a real capture must set a
         # path instead. Default False = the safe default (refuse rather than silently not persist).
         self._persistence_optional = False
+        # WO-015 addendum A: host-suspend detection threshold (instance-overridable for tests).
+        self._host_suspend_divergence = self.HOST_SUSPEND_DIVERGENCE_SECONDS
+        # Injectable wall clock (test seam, like _reconnect_sleep); defaults to time.time. Used
+        # ONLY for the suspend detector's wall sampling, so a test can simulate a wall jump
+        # (a suspend) without touching the deadline. NOT used for the deadline/start_time.
+        self._wall_clock = None
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -2111,6 +2133,12 @@ class KrakenV2BookAdapter:
             # gap records; every monotonic bound is calendar-located via this pair.
             anchor_monotonic = time.monotonic()
             anchor_wall = datetime.now(UTC).isoformat()
+            # WO-015 addendum A: the wall EPOCH paired atomically with the monotonic anchor, for
+            # host-suspend detection (per-iteration wall-delta vs monotonic-delta divergence).
+            _wall = self._wall_clock or time.time
+            anchor_wall_epoch = _wall()
+            susp_prev_wall = anchor_wall_epoch
+            susp_prev_mono = anchor_monotonic
             self._gap_seq = 0
             self._open_gaps = []
             self._gap_ledger = GapLedger(
@@ -2157,6 +2185,48 @@ class KrakenV2BookAdapter:
                     )
 
                 mono = time.monotonic()
+
+                # WO-015 addendum A: HOST-SUSPEND DETECTION. Compare this iteration's WALL delta
+                # against its MONOTONIC delta. In normal operation both measure the same interval
+                # (divergence ~0); a host suspend counts on one clock but not the other, so the
+                # divergence jumps by ~the suspend duration in a single iteration. Beyond the
+                # drift bound that is a suspend, not drift (WO-014c-3 §0.3). Record a HOST_SUSPEND
+                # gap and report LOUDLY, but DO NOT terminate (diagnostic role — the corpus WO
+                # makes it window-invalidating). Checked BEFORE heartbeat-absence so the suspend
+                # is attributed to its own cause even though the link may also need a reconnect.
+                _now_wall = _wall()
+                _wall_delta = _now_wall - susp_prev_wall
+                _mono_delta = mono - susp_prev_mono
+                _divergence = abs(_wall_delta - _mono_delta)
+                if _divergence > self._host_suspend_divergence:
+                    self._log_error(
+                        f"HOST_SUSPEND: wall/monotonic divergence {_divergence:.1f}s "
+                        f"(wall +{_wall_delta:.1f}s vs monotonic +{_mono_delta:.1f}s in one "
+                        f"iteration) exceeds the {self._host_suspend_divergence:.0f}s drift bound "
+                        f"— a host suspend, not drift. This window is CONTAMINATED: a suspend is "
+                        f"indistinguishable from catastrophic starvation. Recorded (diagnostic); "
+                        f"the run continues."
+                    )
+                    _susp_gap = self._open_gap(
+                        cause="HOST_SUSPEND",
+                        reason_code="HOST_SUSPEND",
+                        open_monotonic=susp_prev_mono,
+                        detail=(
+                            f"host suspend: divergence {_divergence:.1f}s "
+                            f"(wall +{_wall_delta:.1f}s vs monotonic +{_mono_delta:.1f}s) "
+                            f"> {self._host_suspend_divergence:.0f}s drift bound"
+                        ),
+                    )
+                    # Diagnostic, not terminal: close it immediately at resume (the suspend
+                    # window is [prev, now]); emission continues.
+                    if _susp_gap is not None:
+                        _susp_gap.close_monotonic = mono
+                        _susp_gap.resumed = True
+                        self._persist_gap_event(_susp_gap, "resolved")
+                        if _susp_gap in self._open_gaps:
+                            self._open_gaps.remove(_susp_gap)
+                susp_prev_wall = _now_wall
+                susp_prev_mono = mono
 
                 # WO-014b-2 §1.1: HEARTBEAT-ABSENCE DETECTION -> reconnect. Kraken's
                 # heartbeat (~1/s) is the venue's own liveness signal; a data-quiet-but-
@@ -2582,9 +2652,16 @@ from trading.data.adapters.registry import register  # noqa: E402
 
 
 @register("kraken_v2")
-def _build_kraken_v2(decision_logger=None) -> "KrakenV2BookAdapter":
+def _build_kraken_v2(decision_logger=None, mode=KrakenV2BookAdapter.MODE_FIXTURE,
+                     gap_persist_path=None) -> "KrakenV2BookAdapter":
     """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
 
-    FIXTURES ONLY — live WebSocket transport is held under WO-008b-A.
+    WO-015: the registry is the SOLE adapter-resolution path (Principle IV/VII), so the LIVE
+    adapter is built HERE (via the factory's create_live_capture_feed passing mode='live'),
+    never by a caller importing this module. `gap_persist_path` configures the live gap ledger
+    at construction so the live-capture runner need not touch adapter internals.
     """
-    return KrakenV2BookAdapter()
+    adapter = KrakenV2BookAdapter(mode=mode)
+    if gap_persist_path is not None:
+        adapter._gap_persist_path = str(gap_persist_path)
+    return adapter

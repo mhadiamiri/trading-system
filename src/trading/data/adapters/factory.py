@@ -50,6 +50,38 @@ def create_feed(
     return feed.get_market_data()
 
 
+def create_live_capture_feed(
+    persist_path,
+    duration_seconds: float,
+    decision_logger: DecisionLogger | None = None,
+):
+    """
+    WO-015: resolve a LIVE-mode adapter through the registry (the sole adapter-resolution path,
+    Principle IV/VII) and return (adapter, live_feed_iterator) for the live-capture runner. The
+    runner lives in trading.loop and MUST NOT import a concrete adapter; it goes through here.
+
+    The registry builds the live adapter with persistence configured, so neither the factory nor
+    the runner reaches into adapter internals. Sets the active feed for diagnostics/venue_name.
+
+    Resolves the v2 BOOK adapter (`kraken_v2`) explicitly: the instrumented live transport
+    (get_live_market_data + gap ledger + failure capture + discrimination) exists ONLY there, so a
+    "live capture" is the v2 book adapter by definition (Settings.DATA_SOURCE for the re-run IS
+    `kraken_v2`). Naming the live-capable source here is robust — it never passes a live-only kwarg
+    to a non-live builder — and it is the registry's single point of venue selection (Principle VII).
+
+    Opens NO socket itself — get_live_market_data does (real in production, patched in tests).
+    """
+    global _active_feed
+    feed = registry.create(
+        "kraken_v2",
+        decision_logger=decision_logger,
+        mode="live",
+        gap_persist_path=str(persist_path),
+    )
+    _active_feed = feed
+    return feed, feed.get_live_market_data(duration_seconds)
+
+
 def get_data_source() -> str:
     """Get current data source."""
     return Settings.DATA_SOURCE

@@ -1,0 +1,69 @@
+WO-015 — BITE PROOF — host_suspend_detection
+==============================================================================
+Target: src/trading/data/adapters/kraken_v2_book.py
+Test (0.1h/0.1i): tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal
+sha256 BEFORE: 616b6a9aaf4a1e2214783b946875e5eef44adad1f1ea5439749aff89c48c3f4b
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.30s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the wall/monotonic divergence check is disabled -> a suspend goes unrecorded and would masquerade as starvation
+  OLD: if _divergence > self._host_suspend_divergence:
+  NEW: if False and _divergence > self._host_suspend_divergence:  # WEAKENED
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_host_suspend_recorded_diagnostic_not_terminal ______________
+
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000002320FFB3620>
+
+    @pytest.mark.asyncio
+    async def test_host_suspend_recorded_diagnostic_not_terminal(caplog):
+        """A wall/monotonic divergence beyond the drift bound records a HOST_SUSPEND gap, reports
+        loudly, and DOES NOT terminate the capture."""
+        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        adapter._persistence_optional = True
+        adapter._heartbeat_absence_timeout = 100.0    # a live-but-quiet link stays up
+        adapter._app_ping_interval = 100.0
+        adapter._wall_clock = _JumpClock(jump_at_call=3, jump_by=120.0)   # 120s > 43s bound
+    
+        # SNAPSHOT emits, then heartbeats keep the link alive so the loop iterates past the jump.
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
+        ])
+    
+        emitted = []
+        with caplog.at_level(logging.ERROR):
+            with patch("websockets.connect", factory.connect):
+                async for state in adapter.get_live_market_data(duration_seconds=0.25):
+                    emitted.append(state)
+    
+        ledger = adapter.get_gap_ledger()
+        suspends = [g for g in ledger.gaps if g.cause == "HOST_SUSPEND"]
+>       assert len(suspends) == 1, f"exactly one host-suspend gap; got {[g.cause for g in ledger.gaps]}"
+E       AssertionError: exactly one host-suspend gap; got []
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\integration\test_host_suspend.py:68: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal
+1 failed in 0.37s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.31s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 616b6a9aaf4a1e2214783b946875e5eef44adad1f1ea5439749aff89c48c3f4b
+EXACT RESTORE: YES — byte-identical
+
+RESULT [host_suspend_detection]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

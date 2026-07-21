@@ -1,195 +1,180 @@
-# WORK ORDER — WO-008b-B-RERUN: 60-Minute Live Capture (Throughput Verdict + Discrimination)
+FROM: Ops & Tooling
+TO: Core Brain
+RE: Re-run halted at its own gate — one new work order, and your authorization needed
 
-**Status:** ACTIVE. Fresh session. **THE MEASUREMENT SPRINT 2 WAS BUILT TO EARN.**
-**READ FIRST:** `evidence/WO-014c-1/thresholds_and_branches.txt` — the declared thresholds,
-five branches, and full cross-product. **The report interprets against that file and
-nothing else.**
-**Authority:** `.specify/memory/constitution.md` governs. Conflict → STOP and escalate.
-**Baseline:** the WO-014c-3 addendum commit — 177 passed both orders, 0 failed / 0 xfailed /
-0 xpassed, import-linter 6/6, contract 6/6, ruff clean.
-**Standing rules 0.1–0.9 apply in full.**
+WO-014c-3 is COMPLETE at 989600b (177 passed both orders). All six review items closed:
+the persistence opt-in WAS a silent no-op and now refuses loudly (GAP_PERSIST_UNCONFIGURED)
+BEFORE opening a connection; per-failure one-line summaries implemented (it was cheap);
+the Shape-B sweep survived a wider net (mock.called, call_count, assert_has_calls,
+assert_any_call, .mock_calls, .call_args) with the count still 1; stub-lint extended to
+docstring-only bodies with 0 new hits; drift limit declared; the decision-log entry
+"survives-the-failure-it-documents" created as a standing §0 review question.
 
-## THIS RUN HAS THREE JOBS
-1. **The throughput verdict** — does the L2 book feed sustain **≥60 MarketStates/min**?
-2. **First live confirmation of `ping_timeout=None`** — its behavior under the library's
-   real ping loop has never been observed.
-3. **First live exercise of the gap ledger and failure-targeted capture** — everything
-   about them is fixture-proven only.
+THE RE-RUN HALTED AT ITS OWN PREFLIGHT — correctly, twice over.
 
-## THE OUTCOME IS NOT PREDETERMINED
-A run reporting 23/min is a SUCCESSFUL work order. A run reporting 600/min is a
-successful work order. A VOID run is a successful work order. **Report what the feed gives.**
+1. HOST SUSPEND. §1.3 was non-negotiable and Claude Code refused to proceed, citing THIS
+   PROJECT'S OWN EVIDENCE: the WO-014c-3 deterministic suite recorded 24063.39s (6:41:03)
+   for ~4 minutes of CPU. The machine sleeps. A suspend mid-capture is indistinguishable
+   from catastrophic starvation and would contaminate both the throughput series and the
+   discrimination. It did not open a socket and did not fabricate a run file. Hadi has now
+   set sleep to 2 hours, which covers a 60-minute run with margin.
 
-**FORBIDDEN:**
-- Re-running for a better number. If you run more than once for ANY reason, report EVERY
-  run with its result and why the earlier ended.
-- Adjusting measurement, window, counting, or thresholds after seeing data.
-- Any code change affecting throughput, counting, or instruments once the run begins.
-- Extrapolating a partial window into a result.
-- **Choosing the definition of "sustained" after seeing the data** — all four are reported.
+2. NO LIVE-CAPTURE RUNNER EXISTS. This is the substantive finding. get_live_market_data
+   has only ever been driven by tests with a patched transport — nothing in the codebase
+   opens a real socket and drives the Data→Strategy→Risk→Execution loop for an hour. The
+   re-run's §2 assumed an entrypoint that was never built.
 
-## §1 — PREFLIGHT GATE — complete and paste ALL of it before any socket opens
+   Ops error, and the third of its exact kind: WO-008b assumed a WebSocket that WO-008b
+   was meant to build; WO-014 §1 assumed a settings.py footprint it didn't have; now the
+   re-run assumed a runner. The pattern is Ops writing an order to OPERATE a thing the
+   order was implicitly supposed to BUILD. Recording it as a named Ops failure mode rather
+   than three coincidences.
 
-### 1.1 Repo state
-`git status --porcelain` with every line classified; `git worktree list` showing ONLY main;
-package path inside the repo; both preflight guards OK; test-count baseline vs its SHA.
-Note: `instructions.md` is now committed with its WO — a modified one means the WO text
-changed mid-flight.
+WO-015 ISSUED (build only, no venue connection): the live-capture runner. It WIRES the
+existing instrumentation rather than reimplementing it — the re-run forbids changing
+throughput counting or instruments once it begins, so anything not wired now cannot be
+fixed later without invalidating the run. Preflight enforcement moves INTO the runner
+(refuse without persistence configured, refuse under non-paper TRADING_ENV) because
+checklist-enforced rules are 0-for-N in this project. It also detects host suspend via
+wall-vs-monotonic divergence exceeding the declared drift bound, and reports it loudly —
+so a contaminated run is identifiable afterward rather than misread as a starvation
+finding and sent chasing pipeline architecture that isn't the problem. Bite proofs on
+simulated transport; the honest limit stated in the docstring.
 
-### 1.2 Full suite, RANDOMIZED order
-State the seed, paste the summary line **with duration**. Required: 0 failed / 0 xfailed /
-0 xpassed. Plus `lint-imports` 6/6, `contract_count_check` 6/6, `ruff` clean.
+WHAT I NEED FROM YOU — one authorization, two optional rulings.
 
-### 1.3 **HOST SUSPEND MUST BE DISABLED** — new, non-negotiable
-The WO-014c-3 deterministic suite recorded `24063.39s (6:41:03)` because the machine
-suspended mid-run. **A suspend during a live capture drops the WebSocket, registers an
-enormous lag reading, and contaminates both the throughput series and the starvation
-discrimination — a suspend is indistinguishable from catastrophic starvation.**
-- Confirm sleep/hibernate/display-suspend are disabled for the run's duration, and state
-  how you verified it.
-- If you cannot verify it, **STOP AND REPORT.** Do not run a 60-minute capture on a
-  machine that may suspend.
+AUTHORIZATION REQUESTED: THE FIRST REAL VENUE SOCKET, HELD FOR AN HOUR.
+Claude Code flagged that this warrants explicit go-ahead rather than inheriting it from
+the earlier re-run release, and Ops agrees — the prior authorization was granted when we
+believed the runner existed, and the situation has changed. Everything prior touched
+Kraken for 2 minutes at most. This is 60 minutes of continuous connection with the gap
+ledger, failure capture, and ping_timeout=None all facing real venue behavior for the
+first time.
 
-### 1.4 Persistence is configured — the item C guard
-- Confirm `_gap_persist_path` IS set, and paste the path.
-- Confirm `_persistence_optional` is **NOT** set. A live run with it set would produce
-  exactly the unrecorded ledger the guard exists to prevent.
-- Confirm the failure-capture path is configured and writable.
+Ops's position: the preconditions are met. TRADING_ENV=paper with the order-capable path
+bite-proved unreachable, no credentials anywhere (public feed needs none), the venue is
+read-only public market data, and the guards protecting this run have all been watched to
+bite. The exposure is a read-only socket; the risk is a wasted hour, not a bad trade.
 
-### 1.5 Environment
-`TRADING_ENV=paper`; `DATA_SOURCE` = the v2 book adapter on **mainnet**; `venue_name` will
-record `kraken_mainnet`; **no credentials present anywhere** — Kraken's public feed needs
-none, and if any step appears to need one, STOP IMMEDIATELY.
+Requesting your explicit authorization to open it once WO-015 clears review.
 
-### 1.6 Bite proofs — four artifacts each, `sha256` exact-restore
-- order-capable path unreachable under `TRADING_ENV=paper` **and its preservation dual**
-  (paper execution must still fill)
-- `Settings.validate()` mainnet guard
-- staleness guard **and its dual** (a fresh MarketState must still price)
-- no-emission-while-unverified **and its dual** (emission resumes once a fresh snapshot
-  validates)
+OPTIONAL RULING 1 — Ops proposes the sequence stays: WO-015 (runner) → re-run → WO-013 →
+CI capture + version ruling → CI green → 008c → 24h corpus. Confirm or reorder.
 
-**GATE:** state *"PREFLIGHT COMPLETE — proceeding to live connection."* If any item fails,
-STOP. Do not connect on a partial preflight.
-Evidence → `evidence/WO-008b-B-RERUN/preflight.txt`
+OPTIONAL RULING 2 — the 24-hour corpus will exceed any sleep setting. Ops expects the
+runner's suspend DETECTION to become load-bearing there rather than merely diagnostic, and
+that a 24-hour capture likely needs a host that does not sleep at all. Flagging now so the
+corpus WO can carry it as a precondition rather than discovering it at hour three. No
+action needed yet.
 
-## §2 — THE RUN
-Kraken public WebSocket **v2**, channel **book**, symbol **BTC/USD**, depth **10**,
-`TRADING_ENV=paper`, **60 minutes continuous, single uninterrupted window**. Loop runs
-end-to-end: Data → Strategy → Risk → Execution (paper).
+Nothing else is blocked. WO-015 can proceed on Ops authority; only the socket needs you.
 
-### 2.1 Throughput — reported SEPARATELY
-- **raw book update messages RECEIVED** at the parse boundary: count + rate
-- **MarketStates EMITTED**: count + rate
-Raw high + emitted low means our pipeline; both low means the venue. Opposite remedies.
 
-### 2.2 **THE PER-MINUTE SERIES IS THE DELIVERABLE**
-All 60 values for MarketStates emitted, not just the aggregate. A feed averaging 70/min via
-one burst and 55 quiet minutes is NOT "sustained ≥60."
+-------------------------------------
 
-### 2.3 Discrimination instruments
-Pong RTT distribution (per-ping, with `PINGS_ATTEMPTED` / `PINGS_SENT` / `PONGS_RECEIVED` /
-`PONGS_ABSENT`), event-loop lag samples with `expected` vs `actual` and gap timestamps,
-receive-to-process latency, message-rate record with its silent-seconds accounting — all on
-the shared `time.monotonic()` clock.
+ADDENDUM TO WO-015 — three additions from the project lead's ruling. Everything else in
+WO-015 stands.
 
-### 2.4 Feed health
-Checksums attempted / passed / failed. Resync events with cause, duration, and **whether
-emission RESUMED**. Reconnects with cause. Staleness firings. Paper fills with one cost
-breakdown. Sample MarketStates with real bid/ask. `venue_name` as recorded.
+=== A. HOST_SUSPEND IS A RULED FIFTH GAP-LEDGER CAUSE — do not halt on exhaustiveness ===
+WO-014c-2 ruled the cause taxonomy exhaustive at four (KEEPALIVE_RECONNECT,
+CHECKSUM_RESYNC, BREAKER_RETRY_LADDER, VENUE_DISCONNECT) and instructed: "if a
+gap-producing path exists that fits none of these, STOP AND REPORT — do not invent a
+fifth cause."
 
-Evidence → `evidence/WO-008b-B-RERUN/live_run.txt`, `throughput_series.txt`
+The project lead has now RULED a fifth: HOST_SUSPEND. This is a ruled addition, not an
+invention, so it does NOT trigger that STOP. Implement it.
 
-## §3 — THE VERDICT — report ALL definitions, do not pick one
-- **minimum** per-minute value across 60 minutes
-- **median**
-- **mean**
-- **percentage of minutes at or above 60**
+- Emitted when wall-vs-monotonic divergence exceeds the declared drift bound
+  (~5s typical, ≤43s worst case per WO-014c-3 §0.3). Divergence beyond that bound is
+  suspend, not drift — the bound is what makes the two distinguishable.
+- **In WO-015 and the re-run its role is DIAGNOSTIC:** record the gap, report it loudly,
+  do not terminate. A contaminated run must be identifiable after the fact.
+- **At corpus time its role becomes LOAD-BEARING and is the corpus WO's to implement:** a
+  HOST_SUSPEND divergence INVALIDATES the affected window rather than annotating it, with
+  the honest-window doctrine applying to what remains. Build the cause and its detection
+  now; the invalidation semantics belong to the corpus WO.
+- Declare any new reason code in the same commit. If HOST_SUSPEND fits the existing
+  GapRecord schema unchanged, say so; if it needs a field, propose it and STOP.
 
-PASS/FAIL under each. If all four clear ≥60, the verdict is unambiguous. **If they
-disagree, do NOT declare a verdict** — report the disagreement and stop; which definition
-governs is the project lead's ruling, and making it after seeing data is what this
-instruction prevents.
+Why it matters, on the record: without this detection a mid-capture suspend would
+MASQUERADE AS CATASTROPHIC STARVATION — a wrong-thing-measured verdict at the
+discrimination layer itself, sending us after pipeline architecture that isn't the
+problem. This is the VOID doctrine applied prophylactically.
 
-If FAIL: venue-constrained (raw low) or pipeline-constrained (raw high, emitted low)?
-**Do NOT attempt to fix a failing throughput result here.** No tuning, coalescing, or
-batching. Report and STOP.
+=== B. DECISION-LOG ENTRY — a named OPS failure mode ===
+Create it. This one is about the work-order authoring layer, not the code:
 
-## §4 — THE DISCRIMINATION — interpret against the declared branches ONLY
-Compare against the thresholds in `thresholds_and_branches.txt` — late pong > 250ms; absent
-> 5s; elevated lag > 100ms on > 5% of samples; gappy > 10% missed sends. **Do not adjust a
-threshold after seeing data.**
+  "ORDERS WRITTEN TO OPERATE A THING THE ORDER WAS IMPLICITLY SUPPOSED TO BUILD.
+   Three instances: WO-008b specified how to operate a WebSocket that WO-008b was meant to
+   build; WO-014 §1 scoped an amendment to settings.py while the change spanned three
+   files; WO-008b-B-RERUN §2 assumed a live-capture runner that had never existed —
+   get_live_market_data had only ever been driven by tests with a patched transport.
+   Naming it converts coincidence into checklist: EVERY FUTURE WORK ORDER THAT OPERATES
+   ANYTHING STATES WHERE THE OPERATED THING WAS BUILT AND VERIFIED, OR DECLARES ITSELF THE
+   BUILDER. This is the §0 carry-over question ('does this survive what it documents?')
+   extended to the authoring layer — the review loop turned on the reviewer."
 
-Report the cell (pong state × lag state) and the branch it maps to. Reminders:
-- **Branch 5 (instruments GAPPY) OVERRIDES all others.** VOID attaches to the QUANTITATIVE
-  discrimination; **the gappiness itself is a reported finding**, and if lag gaps coincide
-  with message-rate peaks on the shared clock, that correlation is admissible evidence for
-  starvation — **a nomination, never a verdict.** *Gappy instruments can nominate a
-  hypothesis; only clean instruments can convict one.*
-- **Branch 4 requires on-time + normal + NO FAULT.** With `ping_timeout=None` there is no
-  1011; a venue-initiated close arrives via the venue-close path. **If a close occurred, it
-  is NOT Branch 4 — it is an unexplained fault to report.**
-- **`PONGS_ABSENT` is a SIGNAL (Branch 1/3), never gappiness.** Gappiness is failed SENDS only.
-- Confirm the message-rate record's completeness at any gap timestamps, so a nomination can
-  state whether its own data is trustworthy.
+=== C. AUTHORIZATION STATUS — for the record, no action ===
+The project lead has AUTHORIZED the first real venue socket: one 60-minute read-only
+capture under the ruled parameters (five pass criteria, five-branch discrimination, W08
+thresholds), effective when WO-015 clears review. It is PER-RUN, not open-ended — a second
+attempt after a VOID or failure is a new socket under the same terms, with its own
+preflight and its own report.
 
-Evidence → `evidence/WO-008b-B-RERUN/discrimination.txt`
+WO-015 opens NO socket. That remains true. Noted here so the authorization's scope is in
+the same record as the runner it authorizes.
 
-## §5 — GAP LEDGER AND FAILURE CAPTURE — first live exercise
-- Paste the ledger: every gap with cause, bounds, duration, resumed/terminal, and the
-  once-per-run `(wall, monotonic)` anchor. Any `incomplete` gaps → `GAP_LEDGER_INCOMPLETE`?
-- **Compare observed reconnects against the ~116/24h expectation** — that figure came from an
-  hour with **no working keepalive** and should now drop substantially. **Do not tune toward
-  it.** If it does NOT drop, that is the starvation discrimination's moment, not a keepalive
-  failure.
-- **Every checksum failure captured** — the 3-of-14,251 rate from WO-008b-B is **undiagnosed
-  and not presumed benign**. Paste each artifact: raw wire text, both ladders, expected vs
-  computed, preceding 20 frames. Was the cap approached? Any one-line summaries?
-- **PRE-RULED:** if checksums fail repeatedly, **assume a defect on our side first.** Do NOT
-  retry, tune, or adjust validation. Stop, capture, diagnose offline.
+Proceed with WO-015 as written, plus A and B. STOP for review at the end.
 
-## §6 — RETAIN THE FRAMES
-Capture the window's **raw wire text** verbatim, redacted mechanically. Retain as an
-additional **immutable** ground-truth fixture with its own UTC timestamp and run ID —
-**do not overwrite A2's or A3's.** Ground truth accretes.
-State the size; if retaining the full window is impractical, retain a labeled representative
-subset **plus the complete checksum ledger**, and say exactly what was kept and dropped.
-Label with evidentiary bounds (raw wire → witnesses everything downstream, including
-rendering).
+--------
 
-## §7 — IF THE RUN FAILS OR DISCONNECTS
-Report it. Do not silently restart and report only the clean run. Every attempt, its
-duration, and why it ended.
+update :
 
-## §8 — VERIFY, COMMIT, PUSH
-Both suite orders, linter, contract count, ruff. Explain any delta. **Secret scan including
-every captured frame and ledger line** — confirm no credential, token, session, or
-connection identifier survives. Push, paste local vs remote HEAD.
+BEFORE COMMITTING — one question on the order-dependence fix, plus the three outstanding
+addendum items.
 
-## §9 — FINAL REPORT — then STOP
-1. **Preflight** — all of it, including the randomized run with seed, **suspend disabled and
-   how verified**, persistence configured and `_persistence_optional` unset, and all four
-   bite-proof pairs. Confirm the gate statement preceded the connection.
-2. **Run summary** — start/end UTC, duration, symbol, endpoint, uninterrupted?
-3. **THROUGHPUT** — raw and emitted, SEPARATELY. **Paste the full 60-value per-minute series.**
-4. **VERDICT under all four definitions.** Do they agree?
-5. **If FAIL** — venue or pipeline, with analysis.
-6. **DISCRIMINATION** — pong distribution, lag samples with expected/actual, latency. Which
-   cell, which branch? Is any instrument gappy? If VOID, state the nomination and whether the
-   message record supports it.
-7. **`ping_timeout=None`** — how did it behave live? Any close? Any 1011?
-8. **Gap ledger** — pasted. Reconnect count vs ~116/24h. Any incomplete gaps?
-9. **Failure capture** — every failure's artifact. Cap approached? **Are the failures
-   wire-level anomalies or our residual bug?**
-10. **Feed health** — checksums attempted/passed/failed, resyncs and whether emission resumed,
-    staleness firings, fills with cost breakdown.
-11. **Frames retained** — fixture header, size, kept/dropped. A2's and A3's untouched?
-12. **Did any credential, token, session, or connection ID appear ANYWHERE** — output, log,
-    evidence, ledger, or captured frame? YES/NO.
-13. **Was any order placed at any venue?** YES/NO.
-14. §8 verification with deltas and HEADs.
-15. **Prose standing in for output?** YES/NO.
-16. **Changed but not asked?** Every file, or "none."
-17. **What could not be completed, and why?**
+=== Q. DOES create_live_capture_feed STILL RESOLVE FROM DATA_SOURCE? ===
+You report the mode= kwarg bug was "fixed by resolving the kraken_v2 book adapter
+explicitly." Confirm which of these is true:
 
-STOP for human review. The project lead reviews this regardless of outcome.
+  (a) The function still resolves the adapter from DATA_SOURCE via the registry, and the
+      fix was to the BUILDER SIGNATURE / capability handling — e.g. builders that do not
+      support live mode now reject it clearly, or the live path validates that DATA_SOURCE
+      names a live-capable adapter and FAILS LOUDLY otherwise.
+
+  (b) create_live_capture_feed now names kraken_v2 directly, bypassing DATA_SOURCE.
+
+If (b): that is a Principle VII regression and I want it changed before commit. The venue
+abstraction's stated property is that a venue swap is a SINGLE-MODULE CHANGE — add an
+adapter, it self-registers, config names it, nothing else moves. A hardcoded adapter in
+the factory's live path means Sprint 3's Coinbase swap requires editing factory.py too.
+It is also the same shape as the spread_cost parameter the project lead rejected:
+venue-specific knowledge migrating into a component that is supposed to be venue-neutral.
+
+"Only one adapter supports live mode today" is a true statement and a fine reason to FAIL
+LOUDLY when DATA_SOURCE names one that doesn't. It is not a reason to stop asking
+DATA_SOURCE. The failure mode we want at Sprint 3 is a clear "adapter X does not support
+live capture," not a silent connection to the wrong venue.
+
+If (a): say so plainly and proceed — the concern dissolves.
+
+Either way, log the order-dependence bug itself as a finding: a live-only kwarg passed to
+a builder that rejects it, hidden by deterministic ordering, caught by the randomized scan.
+Fourth time that scan has paid for itself.
+
+=== STILL OUTSTANDING FROM THE ADDENDUM — confirm these are in scope ===
+Your status lists 3 bite proofs. WO-015 §2 required SIX. Still owed:
+  1. Short bounded run COMPLETES — artifacts exist and are readable (0.1i).
+  2. CLEAN DEADLINE CLOSE DOES NOT RECONNECT — the preservation dual, S13 template, both
+     halves in one test. This governs whether the re-run stops at minute 60.
+  3. BREAKER TRIP terminates with forensic tail and retained partial capture.
+Plus: declare the HOST_SUSPEND detection floor (suspends shorter than ~43s are undetected
+and present as enormous lag — indistinguishable from starvation, the exact misreading the
+detection exists to prevent). And the two signature changes are RATIFIED retroactively —
+no rework, but 0.1a says "any signature change," not "any breaking change."
+
+If those are already in the in-flight work, say so. If not, they are this session's or the
+next one's — your call on budget, and checkpoint rather than half-implement.
+
+Per 0.2a, nothing commits until both orders confirm 0 failed / 0 xfailed / 0 xpassed with
+contracts 6/6.

@@ -1,0 +1,44 @@
+WO-015 — BITE PROOF — runner_refuse_no_persistence
+==============================================================================
+Target: src/trading/loop/live_capture.py
+Test (0.1h/0.1i): tests/integration/test_live_capture.py::test_runner_refuses_unconfigured_persistence
+sha256 BEFORE: 1d410a3b3826aa9ff55ad7e287f65b55d06d74ed384f270a779b35e53fea840e
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.09s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the unconfigured-persistence refusal is disabled -> a silently-unpersisted live capture would run
+  OLD: if not self._persist_path:
+  NEW: if False and not self._persist_path:  # WEAKENED
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_runner_refuses_unconfigured_persistence _________________
+
+    def test_runner_refuses_unconfigured_persistence():
+>       with pytest.raises(LiveCaptureError, match="GAP_PERSIST_UNCONFIGURED"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE LiveCaptureError
+
+tests\integration\test_live_capture.py:47: Failed
+=========================== short test summary info ===========================
+FAILED tests/integration/test_live_capture.py::test_runner_refuses_unconfigured_persistence
+1 failed in 0.16s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.10s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 1d410a3b3826aa9ff55ad7e287f65b55d06d74ed384f270a779b35e53fea840e
+EXACT RESTORE: YES — byte-identical
+
+RESULT [runner_refuse_no_persistence]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
