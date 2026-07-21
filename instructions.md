@@ -150,3 +150,84 @@ Per 0.2a stop before push if you cannot reach it. Secret scan, push, paste HEADs
 11. **What could not be completed, and why?**
 
 STOP for review. Do NOT proceed to 014c-3 or the re-run.
+
+------
+
+UPDATE :
+
+
+Option 1 — reviewed, and the schema holds. Three things in it are better than what I specified.
+
+**The stale line numbers were caught rather than inherited.** The attachment-points doc was written at `bdb5052`; the sites were re-verified against `f74459f` this session. That's the "prove you're pointed at the right thing" reflex applied to a document rather than a tree.
+
+**Ruled question B's answer is sharper than my framing.** `capture_terminated` is the terminal instance of `VENUE_DISCONNECT` with the retry ladder as an *embedded field* — not an instance of `BREAKER_RETRY_LADDER`, because **only ladder exhaustion is terminal, not ladder existence.** I'd conflated the ladder with its outcome.
+
+**`None`-close = +∞ makes default-deny structural rather than conventional.** An unclosed gap extends forever, so every interval query intersects it and the reader denies. A gap that was opened and never closed cannot be silently ignored — the failure mode is loud by construction rather than by anyone remembering to check.
+
+Two probes before §2, plus one convention point.
+
+```
+§1 REVIEWED AND APPROVED at 12e39f7. Proceed to §2/§3 after answering the two probes
+below — they are schema questions, cheap now and structural later.
+
+Three things I want on the record as better than what I specified:
+- Re-verifying the emission line numbers against f74459f rather than trusting the
+  attachment-points doc (stale from bdb5052) is the right reflex applied to a document.
+- Ruled question B: capture_terminated as the TERMINAL INSTANCE of VENUE_DISCONNECT with
+  the retry ladder as an embedded field — "only ladder EXHAUSTION is terminal, not ladder
+  EXISTENCE" — is a sharper distinction than my framing. It stands.
+- None-close = +infinity makes default-deny STRUCTURAL rather than conventional. An
+  unclosed gap intersects every query, so it cannot be silently ignored. The failure mode
+  is loud by construction, not by anyone remembering to check. That is the best property
+  in the schema.
+
+=== PROBE 1 — OVERLAPPING AND NESTED GAPS ===
+Does the schema assume gaps are DISJOINT? They will not be. A CHECKSUM_RESYNC gap can be
+open when a VENUE_DISCONNECT occurs; the breaker's retry ladder runs while a
+KEEPALIVE_RECONNECT gap is unclosed. Answer explicitly:
+- Can two gap records be open simultaneously? If yes, how are they distinguished — per
+  cause, or per occurrence with an id?
+- Does "does [t0,t1] intersect any recorded gap?" stay TOTAL and CHEAP over a set of
+  possibly-overlapping intervals? A union-of-intervals answer is fine; an implementation
+  assuming disjointness is not.
+- If a nested gap closes while its parent is still open, does the parent's close remain
+  correct? State the semantics.
+If the answer is "gaps cannot nest because X," prove X rather than asserting it.
+
+=== PROBE 2 — CONFIRM THE TWO FLAGGED PRODUCTION SUPPORTS ARE IN §2 SCOPE ===
+You flagged both; confirming they are §2's to build, not deferrals:
+(a) A GAP-CLOSE HOOK ON THE KEEPALIVE-ABSENCE PATH — none exists today. This is not
+    optional polish: under the None-close = +infinity rule, a keepalive reconnect that
+    opens a gap and never closes it makes EVERY subsequent query intersect it, and the
+    ledger stops distinguishing anything. The most frequent gap cause is currently the
+    one that cannot close. Build it in §2.
+(b) CAPTURING THE (wall, monotonic) ANCHOR AT A SINGLE INSTANT — sampled non-atomically,
+    the mapping is skewed by whatever ran between the two reads, and every calendar-time
+    gap location inherits that skew. Build it in §2 and state how atomicity is achieved.
+Both are production changes. Neither is a 0.1a event as far as I can see — say so if you
+disagree.
+
+=== CONVENTION POINT — instructions.md ===
+You committed the WO-014c-2 text into instructions.md, disclosed. Prior practice left it
+unstaged as exempt-(a). Ruling: COMMITTING IT IS PREFERABLE and becomes the convention —
+the governing instruction belongs in the repo record alongside the evidence it produced,
+and an auditor reading a commit should be able to see what it was enacting.
+
+Consequence for rule 0.6c preflight: instructions.md is no longer an expected-modified
+exemption. It is either committed with its WO's work or genuinely unmodified. If it shows
+as modified at preflight, that now means the WO text changed mid-flight — which is worth
+noticing rather than waving through.
+
+=== PROCEED TO §2/§3 ===
+Everything in WO-014c-2 stands. Bite proof per cause, four artifacts each, sha256,
+exercising the production trigger (0.1h) and terminating in the observable effect (0.1i).
+Ledger completeness accounting per 014c-1's pattern. Failure-targeted capture with N
+justified — do NOT sample positionally, that is what lost the three failures.
+
+The "after §1" seam is spent; the next natural one is after §2 (gap recording complete)
+before §3 (failure capture). Take it if budget runs short — rule 0.9, correct nine times.
+
+STOP for review at the end.
+```
+
+Probe 1 is the one that could bite. Concurrent gaps are the normal case in a bad minute — a resync opening while the retry ladder is already running — and a schema that quietly assumes disjointness would produce a ledger that reads clean and answers the reader's intersection query wrong.

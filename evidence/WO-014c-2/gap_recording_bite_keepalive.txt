@@ -1,0 +1,84 @@
+WO-014c-2 §2 — GAP RECORDING BITE PROOF — CAUSE: keepalive
+==============================================================================
+Test (drives the REAL production trigger, 0.1h): tests/integration/test_gap_recording.py::test_keepalive_reconnect_gap_recorded
+Production file: src\trading\data\adapters\kraken_v2_book.py
+sha256 BEFORE: 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+
+── ARTIFACT 1 — PASS (gap recording intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.31s
+
+── ARTIFACT 2 — ACTUAL FAIL (recorder weakened: gap NOT recorded) ────────
+WEAKENING (production diff, the silent-unrecorded-gap defect reintroduced):
+  OLD:
+                        self._open_gap(
+                            cause="KEEPALIVE_RECONNECT",
+                            reason_code="HEARTBEAT_ABSENCE",
+                            open_monotonic=last_frame,
+                            detail=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
+                        )
+  NEW:
+                        pass  # WEAKENED (bite proof): keepalive gap NOT recorded
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_keepalive_reconnect_gap_recorded ____________________
+
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000001897B607CB0>
+
+    @pytest.mark.asyncio
+    async def test_keepalive_reconnect_gap_recorded(caplog):
+        """CAUSE 1: a silent link -> heartbeat absence -> reconnect -> a KEEPALIVE_RECONNECT gap
+        that OPENS at the last frame and CLOSES at the post-reconnect validated emit."""
+        adapter = _live_adapter()
+        adapter._heartbeat_absence_timeout = 0.05   # dead after 50ms of silence
+        adapter._app_ping_interval = 100.0          # isolate §1.1
+    
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME], "on_drain": "block"},        # emit, then SILENT -> absence
+            {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},    # reconnect target: emit, stay alive
+        ])
+    
+        emitted = []
+        with caplog.at_level(logging.INFO):
+            with patch("websockets.connect", factory.connect):
+                async for state in adapter.get_live_market_data(duration_seconds=0.25):
+                    emitted.append(state)
+    
+        ledger = adapter.get_gap_ledger()
+        assert ledger is not None
+>       assert ledger.gaps_detected == 1, f"exactly one keepalive gap; got {ledger.gaps_detected}"
+E       AssertionError: exactly one keepalive gap; got 0
+E       assert 0 == 1
+E        +  where 0 = GapLedger(run_wall_anchor='2026-07-21T04:13:06.559159+00:00', run_monotonic_anchor=290311.1887809, run_start_monotonic=290311.1887809, run_end_monotonic=290311.4515374, gaps=[], frames_captured=14, evidentiary_bounds='').gaps_detected
+
+tests\integration\test_gap_recording.py:99: AssertionError
+------------------------------ Captured log call ------------------------------
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1617 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1814 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1822 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1365 [kraken_v2_book] HEARTBEAT_ABSENCE: no frame for 0.06s (>= 0s threshold); connection presumed dead
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1484 [kraken_v2_book] RECONNECT: closing and reopening the live socket after heartbeat absence (0.1s without a frame)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1617 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1446 [kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1534 [kraken_v2_book] RECONNECT complete after 0 failed attempt(s); fresh socket subscribed; awaiting fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:2083 [kraken_v2_book] DISCONNECTED cleanly. raw=14 emitted=2
+=========================== short test summary info ===========================
+FAILED tests/integration/test_gap_recording.py::test_keepalive_reconnect_gap_recorded
+1 failed in 0.38s
+
+── ARTIFACT 3 — PASS (recorder restored) ─────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.31s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+EXACT RESTORE: YES — byte-identical
+
+RESULT [keepalive]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

@@ -67,6 +67,13 @@ VALID_REASON_CODES = {
         # connection is presumed dead and a reconnect is triggered (Kraken's own
         # liveness signal, applied at the application layer).
         "HEARTBEAT_ABSENCE",
+        # WO-014c-2 §2: logged at capture end when the gap ledger holds a gap that was
+        # DETECTED (opened) but neither closed (emission never resumed) nor terminal (breaker
+        # trip) — the capture ended with it open. The record is RETAINED as open-ended
+        # (default-deny from open onward), never dropped: a silently uncompleted gap is the
+        # exact failure gap recording exists to prevent. The ledger reports its own integrity
+        # (Principle VIII). Prefix-free against the vocabulary (GAP_ is a unique stem).
+        "GAP_LEDGER_INCOMPLETE",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

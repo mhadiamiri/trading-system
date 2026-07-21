@@ -1,0 +1,81 @@
+WO-014c-2 §2 — GAP RECORDING BITE PROOF — CAUSE: venue_disconnect
+==============================================================================
+Test (drives the REAL production trigger, 0.1h): tests/integration/test_gap_recording.py::test_venue_disconnect_gap_recorded
+Production file: src\trading\data\adapters\kraken_v2_book.py
+sha256 BEFORE: 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+
+── ARTIFACT 1 — PASS (gap recording intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.30s
+
+── ARTIFACT 2 — ACTUAL FAIL (recorder weakened: gap NOT recorded) ────────
+WEAKENING (production diff, the silent-unrecorded-gap defect reintroduced):
+  OLD:
+                        self._open_gap(
+                            cause="VENUE_DISCONNECT",
+                            reason_code="VENUE_CONNECTION_CLOSED",
+                            open_monotonic=last_frame,
+                            detail=f"venue closed the connection unexpectedly ({exc})",
+                        )
+  NEW:
+                        pass  # WEAKENED (bite proof): venue-disconnect gap NOT recorded
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_venue_disconnect_gap_recorded ______________________
+
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000001FB9D6F7CB0>
+
+    @pytest.mark.asyncio
+    async def test_venue_disconnect_gap_recorded(caplog):
+        """CAUSE 4c: an UNEXPECTED venue close -> VENUE_DISCONNECT gap routed into reconnect ->
+        resumes on the fresh socket."""
+        adapter = _live_adapter()
+        unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
+            {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
+        ])
+    
+        emitted = []
+        with caplog.at_level(logging.INFO):
+            with patch("websockets.connect", factory.connect):
+                async for state in adapter.get_live_market_data(duration_seconds=0.25):
+                    emitted.append(state)
+    
+        assert factory.connect_count == 2, "an unexpected close reconnects"
+        ledger = adapter.get_gap_ledger()
+>       assert ledger.gaps_detected == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = GapLedger(run_wall_anchor='2026-07-21T04:13:13.830452+00:00', run_monotonic_anchor=290318.4600728, run_start_monotonic=290318.4600728, run_end_monotonic=290318.7176, gaps=[], frames_captured=18, evidentiary_bounds='').gaps_detected
+
+tests\integration\test_gap_recording.py:192: AssertionError
+------------------------------ Captured log call ------------------------------
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1617 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1814 [kraken_v2_book] CONNECTED mode=live venue=kraken_mainnet url=wss://ws.kraken.com/v2
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1822 [kraken_v2_book] subscribed: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"], "depth": 10, "snapshot": true}}
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1365 [kraken_v2_book] VENUE_CONNECTION_CLOSED: unexpected close (received 1011 (internal error) internal error; no close frame sent); reconnecting
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1484 [kraken_v2_book] RECONNECT: closing and reopening the live socket after venue closed the connection unexpectedly (received 1011 (internal error) internal error; no close frame sent)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1617 [kraken_v2_book] connecting to wss://ws.kraken.com/v2 (public, unauthenticated)
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1446 [kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1534 [kraken_v2_book] RECONNECT complete after 0 failed attempt(s); fresh socket subscribed; awaiting fresh snapshot
+INFO     trading.data.adapters.kraken_v2_book:kraken_v2_book.py:2083 [kraken_v2_book] DISCONNECTED cleanly. raw=18 emitted=2
+=========================== short test summary info ===========================
+FAILED tests/integration/test_gap_recording.py::test_venue_disconnect_gap_recorded
+1 failed in 0.37s
+
+── ARTIFACT 3 — PASS (recorder restored) ─────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.31s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+EXACT RESTORE: YES — byte-identical
+
+RESULT [venue_disconnect]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

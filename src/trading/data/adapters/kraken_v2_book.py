@@ -194,6 +194,98 @@ class ThroughputRecord:
         return (b["lat_sum"] / b["lat_n"]) if b and b["lat_n"] else 0.0
 
 
+# ── WO-014c-2 §1/§2: DATA-GAP RECORDING ──────────────────────────────────────────
+# The ruled cause taxonomy (evidence/WO-014c-2/gap_schema.txt §1.1). Closed set — not
+# extended in code. BREAKER_RETRY_LADDER is cross-cutting: it manifests as the
+# retry_ladder FIELD of whichever reconnect gap triggered it (a duration component), not
+# as a standalone interval — so a GapRecord's `cause` is one of the three TRIGGERS
+# (keepalive / checksum / venue disconnect) and the ladder rides along as a field.
+GAP_CAUSES = (
+    "KEEPALIVE_RECONNECT",
+    "CHECKSUM_RESYNC",
+    "BREAKER_RETRY_LADDER",
+    "VENUE_DISCONNECT",
+)
+
+
+@dataclass
+class GapRecord:
+    """
+    WO-014c-2 §1.2. One recorded data gap: a half-open interval [open_monotonic,
+    close_monotonic) during which NO validated MarketState was emitted. Shaped to match
+    capture_terminated's already-assembled fields (the richest emission site) rather than
+    invented and retrofitted. ALL BOUNDS ARE time.monotonic() — the WO-014c-1 §A.2 shared
+    clock (same as the lag/pong/throughput records), so continuity is checkable by direct
+    interval comparison and gaps correlate with those records without mixing clock bases.
+    Calendar location comes from the ledger's once-per-run (wall, monotonic) anchor, never
+    from a per-gap wall timestamp.
+
+    close_monotonic is None while UNRESOLVED or TERMINAL: read as +infinity, so an unclosed
+    gap intersects EVERY later interval query and the default-deny reader denies it. That
+    makes "opened but never closed" LOUD BY CONSTRUCTION, not by anyone remembering to check
+    (the property the lead named the best in the schema).
+    """
+
+    gap_id: int                              # per-run OPEN sequence — per-OCCURRENCE identity
+    cause: str                               # one of GAP_CAUSES (a TRIGGER; see note above)
+    reason_code: str                         # the DECLARED audit code emitted (links to vocab)
+    open_monotonic: float                    # gap OPEN = last frame received / failing frame
+    close_monotonic: Optional[float] = None  # first validated emit after recovery; None=+inf
+    resumed: bool = False                    # True once a validated MarketState closed it
+    terminal: bool = False                   # True if this gap ENDS the capture (breaker trip)
+    last_validated_book: Optional[dict] = None  # {best_bid,best_ask,last_checksum,at} at OPEN
+    retry_ladder: list = field(default_factory=list)  # BREAKER_RETRY_LADDER detail; [] if none
+    detail: str = ""                         # human trigger text
+    open_server_ts: Optional[str] = None     # CORROBORATION only; monotonic is the bound
+
+    @property
+    def duration_s(self) -> Optional[float]:
+        # None while unresolved/terminal: an open-ended gap has no closed duration yet.
+        if self.close_monotonic is None:
+            return None
+        return self.close_monotonic - self.open_monotonic
+
+    @property
+    def complete(self) -> bool:
+        """A record is COMPLETE if it either RESUMED (closed) or is a known TERMINAL gap.
+        Anything else — opened, but the capture ended with it neither closed nor tripped —
+        is INCOMPLETE and the ledger reports it, never drops it (WO §2 completeness)."""
+        return self.resumed or self.terminal
+
+
+@dataclass
+class GapLedger:
+    """
+    WO-014c-2 §1.2/§1.3. Run-level gap ledger. Carries the ONCE-per-run (wall, monotonic)
+    anchor — the ONLY wall clock in the gap records — so any monotonic bound is calendar-
+    locatable via  wall(t) = run_wall_anchor + (t - run_monotonic_anchor)  without ever
+    putting two clock bases inside a gap record. Also carries the completeness accounting the
+    default-deny corpus reader needs: a "no gap here" answer is only trustworthy against a
+    ledger known to hold EVERY gap of the run, so a detected-but-uncompleted gap is STATED.
+    """
+
+    run_wall_anchor: str                     # ISO-8601 UTC, captured ONCE at capture start
+    run_monotonic_anchor: float              # time.monotonic() at the SAME instant (atomic)
+    run_start_monotonic: float               # emission-window start bound (leading boundary)
+    run_end_monotonic: float = 0.0           # emission-window end bound (deadline/close/trip)
+    gaps: list = field(default_factory=list)  # GapRecord, in OPEN order (so sorted by open)
+    frames_captured: int = 0                 # for the terminal evidentiary tail (4a)
+    evidentiary_bounds: str = ""             # two-window doctrine label when terminal
+
+    @property
+    def gaps_detected(self) -> int:
+        """Every OPEN creates a record, so detected == len(gaps). Named explicitly so the
+        ledger reports its own integrity (WO §2)."""
+        return len(self.gaps)
+
+    @property
+    def incomplete(self) -> list:
+        """Detected gaps that were neither closed nor terminal at capture end — retained and
+        reported, never dropped. A non-empty list means the run's continuity ledger has a
+        deficit the reader must default-deny across."""
+        return [g for g in self.gaps if not g.complete]
+
+
 class LocalBookState(enum.Enum):
     """
     Local book state transitions for Kraken v2 book adapter.
@@ -787,6 +879,15 @@ class KrakenV2BookAdapter:
         # WO-014c-1 §B.2: pong-observer config (instance-overridable for ms-scale tests).
         self._ping_sample_interval = self.PING_SAMPLE_INTERVAL_SECONDS
         self._pong_absent_timeout = self.PONG_ABSENT_SECONDS
+        # WO-014c-2 §2: data-gap ledger. None outside a live capture — gap recording is a
+        # LIVE-continuity concern (like the §B instruments), so the fixture path records no
+        # gaps. Created per capture in get_live_market_data. _gap_seq assigns per-occurrence
+        # gap_id (probe 1). _last_frame_server_ts is the corroborating venue wall-clock of the
+        # last validated frame, used for GapRecord.open_server_ts.
+        self._gap_ledger = None
+        self._gap_seq = 0
+        self._open_gaps = []                 # GapRecords still open (not yet closed/terminal)
+        self._last_frame_server_ts = None
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -1011,6 +1112,52 @@ class KrakenV2BookAdapter:
         ask_levels = [(str(p), str(q)) for p, q in self._local_book.asks[:10]]
         return bid_levels, ask_levels
 
+    # ── WO-014c-2 §2: gap-ledger primitives ─────────────────────────────────────
+    # Active ONLY during a live capture (self._gap_ledger is not None). Each is a no-op on
+    # the fixture path, so fixture replay records no gaps and existing fixture tests are
+    # untouched. All bounds are time.monotonic() (§A.2 shared clock).
+    def _open_gap(self, cause: str, reason_code: str, open_monotonic: float,
+                  detail: str) -> Optional["GapRecord"]:
+        """Open a gap at `open_monotonic`, assign a per-occurrence gap_id, snapshot the last
+        validated top-of-book, and track it as open. Returns the record (None off-capture)."""
+        if self._gap_ledger is None:
+            return None
+        record = GapRecord(
+            gap_id=self._gap_seq,
+            cause=cause,
+            reason_code=reason_code,
+            open_monotonic=open_monotonic,
+            last_validated_book=self._last_validated_book,
+            detail=detail,
+            open_server_ts=self._last_frame_server_ts,
+        )
+        self._gap_seq += 1
+        self._gap_ledger.gaps.append(record)
+        self._open_gaps.append(record)
+        return record
+
+    def _close_open_gaps(self, close_monotonic: float) -> None:
+        """Probe-1 collective close: the first validated emit resumes emission for EVERY
+        open gap at once (a nested child cannot close while its parent stays open — the emit
+        gate proof), so all open gaps share this close instant. This IS the keepalive-absence
+        close hook (probe 2a): one mechanism closes keepalive, checksum, and venue-disconnect
+        gaps, so the most-frequent cause is no longer the one that cannot close."""
+        if self._gap_ledger is None or not self._open_gaps:
+            return
+        for record in self._open_gaps:
+            record.close_monotonic = close_monotonic
+            record.resumed = True
+        self._open_gaps = []
+
+    def _attach_ladder_to_open_gaps(self) -> None:
+        """Attach the just-completed reconnect's retry ladder (BREAKER_RETRY_LADDER) to every
+        gap open across it — the ladder is that gap's DURATION/forensic detail (§1.1)."""
+        if self._gap_ledger is None:
+            return
+        ladder = list(self._reconnect_ladder)
+        for record in self._open_gaps:
+            record.retry_ladder = ladder
+
     def _enter_resync(self, reason: str) -> None:
         """
         Begin the no-emission window (FR-018a(d)).
@@ -1018,7 +1165,13 @@ class KrakenV2BookAdapter:
         Discards the local book and requests a fresh snapshot. NO MarketState may
         be emitted until that snapshot is applied AND its checksum validates. An
         unverified book must not price anything (Principle V).
+
+        WO-014c-2 §2: OPEN a CHECKSUM_RESYNC gap on the False->True transition only. A
+        subsequent failure while already awaiting resync re-enters here but must NOT open a
+        duplicate gap (the window is one continuous no-emission interval until a fresh
+        snapshot validates). This is the cleanest open site in the codebase — an explicit flag.
         """
+        newly_opening = not self._awaiting_resync
         self._awaiting_resync = True
         self._log_error(
             f"CHECKSUM_RESYNC: {reason}. Book discarded; "
@@ -1026,6 +1179,14 @@ class KrakenV2BookAdapter:
         )
         self._discard_book()
         self._request_snapshot()
+        if newly_opening:
+            import time
+            self._open_gap(
+                cause="CHECKSUM_RESYNC",
+                reason_code="CHECKSUM_RESYNC",
+                open_monotonic=time.monotonic(),
+                detail=f"checksum resync: {reason}",
+            )
 
     async def _process_quote_update(self, quote_update: QuoteUpdate) -> Optional:
         """
@@ -1091,6 +1252,14 @@ class KrakenV2BookAdapter:
             "last_checksum": self._local_book.last_checksum,
             "at": datetime.now(UTC).isoformat(),
         }
+        # WO-014c-2 §2: retain the venue wall-clock of the last VALIDATED frame, for a gap
+        # record's corroborating open_server_ts (the AUTHORITATIVE bound stays monotonic). The
+        # v2 wire carries it as an ISO string; a parsed datetime is also accepted.
+        _ts = quote_update.timestamp
+        if isinstance(_ts, datetime):
+            self._last_frame_server_ts = _ts.isoformat()
+        elif isinstance(_ts, str) and _ts:
+            self._last_frame_server_ts = _ts
 
         # A validated SNAPSHOT is the only thing that closes the window.
         if quote_update.is_snapshot and self._awaiting_resync:
@@ -1406,6 +1575,29 @@ class KrakenV2BookAdapter:
                 "any analysis to [capture start .. trip_time]."
             ),
         }
+        # WO-014c-2 §2: the trip means the gap(s) open when the reconnect ran will NEVER close
+        # (venue presumed gone). Mark them TERMINAL — preserving each trigger cause and its
+        # true OPEN (when emission actually stopped), stamping the terminal breaker reason code
+        # and the retry ladder as the forensic tail. close stays None (+inf => default-deny
+        # from open onward). A terminal gap is COMPLETE (a known open-ended gap), not an
+        # incomplete-ledger deficit. Defensive fallback: if somehow no gap was open, record one
+        # terminal VENUE_DISCONNECT so the trip is never an unrecorded gap.
+        if self._gap_ledger is not None:
+            if not self._open_gaps:
+                import time
+                self._open_gap(
+                    cause="VENUE_DISCONNECT",
+                    reason_code="RECONNECT_CIRCUIT_BREAKER_TRIPPED",
+                    open_monotonic=time.monotonic(),
+                    detail=f"breaker trip (no open gap at trip): {reason}",
+                )
+            for record in self._open_gaps:
+                record.terminal = True
+                record.reason_code = "RECONNECT_CIRCUIT_BREAKER_TRIPPED"
+                record.retry_ladder = list(ladder)
+            self._gap_ledger.frames_captured = frames
+            self._gap_ledger.evidentiary_bounds = self.capture_terminated["evidentiary_bounds"]
+            self._open_gaps = []
         self._log_error(message)
         return CircuitBreakerTripped(
             message, trip_time=trip_time, reconnect_ladder=ladder,
@@ -1636,7 +1828,21 @@ class KrakenV2BookAdapter:
             # ANY received frame (book, heartbeat, or pong); last_ping paces the app ping.
             last_frame = time.monotonic()
             last_ping = time.monotonic()
-            self._throughput_record.start_monotonic = time.monotonic()
+            # WO-014c-2 §2: the ONCE-per-run (wall, monotonic) anchor for the gap ledger,
+            # captured ATOMICALLY — two adjacent reads with NO await between them, so
+            # cooperative scheduling cannot interleave and the wall<->monotonic skew is bounded
+            # to sub-microsecond CPU time, not load (probe 2b). It is the ONLY wall clock in the
+            # gap records; every monotonic bound is calendar-located via this pair.
+            anchor_monotonic = time.monotonic()
+            anchor_wall = datetime.now(UTC).isoformat()
+            self._gap_seq = 0
+            self._open_gaps = []
+            self._gap_ledger = GapLedger(
+                run_wall_anchor=anchor_wall,
+                run_monotonic_anchor=anchor_monotonic,
+                run_start_monotonic=anchor_monotonic,
+            )
+            self._throughput_record.start_monotonic = anchor_monotonic
             while time.time() < deadline:
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
@@ -1668,10 +1874,21 @@ class KrakenV2BookAdapter:
                         f"(>= {self._heartbeat_absence_timeout:.0f}s threshold); "
                         f"connection presumed dead"
                     )
+                    # WO-014c-2 §2: OPEN the keepalive gap at the LAST FRAME received (when
+                    # emission actually stopped, not when the threshold tripped). The unified
+                    # close hook closes it at the first post-reconnect validated emit — this
+                    # is the close hook the absence path lacked (probe 2a).
+                    self._open_gap(
+                        cause="KEEPALIVE_RECONNECT",
+                        reason_code="HEARTBEAT_ABSENCE",
+                        open_monotonic=last_frame,
+                        detail=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
+                    )
                     websocket = await self._perform_reconnect(
                         websocket,
                         reason=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
                     )
+                    self._attach_ladder_to_open_gaps()
                     last_frame = time.monotonic()
                     last_ping = time.monotonic()
                     continue
@@ -1692,9 +1909,19 @@ class KrakenV2BookAdapter:
                             "[kraken_v2_book] application ping send failed (%s); reconnecting",
                             exc,
                         )
+                        # WO-014c-2 §2 (cause 4b): a dead socket detected on send is a venue
+                        # disconnect. Open the gap at the last frame received; attach the
+                        # reconnect ladder after recovery.
+                        self._open_gap(
+                            cause="VENUE_DISCONNECT",
+                            reason_code="VENUE_CONNECTION_CLOSED",
+                            open_monotonic=last_frame,
+                            detail=f"application ping send failed ({exc})",
+                        )
                         websocket = await self._perform_reconnect(
                             websocket, reason="application ping send failed",
                         )
+                        self._attach_ladder_to_open_gaps()
                         last_frame = time.monotonic()
                         last_ping = time.monotonic()
                         continue
@@ -1733,9 +1960,18 @@ class KrakenV2BookAdapter:
                     self._log_error(
                         f"VENUE_CONNECTION_CLOSED: unexpected close ({exc}); reconnecting"
                     )
+                    # WO-014c-2 §2 (cause 4c): explicit venue close. Open the gap at the last
+                    # frame received; attach the reconnect ladder after recovery.
+                    self._open_gap(
+                        cause="VENUE_DISCONNECT",
+                        reason_code="VENUE_CONNECTION_CLOSED",
+                        open_monotonic=last_frame,
+                        detail=f"venue closed the connection unexpectedly ({exc})",
+                    )
                     websocket = await self._perform_reconnect(
                         websocket, reason=f"venue closed the connection unexpectedly ({exc})",
                     )
+                    self._attach_ladder_to_open_gaps()
                     last_frame = time.monotonic()
                     last_ping = time.monotonic()
                     continue
@@ -1780,7 +2016,14 @@ class KrakenV2BookAdapter:
                 market_states = await self.process_raw_frame(raw_frame)
                 # WO-014c-1 §B.3: receive-to-process latency (last_frame = recv return) and the
                 # per-second message count, on the shared monotonic clock.
-                self._throughput_record.record(last_frame, time.monotonic())
+                done_mono = time.monotonic()
+                self._throughput_record.record(last_frame, done_mono)
+
+                # WO-014c-2 §2: UNIFIED CLOSE HOOK. A validated MarketState means emission
+                # resumed, which closes EVERY open gap at once (probe-1 collective close). This
+                # single hook serves keepalive, checksum, and venue-disconnect gaps.
+                if market_states:
+                    self._close_open_gaps(done_mono)
 
                 # WO-014b-1: RECONNECT takes priority over same-socket resubscribe.
                 # Five consecutive checksum failures (FR-018) set _pending_reconnect via
@@ -1796,6 +2039,9 @@ class KrakenV2BookAdapter:
                 # The consumer path above is untouched (design B).
                 if self._pending_reconnect:
                     websocket = await self._perform_reconnect(websocket)
+                    # WO-014c-2 §2: the 5th-checksum-failure escalation opened a CHECKSUM_RESYNC
+                    # gap in _enter_resync; attach this reconnect's ladder to it.
+                    self._attach_ladder_to_open_gaps()
                 else:
                     await self._maybe_resubscribe(websocket)
 
@@ -1817,6 +2063,26 @@ class KrakenV2BookAdapter:
                         pass
             self._throughput_record.end_monotonic = time.monotonic()
             self._check_instruments_gappy(self._lag_record, self._pong_record)
+            # WO-014c-2 §2: finalize the gap ledger and report its own integrity. A gap that was
+            # DETECTED (opened) but neither closed (emission never resumed) nor tripped the
+            # breaker (terminal) is INCOMPLETE — the capture ended with it open. State it
+            # loudly (GAP_LEDGER_INCOMPLETE), never drop it: a silently unrecorded/uncompleted
+            # gap is the exact failure this WO exists to prevent. The records are retained.
+            if self._gap_ledger is not None:
+                self._gap_ledger.run_end_monotonic = time.monotonic()
+                self._gap_ledger.frames_captured = len(self.captured_raw_text)
+                incomplete = self._gap_ledger.incomplete
+                if incomplete:
+                    ids = ", ".join(
+                        f"#{g.gap_id}({g.cause}, opened@{g.open_monotonic:.4f}mono)"
+                        for g in incomplete
+                    )
+                    self._log_error(
+                        f"GAP_LEDGER_INCOMPLETE: {len(incomplete)} of "
+                        f"{self._gap_ledger.gaps_detected} recorded gap(s) opened but never "
+                        f"closed or terminated — the capture ended with them open. Retained as "
+                        f"open-ended (default-deny from open onward), NOT dropped: [{ids}]."
+                    )
             try:
                 await websocket.close()
                 logger.info(
@@ -1965,6 +2231,12 @@ class KrakenV2BookAdapter:
             )
 
         return result
+
+    def get_gap_ledger(self) -> Optional["GapLedger"]:
+        """WO-014c-2 §2: the data-gap ledger for the last live capture (None if no capture
+        has run). The default-deny corpus reader (a later WO) consumes gaps + the run anchor
+        + the completeness accounting from here; it is NOT built in this WO."""
+        return self._gap_ledger
 
     async def _trigger_pause_for_test(self) -> None:
         """

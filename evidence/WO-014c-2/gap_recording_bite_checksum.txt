@@ -1,0 +1,72 @@
+WO-014c-2 §2 — GAP RECORDING BITE PROOF — CAUSE: checksum
+==============================================================================
+Test (drives the REAL production trigger, 0.1h): tests/integration/test_gap_recording.py::test_checksum_resync_gap_recorded
+Production file: src\trading\data\adapters\kraken_v2_book.py
+sha256 BEFORE: 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+
+── ARTIFACT 1 — PASS (gap recording intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.31s
+
+── ARTIFACT 2 — ACTUAL FAIL (recorder weakened: gap NOT recorded) ────────
+WEAKENING (production diff, the silent-unrecorded-gap defect reintroduced):
+  OLD:
+                self._open_gap(
+                    cause="CHECKSUM_RESYNC",
+                    reason_code="CHECKSUM_RESYNC",
+                    open_monotonic=time.monotonic(),
+                    detail=f"checksum resync: {reason}",
+                )
+  NEW:
+                pass  # WEAKENED (bite proof): checksum resync gap NOT recorded
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_checksum_resync_gap_recorded ______________________
+
+    @pytest.mark.asyncio
+    async def test_checksum_resync_gap_recorded():
+        """CAUSE 2: a single checksum failure -> CHECKSUM_RESYNC gap on the SAME socket (no
+        reconnect, so retry_ladder is empty) -> closed by the fresh snapshot."""
+        adapter = _live_adapter()
+        adapter._heartbeat_absence_timeout = 100.0
+        adapter._app_ping_interval = 100.0
+    
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, _corrupted_update(), SNAPSHOT_FRAME], "on_drain": "heartbeat"},
+        ])
+    
+        emitted = []
+        with patch("websockets.connect", factory.connect):
+            async for state in adapter.get_live_market_data(duration_seconds=0.25):
+                emitted.append(state)
+    
+        assert factory.connect_count == 1, "a single checksum failure resyncs on the SAME socket"
+        ledger = adapter.get_gap_ledger()
+>       assert ledger.gaps_detected == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = GapLedger(run_wall_anchor='2026-07-21T04:13:09.017286+00:00', run_monotonic_anchor=290313.6469075, run_start_monotonic=290313.6469075, run_end_monotonic=290313.9090209, gaps=[], frames_captured=19, evidentiary_bounds='').gaps_detected
+
+tests\integration\test_gap_recording.py:132: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1360 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1360 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+=========================== short test summary info ===========================
+FAILED tests/integration/test_gap_recording.py::test_checksum_resync_gap_recorded
+1 failed in 0.38s
+
+── ARTIFACT 3 — PASS (recorder restored) ─────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.30s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 6d164e0cd74514b20dc284f8c131b76be524c3c6116bd7c0c3cc32da0d601159
+EXACT RESTORE: YES — byte-identical
+
+RESULT [checksum]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

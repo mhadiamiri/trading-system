@@ -1,0 +1,73 @@
+WO-014c-2 §2 — GAP RECORDING: VERIFICATION
+================================================================================
+Baseline: 348461b (== f74459f code + two evidence docs). Authority: constitution.md.
+NO VENUE CONNECTION (simulated transport only). NO HTTPS doc fetch this slice.
+
+── TEST SUITE — BOTH ORDERS ──────────────────────────────────────────────────
+Deterministic : pytest tests/ -p no:randomly -rX
+                165 passed, 0 failed, 0 xfailed, 0 xpassed   (241.88s)
+Randomized    : pytest tests/ --randomly-seed=20260725 -rX
+                165 passed, 0 failed, 0 xfailed, 0 xpassed   (242.64s)
+
+DELTA vs f74459f (158 -> 165): +7 tests, ALL new, in tests/integration/test_gap_recording.py
+(the §2 bite proofs + probe-1 overlap + ledger-completeness). NO existing test changed count,
+state, or outcome. No xfail/xpass introduced or cleared.
+
+── LINTERS ───────────────────────────────────────────────────────────────────
+import-linter : 6 kept, 0 broken   (Analyzed 58 files, 192 dependencies)
+                — the four boundary contracts + registry-sole-path + no-test-doubles all KEPT.
+contract count: PASS — 6 contracts (expected 6)
+ruff          : All checks passed!
+
+── FOUR-ARTIFACT BITE PROOF PER CAUSE (rule 0.7; drives the REAL trigger, 0.1h; ends in the
+   observable effect — a GapRecord written with its schema fields, 0.1i) ──────────────────
+Full artifacts in evidence/WO-014c-2/gap_recording_bite_<cause>.txt. Summary:
+
+  CAUSE                 A1 PASS  A2 ACTUAL-FAIL (real assertion when recorder weakened)     A3  A4 sha256
+  keepalive             yes      "exactly one keepalive gap; got 0"                          yes  exact
+  checksum              yes      "assert 0 == 1"  (gaps_detected 0, not 1)                   yes  exact
+  breaker_retry_ladder  yes      "the retry ladder records each failed reopen; got []"       yes  exact
+  venue_disconnect      yes      "assert 0 == 1"  (gaps_detected 0, not 1)                   yes  exact
+
+Each weakening reintroduces the exact defect this WO exists to prevent — a SILENT UNRECORDED
+GAP (or, for the ladder, a reconnect gap with no forensic duration). A2 is a REAL failure with
+the real assertion text, captured verbatim. A4: sha256(before) == sha256(after) for every
+cause — byte-exact restore, production untouched by the proof.
+
+── TAXONOMY COVERAGE (every ruled cause emits, or is reported unable to) ──────────────────
+  KEEPALIVE_RECONNECT  -> get_live_market_data heartbeat-absence branch  -> GapRecord + HEARTBEAT_ABSENCE
+  CHECKSUM_RESYNC      -> _enter_resync (False->True transition, idempotent) -> GapRecord + CHECKSUM_RESYNC
+  BREAKER_RETRY_LADDER -> _attach_ladder_to_open_gaps -> retry_ladder FIELD on the reconnect gap
+  VENUE_DISCONNECT     -> venue-close (4c) + app-ping-send-fail (4b) -> GapRecord + VENUE_CONNECTION_CLOSED
+                       -> breaker trip (4a) -> the open gap marked TERMINAL + RECONNECT_CIRCUIT_BREAKER_TRIPPED
+No gap-producing live path is left unrecorded (PAUSE is fixture-only; RECONNECT_FLAG_STRANDED
+is a loud guard). Every path emits.
+
+── LEDGER COMPLETENESS (the ledger reports its own integrity) ─────────────────────────────
+test_ledger_reports_incomplete_gap: a checksum gap that OPENS but whose capture ENDS before a
+fresh snapshot validates is DETECTED-but-uncompleted. It is retained as open-ended (close=None
+=> +inf => default-deny from open onward) and reported LOUDLY as GAP_LEDGER_INCOMPLETE at
+capture end — never dropped. ledger.incomplete lists it. A terminal breaker gap is COMPLETE
+(a known open-ended gap), NOT an integrity deficit — proven separately.
+
+── REASON CODE DECLARED IN THE SAME COMMIT ────────────────────────────────────────────────
+GAP_LEDGER_INCOMPLETE added to VALID_REASON_CODES["DATA"] (decision.py). Prefix-free vs the
+vocabulary; producible (emitted as a "GAP_LEDGER_INCOMPLETE:" string); the vocabulary-
+completeness guard (test_reason_code_vocabulary.py, 8 tests) stays green. All four cause
+reason codes reuse EXISTING declared codes.
+
+── PROBE-1 SEMANTICS PROVEN ───────────────────────────────────────────────────────────────
+test_overlapping_gaps_union_and_collective_close: a CHECKSUM_RESYNC gap open when a
+VENUE_DISCONNECT occurs -> TWO records (distinct gap_id), OVERLAPPING windows (not disjoint),
+BOTH closed at the SAME instant (collective close). The union interval-intersection query
+handles them; no disjointness assumed.
+
+── FILES CHANGED (§2) ─────────────────────────────────────────────────────────────────────
+  src/trading/data/adapters/kraken_v2_book.py  — GapRecord/GapLedger + GAP_CAUSES; open/close/
+      attach/terminal wiring at the 4 sites; atomic (wall,monotonic) anchor; ledger-integrity
+      report; last-frame server-ts retention; get_gap_ledger().
+  src/trading/logkit/decision.py               — declare GAP_LEDGER_INCOMPLETE (same commit).
+  tests/integration/test_gap_recording.py      — 7 new tests (bite proofs + overlap + completeness).
+  evidence/WO-014c-2/gap_recording_bite_*.txt  — 4 bite-proof artifact files.
+  evidence/WO-014c-2/gap_recording_verification.txt — this file.
+Nothing else changed.
