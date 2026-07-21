@@ -1,0 +1,151 @@
+WO-014c-2 — PROBE ANSWERS (schema questions gating §2)
+================================================================================
+Baseline: 12e39f7 (§1 reviewed + approved). Authority: .specify/memory/constitution.md.
+The instructions.md UPDATE block approved §1 and posed two probes "before §2 ... schema
+questions, cheap now and structural later," plus one convention point. This file answers
+them and records the ONE schema refinement they produce (a per-occurrence gap_id). It is
+committed BEFORE §2 code, keeping the schema-first provenance: schema declared (§1) ->
+schema refined by probe answers (here) -> §2 builds to it.
+
+All line numbers are src/trading/data/adapters/kraken_v2_book.py @ 12e39f7 (== f74459f code).
+
+
+================================================================================
+PROBE 1 — OVERLAPPING AND NESTED GAPS
+================================================================================
+Question restated: does the schema assume gaps are DISJOINT (it must not); can two records
+be open at once and how are they distinguished; does the intersection query stay TOTAL and
+CHEAP over possibly-overlapping intervals; and if a nested gap closes while its parent is
+open, does the parent's close stay correct — with X proved, not asserted, for any "cannot".
+
+── Q1a. CAN TWO GAP RECORDS BE OPEN SIMULTANEOUSLY? — YES. ───────────────────────
+The schema does NOT assume disjointness. Concrete production interleaving that overlaps:
+  - A single checksum failure OPENS a CHECKSUM_RESYNC gap (_enter_resync:1022, book
+    discarded, _awaiting_resync=True). Before the fresh snapshot validates, the venue closes
+    the socket (ConnectionClosedError on recv, 1727) -> a VENUE_DISCONNECT gap OPENS and
+    _perform_reconnect runs. Now BOTH windows are open and overlapping in time.
+DISTINGUISHED PER OCCURRENCE, NOT PER CAUSE. Two overlapping records must have independent
+identity — a parent and a nested child need to be addressable separately, and even the same
+cause can recur. So the schema gains ONE field:
+
+    gap_id: int      # per-run OPEN sequence, assigned at _open_gap (0,1,2,...)
+
+Per-cause keying would collapse a checksum gap and a later checksum gap, and could not name
+the nested child distinctly. gap_id is monotonic within the run (single-threaded async: only
+one _open_gap runs per await-free step), so it is unique by construction. This is the only
+change probe 1 makes to the §1 schema; everything else in §1.2 stands.
+
+── Q1b. DOES THE INTERSECTION QUERY STAY TOTAL AND CHEAP OVER OVERLAPS? — YES. ────
+The §1.3 query is already a UNION test, never a disjointness-dependent one. Restated:
+
+    intersects([t0, t1])  ==  ANY gap g:  t0 < (g.close_monotonic or +inf)  AND  g.open_monotonic < t1
+
+This is a DISJUNCTION over the gap set — "does [t0,t1] hit ANY gap." It is correct whether
+the gaps are disjoint, overlapping, or nested: overlap only means two disjuncts are both
+true for some queries, which changes nothing about the OR. It is TOTAL (every query resolves
+against every gap) and CHEAP (O(#gaps) scan; O(log n) if bisected on open_monotonic, and the
+records are appended in open order so they are already sorted). Reconnect gaps are rare, so
+#gaps per run is small. A "union-of-intervals answer is fine" (the update's own words) —
+this IS that: the reader unions by OR-ing membership, and need never materialize a merged
+interval list unless it wants the complement (emission windows), which is a standard
+sweep-merge over sorted intervals, also total and cheap.
+
+── Q1c. IF A NESTED GAP CLOSES WHILE ITS PARENT IS OPEN, IS THE PARENT'S CLOSE OK? ─
+The situation "a nested child closes while its parent stays open" CANNOT ARISE. Proof, from
+the emit gate rather than by assertion:
+
+  DEFINITION. A gap CLOSES at the first VALIDATED MarketState emitted at/after its open.
+  "Validated MarketState" has exactly ONE production source: _process_quote_update's final
+  return (line 1103). Nothing else emits.
+
+  GATE. That return is reached ONLY when BOTH: (i) _awaiting_resync is False (the incremental
+  guard at 1057 returns None otherwise; the window is closed only by a validated snapshot at
+  1096-1097), AND (ii) a checksum-GOOD frame was just delivered on the LIVE socket (the
+  mismatch branch at 1072 returns None otherwise). A frame can only be delivered on the live
+  socket if any in-progress _perform_reconnect has already returned a reopened, resubscribed
+  socket (the transport awaits it before the next recv).
+
+  CONSEQUENCE. The first validated emit after any disturbance means EVERY suppression
+  condition has cleared at once — resync done AND socket live AND checksum good. There is no
+  "half-resumed" state: emission is a single global gate, not per-gap. Therefore the emit
+  that closes the child necessarily closes the parent too, AT THE SAME instant. A child
+  cannot close while the parent is still open, because closing requires the very conditions
+  whose absence keeps the parent open.
+
+SEMANTICS THE SCHEMA ADOPTS (stated, since overlap is real even though independent-early-
+close is impossible):
+  - CLOSE IS COLLECTIVE. The unified close hook (§2) closes ALL currently-open gaps at the
+    first validated emit, stamping each with the SAME close_monotonic and resumed=True. An
+    overlapping/nested set therefore shares one close instant. Each record's [open, close) is
+    individually correct: open = when THAT gap's emission-suppression began; close = the
+    common resume.
+  - NESTING => CONTAINMENT, resolved by the union. A venue-disconnect gap opened inside an
+    open checksum gap has open_child > open_parent and close_child == close_parent, so
+    [open_child, close_child) is CONTAINED in [open_parent, close_parent). The union is just
+    the parent interval; the query returns the same answer either way. The parent's close is
+    correct (it is the true resume); the child's equal close is correct (emission resumed for
+    it at the same instant). No double-counting of gap TIME occurs because the reader unions.
+  - TERMINAL is the only "never closes": if the breaker trips while gaps are open, they are
+    marked terminal (close=None, +inf, default-deny) rather than closed — see PROBE 2/§2.
+
+
+================================================================================
+PROBE 2 — CONFIRM THE TWO FLAGGED PRODUCTION SUPPORTS ARE §2 SCOPE (and 0.1a?)
+================================================================================
+Both CONFIRMED as §2's to BUILD (not deferrals), and NEITHER is a rule-0.1a event. Agreed
+with the update's read.
+
+── (a) GAP-CLOSE HOOK ON THE KEEPALIVE-ABSENCE PATH — BUILD IN §2. ────────────────
+Confirmed, and it is load-bearing exactly as the update states: under None-close = +inf, a
+KEEPALIVE_RECONNECT gap that opens (1665) and never closes makes EVERY later query intersect
+it and the ledger stops distinguishing anything — and keepalive is the MOST FREQUENT cause
+(~116 reconnects/24h on the WO-008b-B record). The most frequent cause is precisely the one
+with no close hook today (the checksum path has _awaiting_resync=False at 1097; the absence
+path has nothing).
+HOW §2 BUILDS IT (unified, not per-cause): the close hook is "on the first validated emit,
+close ALL open gaps" (Q1c). Placed in the live loop where process_raw_frame returns >=1
+validated MarketState (after 1780), it closes the keepalive gap, the checksum gap, and any
+venue-disconnect gap with ONE mechanism — no separate absence-only code path. This subsumes
+and generalizes the checksum path's existing explicit toggle.
+0.1a? NO. Internal logic only: no public interface signature change, no object.__setattr__,
+no type:ignore, no monkey-patching, no constraint bypass. A new private helper + a call in
+the transport loop.
+
+── (b) (wall, monotonic) ANCHOR CAPTURED AT A SINGLE INSTANT — BUILD IN §2. ───────
+Confirmed. Sampled non-atomically, the mapping wall(t)=anchor_wall+(t-anchor_mono) is skewed
+by whatever ran between the two reads, and every calendar-time gap location inherits the skew.
+HOW ATOMICITY IS ACHIEVED (and why it is real, not nominal): the two reads are placed as
+adjacent statements with NO await between them:
+
+        anchor_mono = time.monotonic()
+        anchor_wall = datetime.now(UTC).isoformat()   # no await on this line or the one above
+
+asyncio is COOPERATIVELY scheduled: another coroutine can run only at an await point
+(https://docs.python.org/3/library/asyncio-task.html — tasks yield control at await). With no
+await between the two reads, the event loop CANNOT interleave any other task between them. The
+only separation is the CPU time of the two calls themselves — sub-microsecond, bounded, and
+independent of load — versus the unbounded, load-dependent skew of a scheduler-interleaved
+sample. That closes the skew the update flagged. (The pair is captured ONCE at capture start;
+run_start_monotonic is set from the same anchor_mono.)
+0.1a? NO. Same reasoning as (a): internal initialization, no signature/bypass change.
+
+
+================================================================================
+CONVENTION POINT — instructions.md (acknowledged)
+================================================================================
+Ruling accepted: COMMITTING the WO text into instructions.md is the convention (done at
+12e39f7). Consequence adopted for rule-0.6c preflight: instructions.md is NO LONGER an
+expected-modified exemption. It is either committed with its WO's work or genuinely
+unmodified; a modified instructions.md at preflight now MEANS the WO text changed mid-flight
+and is worth noticing, not waving through. (At this session's preflights it is committed and
+clean.)
+
+
+================================================================================
+NET EFFECT ON THE §1 SCHEMA
+================================================================================
+ONE field added: GapRecord.gap_id: int (per-run open sequence; per-OCCURRENCE identity for
+overlapping/nested records). Everything else in evidence/WO-014c-2/gap_schema.txt stands
+unchanged. The intersection query, the None-close=+inf default-deny, and the once-per-run
+anchor are all confirmed overlap-safe. §2 builds: the two production supports above, the
+gap_id, the collective close hook, and the ledger completeness accounting.
