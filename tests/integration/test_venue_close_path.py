@@ -37,6 +37,7 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
 
     # ── HALF 1: UNEXPECTED close (abnormal 1011) -> routes into recovery ──────────────
     adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter_a._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter_a._reconnect_sleep = _no_sleep
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     factory_a = ScriptedConnectionFactory([
@@ -58,6 +59,7 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
     # ── HALF 2: EXPECTED close (clean 1000) -> clean shutdown, NO reconnect ───────────
     caplog.clear()
     adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter_b._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter_b._reconnect_sleep = _no_sleep
     expected = ConnectionClosedOK(Close(1000, "normal closure"), None)
     # A clean close must NOT reconnect, so the second socket is a SPARE the correct code never

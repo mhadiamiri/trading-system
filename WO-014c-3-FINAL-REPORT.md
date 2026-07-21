@@ -127,4 +127,52 @@ are exercised under SIMULATED transport; only the isolated live re-run confirms 
 behavior. Named seam (after §0) was taken for the findings review, per the WO; the lead approved
 the fixes and §1/§2 followed as budget allowed.
 
-**STOP for review.**
+---
+
+## ADDENDUM — WO-014c-3 review items A–F (accepted, implemented this slice)
+
+**A. Per-failure summaries (implemented — it was cheap).** Beyond the capture cap, every
+subsequent failure records a ONE-LINE summary (`utc`, `expected`/`computed` checksum, sequence
+position; **no raw frames**), persisted to the append-only ledger. Reveals a cluster's PHASES at
+negligible cost. `get_checksum_failure_summaries()` exposes them; test
+`test_capped_failures_get_one_line_summaries` (cap 2 / 6 failures → 2 captures + 4 summaries, no
+raw frames, tail positions).
+
+**B. Decision-log entry (ruled).** `docs/decisions/2026-07-21-survives-the-failure-it-documents.md`
+— "any component whose purpose ACTIVATES DURING FAILURE must be audited for whether it SURVIVES
+the failure it documents," with the three instances, now a standing §0 review question alongside
+the preservation-dual.
+
+**C. Persistence opt-in was the fix reintroduced as configuration — FIXED.** Can a live capture
+run today with persistence unconfigured? Was **YES** (silent no-op). Now the live path **FAILS
+LOUDLY** (`GAP_PERSIST_UNCONFIGURED`, declared this commit) when `_gap_persist_path` is unset and
+`_persistence_optional` is not explicitly set; fixture/tests opt out explicitly (the only callers
+today). Bite proof (`evidence/WO-014c-3/bite_addendum_C_persistence_required.txt`): a live-mode
+run with persistence unset REFUSES before opening a connection (observable end state); weakening
+the guard → "DID NOT RAISE". 4 artifacts, sha256 exact.
+
+**D. Sweep Shape-B wider net — count unchanged.** Re-ran with `mock.called`, `call_count`,
+`assert_has_calls`, `assert_any_call`, `.mock_calls`/`.call_args`: **no matches**. Revised Shape-B
+count **still 1** — stronger for surviving the wider net. Report-only; nothing fixed.
+(`evidence/WO-014c-3/precondition_sweep.txt` addendum D.)
+
+**E. Stub-lint docstring-only bodies — detector extended.** A docstring-only body is now flagged
+(silent no-op returning None). Re-scan: **0 new hits** (no non-abstractmethod docstring-only
+function exists). Detector self-test extended. Bite proof
+(`evidence/WO-014c-3/bite_addendum_E_docstring_only_stub.txt`): a docstring-only production
+function introduced → lint FAILS naming it → removed → PASS → sha256 exact.
+
+**F. 0.6b — the unedited deterministic summary line (host-suspend note alongside, not instead):**
+
+    ====================== 175 passed in 24063.39s (6:41:03) ======================
+
+Host-suspend note: the wall time is inflated by machine suspend/idle during the run; the same
+suite's CPU time is ~4 min (the randomized order, run awake, completed in 243.60s). The result
+(175 passed, 0 failed/xfailed/xpassed) is not in dispute.
+
+**Addendum verification:** 177 passed both orders (below); import-linter 6/6, contract 6/6, ruff
+clean. New reason code `GAP_PERSIST_UNCONFIGURED` declared the same commit; vocabulary guard green.
+Delta vs `703ea48` (175 → 177, +2 tests: C refuse-when-unset, A one-line summaries; E extended the
+existing detector self-test in place). No existing test changed outcome.
+
+**STOP for review.** Do NOT start the re-run (next work order, fresh session).

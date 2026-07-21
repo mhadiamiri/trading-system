@@ -1,0 +1,56 @@
+WO-014c-3 — BITE PROOF — addendum_C_persistence_required
+==============================================================================
+Test (real trigger 0.1h; observable end state 0.1i): tests/integration/test_ledger_persistence.py::test_live_capture_refuses_when_persistence_unset
+sha256 BEFORE: 5e002303cc58ffca1c6e2b9fe015ca0ca593981d7c3b98ceda284dfc0aba1501
+
+── ARTIFACT 1 — PASS (fix intact) ────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.04s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the fail-loud guard is disabled -> a live capture with persistence UNSET runs silently instead of refusing
+  OLD:         if self._gap_persist_path is None and not self._persistence_optional:
+  NEW:         if False and self._gap_persist_path is None and not self._persistence_optional:  # WEAKENED
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_live_capture_refuses_when_persistence_unset _______________
+
+    @pytest.mark.asyncio
+    async def test_live_capture_refuses_when_persistence_unset():
+        """WO-014c-3 addendum C: a LIVE capture started with gap-ledger persistence UNSET and no
+        explicit opt-out REFUSES to run — an opt-in durability feature that silently no-ops when
+        unset is the vigilance-enforced guarantee the persistence fix closed. Observable end state:
+        it refuses BEFORE opening any connection."""
+        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        # Unconfigured: no path AND not opted out (the real-run hazard).
+        assert adapter._gap_persist_path is None and adapter._persistence_optional is False
+        factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+    
+        with patch("websockets.connect", factory.connect):
+>           with pytest.raises(ValueError, match="GAP_PERSIST_UNCONFIGURED"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE ValueError
+
+tests\integration\test_ledger_persistence.py:125: Failed
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1619 [kraken_v2_book] INSTRUMENTS_GAPPY: lag sampler missed 1 of 1 expected samples (100% > 10%); quantitative discrimination VOID. 0 gap(s) retained as reported evidence (may NOMINATE starvation; only clean instruments convict).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_ledger_persistence.py::test_live_capture_refuses_when_persistence_unset
+1 failed in 0.22s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.05s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 5e002303cc58ffca1c6e2b9fe015ca0ca593981d7c3b98ceda284dfc0aba1501
+EXACT RESTORE: YES — byte-identical
+
+RESULT [addendum_C_persistence_required]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

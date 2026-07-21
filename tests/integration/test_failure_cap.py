@@ -32,6 +32,7 @@ def _bad_snapshot():
 
 def _live_adapter():
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0
     # Isolate the CAP from the 5-consecutive-failure reconnect: raise the reconnect threshold so
@@ -92,3 +93,33 @@ async def test_byte_cap_binds_independently(caplog):
     assert len(adapter.get_checksum_failure_captures()) < 6, "the byte cap bound before count"
     assert "FAILURE_CAPTURE_CAPPED" in caplog.text
     assert adapter.capture_terminated is None
+
+
+@pytest.mark.asyncio
+async def test_capped_failures_get_one_line_summaries():
+    """WO-014c-3 addendum A: failures BEYOND the cap get a ONE-LINE summary (utc, expected/
+    computed checksum, sequence position; NO raw frames), so a cluster's PHASES stay visible
+    where the count alone cannot show them."""
+    adapter = _live_adapter()
+    adapter._max_failure_captures = 2   # first 2 fully captured; the rest summarized
+
+    factory = ScriptedConnectionFactory([
+        {"frames": [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(6)], "on_drain": "heartbeat"},
+    ])
+    with patch("websockets.connect", factory.connect):
+        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+            pass
+
+    caps = adapter.get_checksum_failure_captures()
+    summaries = adapter.get_checksum_failure_summaries()
+    assert adapter.get_checksum_failure_count() == 6
+    assert len(caps) == 2, f"first N fully captured; got {len(caps)}"
+    assert len(summaries) == 4, f"the other failures get one-line summaries; got {len(summaries)}"
+    s = summaries[0]
+    assert set(s) == {"sequence_position_in_run", "utc", "monotonic",
+                      "expected_checksum", "computed_checksum"}, s
+    assert "failing_frame_raw_text" not in s and "local_book_bids" not in s, "NO raw frames"
+    assert s["expected_checksum"] != s["computed_checksum"]
+    # The summaries cover the TAIL (positions after the fully-captured onset).
+    assert (min(x["sequence_position_in_run"] for x in summaries)
+            > max(c["sequence_position_in_run"] for c in caps))

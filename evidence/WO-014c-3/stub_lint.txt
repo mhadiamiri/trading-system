@@ -76,3 +76,15 @@ sha256 AFTER : 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
 EXACT RESTORE: YES — byte-identical
 
 RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+════════════════════════════════════════════════════════════════════════════════
+ADDENDUM E (WO-014c-3 review) — DOCSTRING-ONLY BODIES
+════════════════════════════════════════════════════════════════════════════════
+The detector was extended to also flag a body that is ONLY a docstring — a silent no-op
+returning None (0.1g's defect definition exactly; the shape a stub takes when someone leaves an
+explanatory comment where the implementation should be, e.g. `def _flush(self): """TODO"""`).
+Re-run against the tree: NEW HITS = 0. No non-abstractmethod docstring-only function exists; the
+10 abstractmethod stubs have `pass` bodies, and @abstractmethod is allowlisted regardless of the
+body shape. The detector self-test was extended to include a docstring-only case (proves it
+fires, 0.1d). Bite proof: evidence/WO-014c-3/bite_addendum_E_docstring_only_stub.txt — a
+docstring-only production function introduced -> stub-lint FAILS naming it (body=docstring-only)
+-> removed -> PASS -> sha256 exact.

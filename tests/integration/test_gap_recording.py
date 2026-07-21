@@ -40,6 +40,7 @@ async def _no_sleep(_delay):
 
 def _live_adapter():
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
     adapter._reconnect_jitter = lambda: 1.0      # deterministic ladder delays
     adapter._reconnect_backoff_base = 0.01

@@ -948,12 +948,21 @@ class KrakenV2BookAdapter:
         self._checksum_capture_capped = False
         self._max_failure_captures = self.MAX_FAILURE_CAPTURES
         self._max_failure_capture_bytes = self.MAX_FAILURE_CAPTURE_BYTES
+        # WO-014c-3 addendum A: beyond the capture cap, a ONE-LINE summary per subsequent
+        # failure (utc, expected/computed checksum, sequence position; NO raw frames) so a
+        # cluster's PHASES are visible at negligible cost where the count alone cannot show them.
+        self._checksum_failure_summaries = []
         # WO-014c-3 §0.1: gap-ledger persistence. EXPLICIT opt-in (like mode — never inferred):
         # set _gap_persist_path to enable append-only redacted JSONL. A capture then flushes each
         # gap event as it happens (incremental — survives a process kill), plus a terminal flush
         # on a breaker trip and a finalize summary. Default None = no persistence (fixture tests).
         self._gap_persist_path = None
         self._gap_persist_fh = None
+        # WO-014c-3 addendum C: a LIVE capture with persistence UNSET refuses to run (an opt-in
+        # durability feature that silently no-ops when unset is a vigilance-enforced guarantee).
+        # Fixture/test paths opt out EXPLICITLY by setting this True; a real capture must set a
+        # path instead. Default False = the safe default (refuse rather than silently not persist).
+        self._persistence_optional = False
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -1326,10 +1335,13 @@ class KrakenV2BookAdapter:
         # worlds and both must stay reportable (§0.2(b)).
         self._checksum_failure_count += 1
         if self._checksum_capture_capped:
-            return None  # already announced: count only, build nothing
+            # Beyond the cap: count + a ONE-LINE summary (addendum A), no full artifact.
+            self._record_failure_summary(quote_update, computed_checksum)
+            return None
         # COUNT cap — keep the FIRST N (§0.2(a): the onset shows what changed).
         if len(self._checksum_failure_captures) >= self._max_failure_captures:
             self._announce_capture_capped(f"count cap {self._max_failure_captures} reached")
+            self._record_failure_summary(quote_update, computed_checksum)
             return None
 
         raw_texts = getattr(self, "captured_raw_text", None) or []
@@ -1359,10 +1371,29 @@ class KrakenV2BookAdapter:
             self._announce_capture_capped(
                 f"byte cap {self._max_failure_capture_bytes} B reached"
             )
+            self._record_failure_summary(quote_update, computed_checksum)
             return None
         self._checksum_capture_bytes += size
         self._checksum_failure_captures.append(artifact)
         return artifact
+
+    def _record_failure_summary(self, quote_update, computed_checksum) -> dict:
+        """WO-014c-3 addendum A: a ONE-LINE summary for a failure BEYOND the capture cap —
+        utc, expected/computed checksums, sequence position; NO raw frames. Reveals a cluster's
+        PHASES (a failure mode shifting at failure 12,000) at negligible cost, where the count
+        alone cannot. Persisted to the append-only ledger when persistence is on (durable, like
+        the gap records; redact() is a harmless no-op on a summary that carries no identifiers)."""
+        import time
+        summary = {
+            "sequence_position_in_run": getattr(self, "_raw_received", None),
+            "utc": datetime.now(UTC).isoformat(),
+            "monotonic": time.monotonic(),
+            "expected_checksum": quote_update.checksum,
+            "computed_checksum": computed_checksum,
+        }
+        self._checksum_failure_summaries.append(summary)
+        self._persist_write({"event": "failure_summary", **summary})
+        return summary
 
     def _announce_capture_capped(self, why: str) -> None:
         """WO-014c-3 §0.2(b): announce the retention cap ONCE, never silently truncate. Counting
@@ -2025,6 +2056,18 @@ class KrakenV2BookAdapter:
                 f"got {self._mode!r}. Mode is explicit and never inferred."
             )
 
+        # WO-014c-3 addendum C: REFUSE a live capture whose gap ledger would not be persisted,
+        # unless the caller EXPLICITLY opts out. An unpersisted live ledger silently loses every
+        # gap on a kill/trip — the vigilance-enforced guarantee the persistence fix closed, and
+        # the last thing between a 60-minute run and a silently unrecorded ledger.
+        if self._gap_persist_path is None and not self._persistence_optional:
+            raise ValueError(
+                "GAP_PERSIST_UNCONFIGURED: live capture started with gap-ledger persistence "
+                "UNSET. Set _gap_persist_path to an append-only JSONL path, or (fixtures/tests "
+                "only) set _persistence_optional=True to acknowledge running without a durable "
+                "ledger. Refusing to run a silently-unpersisted live capture."
+            )
+
         self._raw_received = 0
         self._market_states_emitted = 0
         self._start_time = time.time()
@@ -2081,6 +2124,7 @@ class KrakenV2BookAdapter:
             # a prior run's cap or counts.
             self._checksum_failure_count = 0
             self._checksum_failure_captures = []
+            self._checksum_failure_summaries = []
             self._checksum_capture_bytes = 0
             self._checksum_capture_capped = False
             # WO-014c-3 §0.1: open the append-only ledger file (if persistence is enabled) and
@@ -2516,6 +2560,12 @@ class KrakenV2BookAdapter:
         capped (the count is itself a finding). If it exceeds len(get_checksum_failure_captures())
         the capture cap bound and FAILURE_CAPTURE_CAPPED was announced."""
         return self._checksum_failure_count
+
+    def get_checksum_failure_summaries(self) -> list:
+        """WO-014c-3 addendum A: the one-line summaries (utc, expected/computed checksum, seq
+        position) for failures BEYOND the capture cap — so a cluster's phases are visible even
+        when full artifacts were capped. Empty until the cap binds."""
+        return list(self._checksum_failure_summaries)
 
     async def _trigger_pause_for_test(self) -> None:
         """

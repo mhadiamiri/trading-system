@@ -108,3 +108,22 @@ async def test_incremental_persist_survives_unhandled_exception_mid_capture(tmp_
     assert opens[0]["gap_id"] == 0
     # It never resolved (crash before recovery) -> no "resolved" line -> default-deny open-ended.
     assert not [r for r in records if r["event"] == "resolved"]
+
+
+@pytest.mark.asyncio
+async def test_live_capture_refuses_when_persistence_unset():
+    """WO-014c-3 addendum C: a LIVE capture started with gap-ledger persistence UNSET and no
+    explicit opt-out REFUSES to run — an opt-in durability feature that silently no-ops when
+    unset is the vigilance-enforced guarantee the persistence fix closed. Observable end state:
+    it refuses BEFORE opening any connection."""
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    # Unconfigured: no path AND not opted out (the real-run hazard).
+    assert adapter._gap_persist_path is None and adapter._persistence_optional is False
+    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+
+    with patch("websockets.connect", factory.connect):
+        with pytest.raises(ValueError, match="GAP_PERSIST_UNCONFIGURED"):
+            async for _ in adapter.get_live_market_data(duration_seconds=0.1):
+                pass
+
+    assert factory.connect_count == 0, "it must refuse before opening a live connection"

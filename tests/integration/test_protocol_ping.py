@@ -53,6 +53,7 @@ def _close_1011():
 async def test_protocol_ping_params_set_deliberately():
     """The deliberate protocol-ping config reaches websockets.connect (not the library defaults)."""
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
 
     with patch("websockets.connect", factory.connect):
@@ -76,6 +77,7 @@ async def test_protocol_level_close_recovers(caplog):
     opened and EMISSION RESUMES. This is the layer that actually threw the 1011.
     """
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
 
     # Socket 1: a synchronized book (emits), then a PROTOCOL-LEVEL 1011 close on recv.

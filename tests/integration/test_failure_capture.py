@@ -30,6 +30,7 @@ async def _no_sleep(_delay):
 
 def _live_adapter():
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
     adapter._heartbeat_absence_timeout = 100.0   # isolate the checksum failure, no reconnect
     adapter._app_ping_interval = 100.0

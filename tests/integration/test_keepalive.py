@@ -42,6 +42,7 @@ async def _no_sleep(_delay):
 async def test_heartbeat_absence_triggers_reconnect(caplog):
     """§1.1: a link that goes SILENT (no heartbeat/data/pong) is presumed dead -> reconnect."""
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
     adapter._heartbeat_absence_timeout = 0.05   # declare dead after 50ms of silence
     adapter._app_ping_interval = 100.0          # disable the app ping so §1.1 is isolated
@@ -73,6 +74,7 @@ async def test_heartbeat_absence_triggers_reconnect(caplog):
 async def test_application_ping_pong_keeps_a_quiet_link_alive(caplog):
     """§1.2: on a data-quiet link, the app ping elicits pongs that keep it alive (no reconnect)."""
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
     adapter._app_ping_interval = 0.02           # probe every 20ms
     adapter._heartbeat_absence_timeout = 0.08   # WOULD trip in 80ms of true silence...

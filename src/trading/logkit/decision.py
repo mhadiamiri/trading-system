@@ -82,6 +82,13 @@ VALID_REASON_CODES = {
         # prevents DISK EXHAUSTION from ending a run; it does NOT terminate the run (the breaker
         # owns termination). Prefix-free (FAILURE_ stem is unique in the vocabulary).
         "FAILURE_CAPTURE_CAPPED",
+        # WO-014c-3 addendum C: raised when a LIVE capture is started with gap-ledger
+        # persistence UNCONFIGURED and not explicitly opted out. An opt-in durability feature
+        # that silently no-ops when unset is a vigilance-enforced guarantee — the exact class
+        # the persistence fix closed. The live path REFUSES to run a silently-unpersisted
+        # ledger; fixture/test paths opt out explicitly. Prefix-free (GAP_PERSIST_ vs
+        # GAP_LEDGER_ — neither prefixes the other).
+        "GAP_PERSIST_UNCONFIGURED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

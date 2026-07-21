@@ -25,6 +25,7 @@ from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
 async def test_receive_to_process_latency_recorded_through_production_path():
     """A real capture populates the throughput record from the recv -> process_raw_frame path."""
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
 
     with patch("websockets.connect", factory.connect):

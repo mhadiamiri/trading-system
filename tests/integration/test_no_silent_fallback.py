@@ -30,6 +30,7 @@ class TestNoSilentFallback:
         fixture data had been presented as live.
         """
         adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
         async def _boom(*args, **kwargs):
             raise OSError("simulated: connection refused")

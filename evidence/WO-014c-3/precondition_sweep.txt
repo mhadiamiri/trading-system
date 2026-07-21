@@ -93,3 +93,15 @@ RESULT
   ZERO.
 - NOT A CLUSTER. Two examined, dispositioned patterns, both legitimate; nothing returns to the lead
   on the cluster terms. NOTHING WAS FIXED (report-only, per §2).
+
+════════════════════════════════════════════════════════════════════════════════
+ADDENDUM D (WO-014c-3 review) — WIDER SHAPE-B NET
+════════════════════════════════════════════════════════════════════════════════
+The original Shape-B scan matched assert_called* only. Re-run with the wider set the review
+named — mock.called (attribute truth-check), mock.call_count == N, assert_has_calls([...]),
+assert_any_call(...), and spy/recorder list inspection (.mock_calls / .call_args):
+    grep -rnE "\.called\b|call_count|assert_has_calls|assert_any_call|\.mock_calls|\.call_args" tests/
+    => (no matches)
+REVISED SHAPE-B COUNT: still 1 (test_data_adapters _reconnect assertion, effect covered by
+test_reconnect_to_effect). The finding is STRONGER for surviving the wider net — the earlier
+denominator was NOT understated for Shape B. REPORT ONLY; nothing fixed.

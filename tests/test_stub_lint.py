@@ -2,8 +2,9 @@
 WO-014c-3 §1 — STUB-LINT: make rule 0.1g ("a stub or unimplemented production path MUST FAIL
 LOUDLY") MECHANICAL.
 
-A production function whose body is just `pass`, a bare `return`, or `...` is a no-op — the
-exact shape that let `_request_snapshot(): pass` zero 48 of 60 minutes and `_reconnect(): pass`
+A production function whose body is just `pass`, a bare `return`, `...`, or ONLY a docstring
+(WO-014c-3 addendum E) is a no-op — the exact shape that let `_request_snapshot(): pass` zero
+48 of 60 minutes and `_reconnect(): pass`
 make the five-failure recovery never work. Both are now implemented; this lint is what stops the
 third instance. It scans every production module under src/ and FAILS on any stub-bodied function
 that is not a LEGITIMATE, EXAMINED exception — because "an unexamined exception is how 0.1g gets
@@ -25,11 +26,18 @@ def _is_docstring(stmt) -> bool:
 
 
 def _stub_kind(node) -> str | None:
-    """Return 'pass' | 'bare-return' | 'ellipsis' if the function body (after an optional
-    docstring) is a single no-op statement, else None."""
+    """Return 'pass' | 'bare-return' | 'ellipsis' | 'docstring-only' if the function body is a
+    no-op, else None. WO-014c-3 addendum E: a body that is ONLY a docstring is also a silent
+    no-op that returns None — 0.1g's defect definition exactly (a production path that silently
+    succeeds at doing nothing), and the shape a stub takes when someone leaves an explanatory
+    comment where the implementation should be."""
     body = node.body
-    if body and _is_docstring(body[0]):
+    had_docstring = bool(body) and _is_docstring(body[0])
+    if had_docstring:
         body = body[1:]
+    if len(body) == 0:
+        # Nothing remained after the docstring: the body was ONLY a docstring.
+        return "docstring-only" if had_docstring else None
     if len(body) != 1:
         return None
     s = body[0]
@@ -118,10 +126,12 @@ def test_abstractmethod_stubs_are_the_only_examined_class():
 
 def test_detector_actually_fires_on_a_real_stub():
     """Rule 0.1d: prove the scanner flags a genuine stub rather than trusting an empty result."""
-    src = "def f():\n    pass\n\ndef g():\n    return 1\n\n@abstractmethod\ndef h():\n    ...\n"
+    src = ("def f():\n    pass\n\ndef g():\n    return 1\n\n@abstractmethod\ndef h():\n    ...\n\n"
+           "def k():\n    \"\"\"TODO: write the ledger.\"\"\"\n")
     tree = ast.parse(src)
     kinds = {n.name: _stub_kind(n) for n in ast.walk(tree)
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assert kinds["f"] == "pass"          # a real no-op is detected
-    assert kinds["g"] is None            # a function that does work is NOT flagged
-    assert kinds["h"] == "ellipsis"      # ... body detected (would be allowed via abstractmethod)
+    assert kinds["f"] == "pass"              # a real no-op is detected
+    assert kinds["g"] is None                # a function that does work is NOT flagged
+    assert kinds["h"] == "ellipsis"          # ... body detected (allowed via abstractmethod)
+    assert kinds["k"] == "docstring-only"    # addendum E: a docstring-only body is a stub
