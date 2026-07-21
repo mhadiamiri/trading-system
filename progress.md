@@ -38,11 +38,91 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-21 (WO-014c-2 COMPLETE — gap recording schema+taxonomy + failure-targeted capture; awaiting review)
-**Current Phase**: WO-014c — discrimination instruments (014c-1) done; gap recording + failure capture (014c-2) done. NEXT (do NOT start without review): 014c-3 (stub-lint + widened-precondition sweep), then the 60-min live re-run. Corpus READER is a separate WO.
-**Status**: HEAD `e602cb5`+report on master, 167 tests green both orders (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. WO-014c-2 report: `WO-014c-2-FINAL-REPORT.md`. The dated **▶ CURRENT STATUS (AUTHORITATIVE)** block further below is now HISTORICAL (it predates WO-014b-2/014c-1/014c-2).
+**Last Updated**: 2026-07-21 (WO-015 COMPLETE; the 60-min live re-run HALTED at its preflight — host suspend not disabled)
+**Current Phase**: WO-008b-B-RERUN — the FIRST REAL VENUE SOCKET (a 60-minute live Kraken v2 book capture), authorized per-run. The runner and all instruments are BUILT and green; the run is BLOCKED at preflight §1.3 (host suspend). See "▶ RESUME HERE" below.
+**Status**: HEAD `b1d3ee6` on master (pushed; local == remote). **190 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL (predates WO-014b-2/014c-*/015); read the **▶ RESUME HERE** block immediately below instead.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
+
+---
+
+## ▶ RESUME HERE (AUTHORITATIVE) — 2026-07-21
+
+> Single source of truth for "where are we now." The Executive Summary and dated
+> `Current Status (Session N)` blocks below are historical reference. Read THIS to resume.
+
+### Where the tree is
+- **HEAD `b1d3ee6` on `master`** (pushed; local == remote). Worktree = main only.
+- **190 passed** deterministic (`-p no:randomly`) AND randomized (`--randomly-seed=20260725`),
+  0 failed / 0 xfailed / 0 xpassed. import-linter **6 kept / 0 broken**,
+  `tools/contract_count_check.py` **6/6**, ruff clean. Full suite ≈ 4 min/order (dominated by
+  `tests/integration/test_live_loop.py`, which uses real 1s feed sleeps).
+- Verify with: `pytest tests/ -p no:randomly -rX` and `pytest tests/ --randomly-seed=20260725 -rX`,
+  then `lint-imports`, `python tools/contract_count_check.py`, `ruff check .`.
+
+### What is DONE (recent line, newest first)
+- **WO-015 — live-capture runner + HOST_SUSPEND + reviews COMPLETE (`989600b`→`6f9a036`).**
+  Built `src/trading/loop/live_capture.py` (`LiveCaptureRunner`): drives the INSTRUMENTED transport
+  `KrakenV2BookAdapter.get_live_market_data` end-to-end through Data→Strategy→Risk→Execution(paper),
+  wiring the existing gap ledger / failure capture / lag-pong-throughput / host-suspend detection.
+  Preflight enforcement IN the runner (refuses non-paper `TRADING_ENV`; refuses unconfigured
+  persistence). Resolves the adapter FROM `DATA_SOURCE` via the factory (`create_live_capture_feed` →
+  `registry.create(DATA_SOURCE, mode="live", …)`); a non-live-capable adapter refuses with
+  `LIVE_CAPTURE_UNSUPPORTED` before connecting (mechanism: builders declare `live_capture=True`).
+  **HOST_SUSPEND** = ruled FIFTH gap cause (wall-vs-monotonic divergence > 43s drift bound;
+  DIAGNOSTIC — records + loud, not terminal; detection floor declared: sub-~43s suspend undetected).
+  Runner catches a breaker trip (via `capture_terminated`, duck-typed) → `result["terminated"]`,
+  not a crash. 7 bite proofs (4 artifacts, sha256) in `evidence/WO-015/`. Report: `WO-015-FINAL-REPORT.md`.
+  Decision logs: `docs/decisions/2026-07-21-{orders-that-operate-what-they-should-build,
+  contract-clean-is-not-principle-clean,survives-the-failure-it-documents}.md`.
+  New reason codes (all declared in-commit, vocab guard green): `HOST_SUSPEND`,
+  `LIVE_CAPTURE_ENV_REFUSED`, `LIVE_CAPTURE_UNSUPPORTED`.
+- **WO-014c-3 COMPLETE (`f065ff6`→`989600b`).** §0 probes → fixes: gap-ledger PERSISTENCE
+  (append-only redacted JSONL, incremental fsync at gap-open = kill-durable; opt-in
+  `_gap_persist_path`, live capture REFUSES if unset via `GAP_PERSIST_UNCONFIGURED` unless
+  `_persistence_optional`); failure-capture CAP (keep first N, count all, cap by count 200 AND
+  bytes 8 MiB, `FAILURE_CAPTURE_CAPPED`, one-line summaries beyond the cap); wall/monotonic drift
+  bound declared; stub-lint (`tests/test_stub_lint.py`, 0.1g mechanical, incl. docstring-only);
+  precondition sweep (report-only). Report: `WO-014c-3-FINAL-REPORT.md`.
+- **WO-014c-2 COMPLETE.** Gap recording: `GapRecord`/`GapLedger` (monotonic bounds + once-per-run
+  (wall, monotonic) anchor; `GAP_CAUSES`), failure-targeted checksum capture (N=20 preceding
+  frames, redacted). Report: `WO-014c-2-FINAL-REPORT.md`. `GAP_LEDGER_INCOMPLETE` reason code.
+- **WO-014c-1 / WO-014b-2 / WO-014b done earlier** (discrimination instruments: lag sampler,
+  pong observer, throughput; keepalive + backoff + duration breaker + venue-close; `_reconnect`
+  proven to effect). Thresholds/branches: `evidence/WO-014c-1/thresholds_and_branches.txt`.
+
+### ▶ NEXT SESSION — run the live re-run (WO-008b-B-RERUN) as a genuinely FRESH context
+The 60-minute live capture is **authorized per-run** (first real venue socket; public v2 book,
+`TRADING_ENV=paper`, no orders, no credentials). It is currently **HALTED AT PREFLIGHT §1.3**
+(evidence/WO-008b-B-RERUN/preflight.txt). TWO things must be true before opening the socket:
+1. **HOST SUSPEND DISABLED (§1.3, non-negotiable).** Actual settings are AC=2h (`0x1c20`=7200s),
+   DC=10min (`0x258`=600s), sleep enabled — NOT the 24h the WO claims; and the host DEMONSTRABLY
+   suspended this session (WO-014c-3 det. suite ran 6h41m for ~4min CPU). Hadi must run
+   `powercfg /change standby-timeout-ac 0` + `standby-timeout-dc 0` (+ hibernate-timeout 0),
+   keep the host on AC, and re-confirm `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` == 0.
+2. **A FRESH SESSION.** The WO header says "Fresh session"; the run is a single uninterrupted
+   60-min window + a 17-item report — do it from a clean context (this session halted at ~80%).
+The order OPERATES already-built things (BUILDS NOTHING): runner `src/trading/loop/live_capture.py`,
+instruments WO-014c-1, ledger/capture WO-014c-2/3, lifecycle WO-014b. Full preflight/run/report
+spec is in `instructions.md` (the WO-008b-B-RERUN text). Interpret discrimination against
+`evidence/WO-014c-1/thresholds_and_branches.txt` and nothing else. Report EVERY attempt; a retry is
+a new socket under the same per-run authorization (new preflight, new report). Do NOT tune to a
+number; VOID / 23/min / 600/min are all successful outcomes — report what the feed gives.
+
+### After the re-run (per Ops's proposed sequence, project-lead to confirm)
+WO-013 → CI capture + version ruling → CI green → 008c → the 24-hour corpus (which will need a
+host that does not sleep at all, and the corpus WO implements HOST_SUSPEND's window-INVALIDATING
+role — in WO-015 it is only diagnostic). The corpus READER (default-deny, interval-intersection
+over the gap ledger) is its own separate WO.
+
+### Key files for the live re-run
+- Runner: `src/trading/loop/live_capture.py` (`LiveCaptureRunner`; `create_live_capture_feed` in
+  `src/trading/data/adapters/factory.py`).
+- Instrumented transport: `src/trading/data/adapters/kraken_v2_book.py` (`get_live_market_data`,
+  `GapRecord`/`GapLedger`, HOST_SUSPEND detection, failure capture, `_gap_persist_path`).
+- Reason codes: `src/trading/logkit/decision.py` (`VALID_REASON_CODES`).
+- Thresholds/branches (the ONLY interpretation reference): `evidence/WO-014c-1/thresholds_and_branches.txt`.
+- Authority: `.specify/memory/constitution.md` (conflict → STOP and escalate).
 
 ---
 
