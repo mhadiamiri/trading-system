@@ -94,6 +94,13 @@ VALID_REASON_CODES = {
         # refusal lives IN the runner (checklist-enforced rules are 0-for-N), before any component
         # is built. Prefix-free (LIVE_CAPTURE_ is a unique stem).
         "LIVE_CAPTURE_ENV_REFUSED",
+        # WO-015 review: raised when a live capture is requested for a DATA_SOURCE adapter that
+        # did NOT declare live capability (registry.is_live_capable). Refuses specifically and
+        # BEFORE any connection, rather than connecting to the wrong venue (a hardcoded resolver
+        # would have connected to mainnet regardless of DATA_SOURCE) or crashing on a rejected
+        # live-only kwarg. Prefix-free (LIVE_CAPTURE_ENV_ vs LIVE_CAPTURE_UNSUPPORTED — neither
+        # prefixes the other).
+        "LIVE_CAPTURE_UNSUPPORTED",
         # WO-015 addendum A: the RULED FIFTH gap-ledger cause (a lead ruling, not an invented
         # fifth — so it does NOT trigger WO-014c-2's "STOP if a path fits none of the four").
         # Emitted when wall-vs-monotonic divergence exceeds the declared drift bound (WO-014c-3

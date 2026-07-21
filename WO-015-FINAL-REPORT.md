@@ -91,4 +91,54 @@ verified, or declares itself the builder.
 - **What could not be completed?** Nothing in WO-015. The re-run remains a separate WO for a fresh
   session on a non-suspending host (sleep is now set to 2h, per Hadi).
 
+---
+
+## WO-015 REVIEW RESPONSE (required change + owed items)
+
+**REQUIRED CHANGE — `create_live_capture_feed` now resolves from `DATA_SOURCE`.** The `"kraken_v2"`
+hardcode was wrong: `DATA_SOURCE=kraken_fixture` would still connect to mainnet — config saying one
+thing, the system doing another on the one path that holds a real socket, undoing WO-008b-A1's
+fixture/mainnet distinction. Now it resolves `Settings.DATA_SOURCE` (test seam: `data_source=`); if
+the named adapter did not **declare** live capability it **refuses loudly and specifically** —
+`LIVE_CAPTURE_UNSUPPORTED: adapter '<name>' does not support live capture`, before any connection.
+**Mechanism: builders declare live capability** (`register("kraken_v2", live_capture=True)` +
+`registry.is_live_capable`) — chosen over catching the builder's kwarg `TypeError`, because an
+explicit declaration checked *before* building can't mask an unrelated `TypeError` and gives a clean
+pre-connection refusal. This is also the *correct* fix for the order-dependence bug (a live-only
+kwarg reaching a non-live builder now yields a clear refusal, not a cryptic crash avoided by
+bypassing config — the earlier remedy was too broad). Reason code `LIVE_CAPTURE_UNSUPPORTED` declared
+same commit. Bite proof: `evidence/WO-015/bite_required_refuse_non_live_capable.txt`.
+
+**DECISION-LOG (contract-clean ≠ principle-clean):**
+`docs/decisions/2026-07-21-contract-clean-is-not-principle-clean.md` — an import guard constrains a
+dependency's SHAPE, not its CONTENT; a venue name frozen in a string literal is invisible to
+import-linter, so 6/6 green did not mean Principle VII held.
+
+**THREE OWED §2 BITE PROOFS (four artifacts each, sha256) — added:**
+1. **Short bounded run completes** — artifacts readable from disk (run_start..run_end + the
+   per-minute series), not "a method ran". `test_short_bounded_run_completes_with_readable_artifacts`.
+2. **Clean deadline close does NOT reconnect + dual** — S13 template, both halves in one test:
+   reaching the capture deadline ends the run without reconnecting (this is what stops the re-run at
+   minute 60), while an abnormal mid-run disconnect DOES reconnect.
+   `test_clean_deadline_close_does_not_reconnect_dual`.
+3. **Breaker trip terminates with forensic tail + retained capture** — surfaced through the RUNNER.
+   **Reported, not silent:** the runner now CATCHES the breaker trip (identified by the adapter's
+   `capture_terminated` forensic tail, duck-typed — not by importing the adapter's exception type,
+   which the boundary forbids) and returns it in `result["terminated"]`, so a 60-minute run that
+   dies is REPORTED (re-run §7), not a process crash. `test_breaker_trip_terminates_run_with_forensic_tail`.
+Evidence: `evidence/WO-015/bite_owed{1,2,3}_*.txt`.
+
+**HOST_SUSPEND DETECTION FLOOR declared** in the threshold's docstring: a suspend shorter than the
+~43s threshold is NOT detected — it presents as an enormous lag spike, indistinguishable from
+catastrophic starvation. Declared limit (the threshold must sit above worst-case drift or it fires
+on drift); mitigated operationally by disabling host sleep for the run.
+
+**Signature-change note (0.1a):** acknowledged as retroactively ratified — `LiveTradingLoop.run(feed=…)`,
+`_build_kraken_v2(mode=…, gap_persist_path=…)`, and now `create_live_capture_feed(data_source=…)` and
+`register(…, live_capture=…)` are all additive and default-preserving; no rework.
+
+**Updated verification:** 190 passed both orders (177 + 3 host_suspend + 10 live_capture), 0 failed/
+xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. Reason codes `HOST_SUSPEND`,
+`LIVE_CAPTURE_ENV_REFUSED`, `LIVE_CAPTURE_UNSUPPORTED` declared same commit; vocabulary guard green.
+
 **STOP for review.** Do not open the socket here.

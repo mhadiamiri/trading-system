@@ -130,51 +130,70 @@ Proceed with WO-015 as written, plus A and B. STOP for review at the end.
 
 update :
 
-BEFORE COMMITTING — one question on the order-dependence fix, plus the three outstanding
-addendum items.
+WO-015 — ONE CHANGE REQUIRED BEFORE ACCEPTANCE, plus three items still owed.
 
-=== Q. DOES create_live_capture_feed STILL RESOLVE FROM DATA_SOURCE? ===
-You report the mode= kwarg bug was "fixed by resolving the kraken_v2 book adapter
-explicitly." Confirm which of these is true:
+The boundary handling is genuinely excellent and stands: the first cut broke two contracts
+and you fixed the design rather than the contract (rule 0.4). That is the same pressure
+that produced factory.py:15 at af27491, with the opposite outcome.
 
-  (a) The function still resolves the adapter from DATA_SOURCE via the registry, and the
-      fix was to the BUILDER SIGNATURE / capability handling — e.g. builders that do not
-      support live mode now reject it clearly, or the live path validates that DATA_SOURCE
-      names a live-capable adapter and FAILS LOUDLY otherwise.
+=== REQUIRED CHANGE — create_live_capture_feed MUST RESOLVE FROM DATA_SOURCE ===
+Confirmed (b): registry.create("kraken_v2", mode="live", ...) hardcodes the venue.
 
-  (b) create_live_capture_feed now names kraken_v2 directly, bypassing DATA_SOURCE.
+THE REASON IS NOT SPRINT 3. It is today:
 
-If (b): that is a Principle VII regression and I want it changed before commit. The venue
-abstraction's stated property is that a venue swap is a SINGLE-MODULE CHANGE — add an
-adapter, it self-registers, config names it, nothing else moves. A hardcoded adapter in
-the factory's live path means Sprint 3's Coinbase swap requires editing factory.py too.
-It is also the same shape as the spread_cost parameter the project lead rejected:
-venue-specific knowledge migrating into a component that is supposed to be venue-neutral.
+  Set DATA_SOURCE=kraken_fixture, launch a live capture, and it connects to KRAKEN
+  MAINNET. The configuration says one thing and the system does another — on the single
+  code path that holds a real venue socket.
 
-"Only one adapter supports live mode today" is a true statement and a fine reason to FAIL
-LOUDLY when DATA_SOURCE names one that doesn't. It is not a reason to stop asking
-DATA_SOURCE. The failure mode we want at Sprint 3 is a clear "adapter X does not support
-live capture," not a silent connection to the wrong venue.
+WO-008b-A1 deliberately made venue mode distinguish kraken_fixture from kraken_mainnet.
+Ignoring DATA_SOURCE on the live path undoes that at the resolution layer.
 
-If (a): say so plainly and proceed — the concern dissolves.
+REQUIRED:
+- create_live_capture_feed resolves the adapter from DATA_SOURCE via the registry.
+- If the named adapter does not support live capture, FAIL LOUDLY and specifically —
+  "adapter '<name>' does not support live capture" — with a declared reason code.
+- That is the correct fix for the order-dependence bug too. A live-only kwarg reaching a
+  builder that rejects it should produce a clear refusal, not be avoided by bypassing
+  configuration. The bug was real; the remedy was too broad.
+- Mechanism is yours: builders declaring live capability, or catching the rejection and
+  re-raising with a specific message. State which and why.
+- BITE PROOF, four artifacts, sha256: DATA_SOURCE names a non-live-capable adapter →
+  live capture REFUSES with the specific message, before any connection. Assert the
+  observable end state.
 
-Either way, log the order-dependence bug itself as a finding: a live-only kwarg passed to
-a builder that rejects it, hidden by deterministic ordering, caught by the randomized scan.
-Fourth time that scan has paid for itself.
+NOTE FOR THE RECORD — a new shape worth logging. Import-linter passes here and the
+principle is violated anyway: no concrete adapter is imported, contracts stay 6/6, and the
+venue lock lives in a STRING LITERAL that no import contract can see. The mechanical guard
+is green while the boundary is soft. Add one line to the decision log:
+  "A mechanical boundary guard constrains the SHAPE of a dependency, not its CONTENT. An
+   import contract cannot see a hardcoded venue name. Contract-clean is not
+   principle-clean, and Principle VII's single-module-swap property has to be checked by
+   reading, not only by linting."
 
-=== STILL OUTSTANDING FROM THE ADDENDUM — confirm these are in scope ===
-Your status lists 3 bite proofs. WO-015 §2 required SIX. Still owed:
-  1. Short bounded run COMPLETES — artifacts exist and are readable (0.1i).
+=== STILL OWED FROM THE ADDENDUM ===
+Three of the six bite proofs required by WO-015 §2 are still missing:
+  1. SHORT BOUNDED RUN COMPLETES — artifacts exist and are readable (0.1i), not that a
+     method ran.
   2. CLEAN DEADLINE CLOSE DOES NOT RECONNECT — the preservation dual, S13 template, both
-     halves in one test. This governs whether the re-run stops at minute 60.
+     halves in one test. THIS GOVERNS WHETHER THE RE-RUN STOPS AT MINUTE 60. We have
+     already shipped a preservation guarantee (S10) certified while its production trigger
+     did not exist; a deadline close quietly routing into the reconnect path is that shape
+     again, and we would learn it at minute 61.
   3. BREAKER TRIP terminates with forensic tail and retained partial capture.
-Plus: declare the HOST_SUSPEND detection floor (suspends shorter than ~43s are undetected
-and present as enormous lag — indistinguishable from starvation, the exact misreading the
-detection exists to prevent). And the two signature changes are RATIFIED retroactively —
-no rework, but 0.1a says "any signature change," not "any breaking change."
+If the 6 tests in test_live_capture.py already cover these behaviors, say so and supply the
+four-artifact proofs. If a behavior is not implemented, report it — do not add it silently.
 
-If those are already in the in-flight work, say so. If not, they are this session's or the
-next one's — your call on budget, and checkpoint rather than half-implement.
+DECLARE THE HOST_SUSPEND DETECTION FLOOR in the detection's docstring: a suspend shorter
+than ~43s is NOT detected and presents as an enormous lag spike — indistinguishable from
+catastrophic starvation, the exact misreading the detection exists to prevent. Declared
+limit, not a defect; the threshold must sit above drift or it fires on drift.
 
-Per 0.2a, nothing commits until both orders confirm 0 failed / 0 xfailed / 0 xpassed with
-contracts 6/6.
+Signature changes (LiveTradingLoop.run(feed=…), _build_kraken_v2) are RATIFIED
+retroactively — additive, default-preserving, 16 live-loop tests green. No rework. Noting
+only that 0.1a says "any signature change," not "any breaking change."
+
+=== THEN VERIFY, COMMIT, PUSH, STOP ===
+Both orders, linter, contract count, ruff, secret scan. Explain the delta. Per 0.2a nothing
+commits until 0 failed / 0 xfailed / 0 xpassed with contracts 6/6.
+
+Do NOT open the socket.

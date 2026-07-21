@@ -47,6 +47,7 @@ class LiveCaptureRunner:
         adapter: Optional[Any] = None,     # injected by tests; production resolves via factory
         loop: Optional[LiveTradingLoop] = None,
         clock=None,
+        data_source: Optional[str] = None,
     ) -> None:
         """
         Args:
@@ -55,6 +56,8 @@ class LiveCaptureRunner:
             trading_env: TRADING_ENV; read from the environment when None. Must be 'paper'.
             adapter/loop: injected for tests; production builds the live adapter + paper loop.
             clock: wall clock for per-minute bucketing (test seam); defaults to time.time.
+            data_source: overrides DATA_SOURCE for the factory resolution (test seam); production
+                leaves it None so the configured DATA_SOURCE selects the adapter.
         """
         self._persist_path = persist_path
         self._duration_seconds = duration_seconds
@@ -65,6 +68,7 @@ class LiveCaptureRunner:
         self._adapter = adapter
         self._loop = loop
         self._clock = clock or time.time
+        self._data_source = data_source
         self._preflight()
 
     def _preflight(self) -> None:
@@ -92,7 +96,9 @@ class LiveCaptureRunner:
             adapter._gap_persist_path = str(self._persist_path)
             # _persistence_optional stays False: the adapter is the second line of the refusal.
             return adapter, adapter.get_live_market_data(self._duration_seconds)
-        return factory.create_live_capture_feed(self._persist_path, self._duration_seconds)
+        return factory.create_live_capture_feed(
+            self._persist_path, self._duration_seconds, data_source=self._data_source,
+        )
 
     async def run(self) -> dict:
         """Run the capture. Returns the throughput series + the wired instrumentation.
@@ -112,11 +118,24 @@ class LiveCaptureRunner:
                 yield state
 
         # Stop-guards set large so get_live_market_data's own duration bound governs the window.
-        loop_result = await loop.run(
-            max_updates=10 ** 12,
-            duration_minutes=(self._duration_seconds / 60.0) + 5.0,
-            feed=_counting_feed(),
-        )
+        terminated = None
+        loop_result = None
+        try:
+            loop_result = await loop.run(
+                max_updates=10 ** 12,
+                duration_minutes=(self._duration_seconds / 60.0) + 5.0,
+                feed=_counting_feed(),
+            )
+        except Exception:
+            # A BREAKER TRIP (venue presumed gone) propagates CircuitBreakerTripped from the
+            # transport. The runner must SURFACE it — a 60-minute run that dies must be REPORTED,
+            # not crash the process (re-run §7). Identify it by the adapter's capture_terminated
+            # forensic tail rather than importing the adapter's exception type (Principle IV/VII:
+            # the loop must not import a concrete adapter). Anything with no forensic tail is a
+            # genuine error — re-raise it.
+            terminated = getattr(adapter, "capture_terminated", None)
+            if terminated is None:
+                raise
 
         last_minute = max(per_minute) if per_minute else -1
         emitted_per_minute = [per_minute.get(i, 0) for i in range(last_minute + 1)]
@@ -127,6 +146,7 @@ class LiveCaptureRunner:
             "persist_path": str(self._persist_path),
             "emitted_per_minute": emitted_per_minute,     # the §2.2 per-minute series
             "gap_ledger": ledger,
+            "terminated": terminated,                     # breaker-trip forensic tail, or None
             "checksum_failure_count": adapter.get_checksum_failure_count(),
             "checksum_failure_captures": adapter.get_checksum_failure_captures(),
             "checksum_failure_summaries": adapter.get_checksum_failure_summaries(),

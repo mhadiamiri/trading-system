@@ -805,6 +805,14 @@ class KrakenV2BookAdapter:
     # cannot be drift. Set to the 43s worst-case bound — conservative (an NTP step is <<43s, so
     # no false positive) while catching any real suspend (which is seconds-to-hours). Declared
     # engineering judgment, instance-overridable for ms-scale tests.
+    #
+    # DECLARED DETECTION FLOOR (WO-015 review; a declared limit, not a defect). A suspend SHORTER
+    # than this threshold (~43s) is NOT detected — it presents as an enormous lag spike,
+    # INDISTINGUISHABLE from catastrophic starvation, the exact misreading this detection exists to
+    # prevent. The threshold MUST sit above the worst-case whole-run drift or it fires on drift, so
+    # the floor is the unavoidable cost of separating suspend from drift by magnitude. A sub-floor
+    # suspend therefore still risks a wrong discrimination verdict — mitigated operationally: the
+    # re-run disables host sleep (a 2h setting >> the 60-min window), so no suspend should occur.
     HOST_SUSPEND_DIVERGENCE_SECONDS = 43.0
 
     # ── WO-014b-2 §2: reconnect backoff + circuit breaker ────────────────────
@@ -2651,7 +2659,7 @@ class KrakenV2BookAdapter:
 from trading.data.adapters.registry import register  # noqa: E402
 
 
-@register("kraken_v2")
+@register("kraken_v2", live_capture=True)
 def _build_kraken_v2(decision_logger=None, mode=KrakenV2BookAdapter.MODE_FIXTURE,
                      gap_persist_path=None) -> "KrakenV2BookAdapter":
     """Builder invoked by the registry when DATA_SOURCE=kraken_v2.

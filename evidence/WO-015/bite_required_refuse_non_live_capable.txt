@@ -1,0 +1,79 @@
+WO-015 review — BITE PROOF — required_refuse_non_live_capable
+==============================================================================
+Target: src/trading/data/adapters/factory.py
+Test (0.1h/0.1i): tests/integration/test_live_capture.py::test_live_capture_refuses_non_live_capable_data_source
+sha256 BEFORE: e3e0f3ca426c281202bd9dfcdb2ce6ddde46cd96aa7ef67e732a56899f6e890b
+
+── ARTIFACT 1 — PASS (intact) ────────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.11s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the live-capability check is disabled -> a live capture of a non-live source no longer refuses (would connect wrong / crash cryptically)
+  OLD:
+        if not registry.is_live_capable(name):
+  NEW:
+        if False and not registry.is_live_capable(name):  # WEAKENED
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_live_capture_refuses_non_live_capable_data_source ____________
+
+tmp_path = WindowsPath('C:/Users/mhadi/AppData/Local/Temp/pytest-of-mhadi/pytest-26/test_live_capture_refuses_non_0')
+
+    @pytest.mark.asyncio
+    async def test_live_capture_refuses_non_live_capable_data_source(tmp_path):
+        """WO-015 review: DATA_SOURCE naming a NON-live-capable adapter REFUSES specifically and
+        BEFORE opening any connection — never connects to the wrong venue, never a cryptic TypeError."""
+        persist = tmp_path / "g.jsonl"
+        runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.15, trading_env="paper",
+                                   adapter=None, loop=_paper_loop(), data_source="simulated")
+        conn = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+        with patch("websockets.connect", conn.connect):
+            with pytest.raises(ValueError, match=r"LIVE_CAPTURE_UNSUPPORTED.*'simulated'.*does not support live capture"):
+>               await runner.run()
+
+tests\integration\test_live_capture.py:220: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\trading\loop\live_capture.py:106: in run
+    adapter, feed_iter = self._resolve_feed()
+                         ^^^^^^^^^^^^^^^^^^^^
+src\trading\loop\live_capture.py:99: in _resolve_feed
+    return factory.create_live_capture_feed(
+src\trading\data\adapters\factory.py:86: in create_live_capture_feed
+    feed = registry.create(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+name = 'simulated'
+kwargs = {'decision_logger': None, 'mode': 'live', 'gap_persist_path': 'C:\\Users\\mhadi\\AppData\\Local\\Temp\\pytest-of-mhadi\\pytest-26\\test_live_capture_refuses_non_0\\g.jsonl'}
+
+    def create(name: str, **kwargs):
+        """Resolve and construct an adapter by its registered config name."""
+        if name not in _REGISTRY:
+            raise ValueError(
+                f"Unknown data source: {name!r}. Registered: {registered_names()}"
+            )
+>       return _REGISTRY[name](**kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: _build_simulated() got an unexpected keyword argument 'mode'
+
+src\trading\data\adapters\registry.py:54: TypeError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_live_capture.py::test_live_capture_refuses_non_live_capable_data_source
+1 failed in 0.19s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.12s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : e3e0f3ca426c281202bd9dfcdb2ce6ddde46cd96aa7ef67e732a56899f6e890b
+EXACT RESTORE: YES — byte-identical
+
+RESULT [required_refuse_non_live_capable]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

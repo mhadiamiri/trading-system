@@ -1,0 +1,80 @@
+WO-015 review — BITE PROOF — owed2_deadline_close_dual
+==============================================================================
+Target: src/trading/data/adapters/kraken_v2_book.py
+Test (0.1h/0.1i): tests/integration/test_live_capture.py::test_clean_deadline_close_does_not_reconnect_dual
+sha256 BEFORE: e194cf741d45e31f0e85b66edd0bd39eec695dd043815b63b3d7daded4120d04
+
+── ARTIFACT 1 — PASS (intact) ────────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.53s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: an abnormal disconnect no longer reconnects -> the dual's (b) half fails; a real disconnect would be silently mistaken for a clean end
+  OLD:
+                        websocket = await self._perform_reconnect(
+                            websocket, reason=f"venue closed the connection unexpectedly ({exc})",
+                        )
+  NEW:
+                        pass  # WEAKENED: an abnormal venue close no longer reconnects
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_clean_deadline_close_does_not_reconnect_dual ______________
+
+    @pytest.mark.asyncio
+    async def test_clean_deadline_close_does_not_reconnect_dual():
+        """OWED (2): S13 preservation dual — GOVERNS whether the re-run stops at minute 60.
+        (a) reaching the capture DEADLINE ends the run WITHOUT reconnecting;
+        (b) an ABNORMAL mid-run disconnect DOES reconnect. Both halves, one test."""
+        # \u2500\u2500 (a) clean deadline close -> NO reconnect \u2500\u2500
+        adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        adapter_a._persistence_optional = True
+        conn_a = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+        with patch("websockets.connect", conn_a.connect):
+            async for _ in adapter_a.get_live_market_data(duration_seconds=0.15):
+                pass
+        assert conn_a.connect_count == 1, "reaching the deadline must NOT reconnect (re-run stops at 60m)"
+        assert adapter_a.capture_terminated is None
+        assert [g for g in adapter_a.get_gap_ledger().gaps
+                if g.cause in ("KEEPALIVE_RECONNECT", "VENUE_DISCONNECT")] == [], "no reconnect gap"
+    
+        # \u2500\u2500 (b) abnormal mid-run disconnect -> DOES reconnect (the dual) \u2500\u2500
+        adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        adapter_b._persistence_optional = True
+        adapter_b._reconnect_sleep = _no_sleep
+        unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
+        conn_b = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
+            {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
+        ])
+        with patch("websockets.connect", conn_b.connect):
+            async for _ in adapter_b.get_live_market_data(duration_seconds=0.25):
+                pass
+>       assert conn_b.connect_count == 2, "an abnormal disconnect MUST reconnect (not treated as a deadline)"
+E       AssertionError: an abnormal disconnect MUST reconnect (not treated as a deadline)
+E       assert 1 == 2
+E        +  where 1 = <tests.fixtures.fake_ws_transport.ScriptedConnectionFactory object at 0x00000190450A20D0>.connect_count
+
+tests\integration\test_live_capture.py:166: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] VENUE_CONNECTION_CLOSED: unexpected close (received 1011 (internal error) internal error; no close frame sent); reconnecting
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] GAP_LEDGER_INCOMPLETE: 1 of 1 recorded gap(s) opened but never closed or terminated — the capture ended with them open. Retained as open-ended (default-deny from open onward), NOT dropped: [#0(VENUE_DISCONNECT, opened@325575.8194mono)].
+=========================== short test summary info ===========================
+FAILED tests/integration/test_live_capture.py::test_clean_deadline_close_does_not_reconnect_dual
+1 failed in 0.63s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.55s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : e194cf741d45e31f0e85b66edd0bd39eec695dd043815b63b3d7daded4120d04
+EXACT RESTORE: YES — byte-identical
+
+RESULT [owed2_deadline_close_dual]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

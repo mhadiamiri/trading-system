@@ -1,0 +1,435 @@
+WO-015 review — BITE PROOF — owed3_breaker_trip_surfaced
+==============================================================================
+Target: src/trading/loop/live_capture.py
+Test (0.1h/0.1i): tests/integration/test_live_capture.py::test_breaker_trip_terminates_run_with_forensic_tail
+sha256 BEFORE: fe20560ae63034626b4a33ad44016407fcfa8e1cc777956480017cf2bafb1871
+
+── ARTIFACT 1 — PASS (intact) ────────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.59s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the runner no longer surfaces a breaker trip -> a dying 60-min run crashes the process instead of being reported
+  OLD:
+                if terminated is None:
+  NEW:
+                if True:  # WEAKENED: always re-raise, never surface the trip
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_breaker_trip_terminates_run_with_forensic_tail _____________
+
+self = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x0000025EB315CD70>
+duration_seconds = 30
+
+    async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
+        """
+        Stream MarketStates from the LIVE Kraken v2 public book channel.
+    
+        Transport only. Every frame goes to process_raw_frame() unmodified.
+    
+        Args:
+            duration_seconds: hard wall-clock bound on the capture window.
+    
+        Raises:
+            ValueError: if called on a fixture-mode adapter (no silent switching).
+            ConnectionError: if the socket cannot be opened or drops.
+        """
+        import asyncio
+        import time
+        # WO-014b-2 §1.3: the library surfaces a PROTOCOL-level close on recv as these.
+        from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
+    
+        if self._mode != self.MODE_LIVE:
+            raise ValueError(
+                f"get_live_market_data requires mode={self.MODE_LIVE!r}, "
+                f"got {self._mode!r}. Mode is explicit and never inferred."
+            )
+    
+        # WO-014c-3 addendum C: REFUSE a live capture whose gap ledger would not be persisted,
+        # unless the caller EXPLICITLY opts out. An unpersisted live ledger silently loses every
+        # gap on a kill/trip — the vigilance-enforced guarantee the persistence fix closed, and
+        # the last thing between a 60-minute run and a silently unrecorded ledger.
+        if self._gap_persist_path is None and not self._persistence_optional:
+            raise ValueError(
+                "GAP_PERSIST_UNCONFIGURED: live capture started with gap-ledger persistence "
+                "UNSET. Set _gap_persist_path to an append-only JSONL path, or (fixtures/tests "
+                "only) set _persistence_optional=True to acknowledge running without a durable "
+                "ledger. Refusing to run a silently-unpersisted live capture."
+            )
+    
+        self._raw_received = 0
+        self._market_states_emitted = 0
+        self._start_time = time.time()
+        self.captured_frames = []
+        self.captured_raw_text = []
+        # WO-014c-1 §B.1: the event-loop LAG sampler (PRIMARY starvation discriminator) runs
+        # concurrently for this capture on the shared time.monotonic() clock (§A.2).
+        self._lag_record = LagSampleRecord(interval_s=self.LAG_SAMPLE_INTERVAL_SECONDS)
+        # WO-014c-1 §B.2: the protocol-level pong observer runs concurrently on the same clock.
+        self._pong_record = PongRecord(
+            interval_s=self._ping_sample_interval, absent_timeout_s=self._pong_absent_timeout,
+        )
+        # WO-014c-1 §B.3: per-second receive-to-process latency + message-rate completeness.
+        self._throughput_record = ThroughputRecord(bucket_seconds=1.0)
+        lag_task = None
+        pong_task = None
+    
+        websocket = await self._connect()
+        self._websocket = websocket   # kept current on reconnect so the pong observer probes it
+        logger.info(
+            "[kraken_v2_book] CONNECTED mode=%s venue=%s url=%s",
+            self._mode, self.venue_name, self.WS_URL,
+        )
+    
+        try:
+            subscribe = self._build_subscribe_message()
+            await websocket.send(json.dumps(subscribe))
+            logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
+            lag_task = asyncio.create_task(self._sample_event_loop_lag(self._lag_record))
+            pong_task = asyncio.create_task(self._observe_protocol_pong(self._pong_record))
+    
+            deadline = time.time() + duration_seconds
+            # WO-014b-2 §1.1/§1.2 keepalive clocks (monotonic). last_frame is refreshed by
+            # ANY received frame (book, heartbeat, or pong); last_ping paces the app ping.
+            last_frame = time.monotonic()
+            last_ping = time.monotonic()
+            # WO-014c-2 §2: the ONCE-per-run (wall, monotonic) anchor for the gap ledger,
+            # captured ATOMICALLY — two adjacent reads with NO await between them, so
+            # cooperative scheduling cannot interleave and the wall<->monotonic skew is bounded
+            # to sub-microsecond CPU time, not load (probe 2b). It is the ONLY wall clock in the
+            # gap records; every monotonic bound is calendar-located via this pair.
+            anchor_monotonic = time.monotonic()
+            anchor_wall = datetime.now(UTC).isoformat()
+            # WO-015 addendum A: the wall EPOCH paired atomically with the monotonic anchor, for
+            # host-suspend detection (per-iteration wall-delta vs monotonic-delta divergence).
+            _wall = self._wall_clock or time.time
+            anchor_wall_epoch = _wall()
+            susp_prev_wall = anchor_wall_epoch
+            susp_prev_mono = anchor_monotonic
+            self._gap_seq = 0
+            self._open_gaps = []
+            self._gap_ledger = GapLedger(
+                run_wall_anchor=anchor_wall,
+                run_monotonic_anchor=anchor_monotonic,
+                run_start_monotonic=anchor_monotonic,
+            )
+            self._throughput_record.start_monotonic = anchor_monotonic
+            # WO-014c-3 §0.2: reset failure-capture retention state per capture (count, kept
+            # captures, byte total, and the cap-announced flag) so a reused adapter never carries
+            # a prior run's cap or counts.
+            self._checksum_failure_count = 0
+            self._checksum_failure_captures = []
+            self._checksum_failure_summaries = []
+            self._checksum_capture_bytes = 0
+            self._checksum_capture_capped = False
+            # WO-014c-3 §0.1: open the append-only ledger file (if persistence is enabled) and
+            # write the run anchor FIRST, so even a run that dies seconds in leaves the anchor +
+            # any gaps on disk.
+            self._open_gap_persistence()
+            self._persist_write({
+                "event": "run_start",
+                "run_wall_anchor": anchor_wall,
+                "run_monotonic_anchor": anchor_monotonic,
+                "run_start_monotonic": anchor_monotonic,
+                "venue": self.venue_name,
+                "mode": self._mode,
+            })
+            while time.time() < deadline:
+                # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
+                # process_raw_frame (the FR-018 checksum-failure branch); the servicing
+                # step below consumes it in the SAME iteration. THRESHOLD: zero-iteration
+                # latency — a correctly plumbed flag is cleared before the loop returns
+                # here. If it is still set at this boundary, a reconnect was requested
+                # and NOT effected: silent non-action, the WO-008b-B defect class this
+                # WO exists to kill. Fail loudly rather than press on against a discarded
+                # book (rule 0.1i / 0.1g).
+                if self._pending_reconnect:
+                    raise RuntimeError(
+                        "RECONNECT_FLAG_STRANDED: a reconnect was requested "
+                        "(_pending_reconnect set by _reconnect() at 5 consecutive "
+                        "checksum failures) but the transport did not effect it before "
+                        "the next loop boundary. Recovery must never silently no-op."
+                    )
+    
+                mono = time.monotonic()
+    
+                # WO-015 addendum A: HOST-SUSPEND DETECTION. Compare this iteration's WALL delta
+                # against its MONOTONIC delta. In normal operation both measure the same interval
+                # (divergence ~0); a host suspend counts on one clock but not the other, so the
+                # divergence jumps by ~the suspend duration in a single iteration. Beyond the
+                # drift bound that is a suspend, not drift (WO-014c-3 §0.3). Record a HOST_SUSPEND
+                # gap and report LOUDLY, but DO NOT terminate (diagnostic role — the corpus WO
+                # makes it window-invalidating). Checked BEFORE heartbeat-absence so the suspend
+                # is attributed to its own cause even though the link may also need a reconnect.
+                _now_wall = _wall()
+                _wall_delta = _now_wall - susp_prev_wall
+                _mono_delta = mono - susp_prev_mono
+                _divergence = abs(_wall_delta - _mono_delta)
+                if _divergence > self._host_suspend_divergence:
+                    self._log_error(
+                        f"HOST_SUSPEND: wall/monotonic divergence {_divergence:.1f}s "
+                        f"(wall +{_wall_delta:.1f}s vs monotonic +{_mono_delta:.1f}s in one "
+                        f"iteration) exceeds the {self._host_suspend_divergence:.0f}s drift bound "
+                        f"— a host suspend, not drift. This window is CONTAMINATED: a suspend is "
+                        f"indistinguishable from catastrophic starvation. Recorded (diagnostic); "
+                        f"the run continues."
+                    )
+                    _susp_gap = self._open_gap(
+                        cause="HOST_SUSPEND",
+                        reason_code="HOST_SUSPEND",
+                        open_monotonic=susp_prev_mono,
+                        detail=(
+                            f"host suspend: divergence {_divergence:.1f}s "
+                            f"(wall +{_wall_delta:.1f}s vs monotonic +{_mono_delta:.1f}s) "
+                            f"> {self._host_suspend_divergence:.0f}s drift bound"
+                        ),
+                    )
+                    # Diagnostic, not terminal: close it immediately at resume (the suspend
+                    # window is [prev, now]); emission continues.
+                    if _susp_gap is not None:
+                        _susp_gap.close_monotonic = mono
+                        _susp_gap.resumed = True
+                        self._persist_gap_event(_susp_gap, "resolved")
+                        if _susp_gap in self._open_gaps:
+                            self._open_gaps.remove(_susp_gap)
+                susp_prev_wall = _now_wall
+                susp_prev_mono = mono
+    
+                # WO-014b-2 §1.1: HEARTBEAT-ABSENCE DETECTION -> reconnect. Kraken's
+                # heartbeat (~1/s) is the venue's own liveness signal; a data-quiet-but-
+                # alive link is also kept warm by our pong (below). If NO frame of any kind
+                # has arrived within the threshold, the connection is presumed dead and we
+                # reconnect (through the §2 backoff/breaker). This is why the capture ends
+                # ONLY at the deadline: a silent link is reconnected, never quietly ended.
+                if mono - last_frame >= self._heartbeat_absence_timeout:
+                    self._log_error(
+                        f"HEARTBEAT_ABSENCE: no frame for {mono - last_frame:.2f}s "
+                        f"(>= {self._heartbeat_absence_timeout:.0f}s threshold); "
+                        f"connection presumed dead"
+                    )
+                    # WO-014c-2 §2: OPEN the keepalive gap at the LAST FRAME received (when
+                    # emission actually stopped, not when the threshold tripped). The unified
+                    # close hook closes it at the first post-reconnect validated emit — this
+                    # is the close hook the absence path lacked (probe 2a).
+                    self._open_gap(
+                        cause="KEEPALIVE_RECONNECT",
+                        reason_code="HEARTBEAT_ABSENCE",
+                        open_monotonic=last_frame,
+                        detail=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
+                    )
+                    websocket = await self._perform_reconnect(
+                        websocket,
+                        reason=f"heartbeat absence ({mono - last_frame:.1f}s without a frame)",
+                    )
+                    self._attach_ladder_to_open_gaps()
+                    last_frame = time.monotonic()
+                    last_ping = time.monotonic()
+                    continue
+    
+                # WO-014b-2 §1.2: APPLICATION-LEVEL PING. Kraken's documented keepalive is a
+                # CLIENT-INITIATED application ping ({"method":"ping"} -> pong), DISTINCT
+                # from the WS PROTOCOL ping (§1.3). Probe on an interval so a data-quiet link
+                # is actively tested; the pong Kraken returns is a frame that refreshes
+                # last_frame above. A failed SEND means a dead socket -> reconnect.
+                if mono - last_ping >= self._app_ping_interval:
+                    self._ping_seq += 1
+                    try:
+                        await websocket.send(
+                            json.dumps({"method": "ping", "req_id": self._ping_seq})
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[kraken_v2_book] application ping send failed (%s); reconnecting",
+                            exc,
+                        )
+                        # WO-014c-2 §2 (cause 4b): a dead socket detected on send is a venue
+                        # disconnect. Open the gap at the last frame received; attach the
+                        # reconnect ladder after recovery.
+                        self._open_gap(
+                            cause="VENUE_DISCONNECT",
+                            reason_code="VENUE_CONNECTION_CLOSED",
+                            open_monotonic=last_frame,
+                            detail=f"application ping send failed ({exc})",
+                        )
+                        websocket = await self._perform_reconnect(
+                            websocket, reason="application ping send failed",
+                        )
+                        self._attach_ladder_to_open_gaps()
+                        last_frame = time.monotonic()
+                        last_ping = time.monotonic()
+                        continue
+                    last_ping = time.monotonic()
+    
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                # Bound recv so we wake to re-check absence/ping/deadline before either
+                # would fire. A recv timeout is a tick, NOT the end of the capture.
+                mono = time.monotonic()
+                recv_timeout = max(0.0, min(
+                    remaining,
+                    self._heartbeat_absence_timeout - (mono - last_frame),
+                    self._app_ping_interval - (mono - last_ping),
+                ))
+                try:
+>                   message = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src\trading\data\adapters\kraken_v2_book.py:2316: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python314\Lib\asyncio\tasks.py:488: in wait_for
+    return await fut
+           ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tests.fixtures.fake_ws_transport.FakeWebSocket object at 0x0000025EB32B8590>
+
+    async def recv(self):
+        """Deliver the next scripted frame, then any queued pong, then the drain behavior.
+    
+        WO-014b-2 §1.3: a scripted entry that is an EXCEPTION INSTANCE is RAISED instead of
+        returned — this is how a test injects a protocol-level close (e.g. a websockets
+        ConnectionClosedError with code 1011, or ConnectionClosedOK with 1000) surfaced on recv.
+        """
+        if self._index < len(self._frames):
+            frame = self._frames[self._index]
+            self._index += 1
+            if isinstance(frame, BaseException):
+>               raise frame
+E               websockets.exceptions.ConnectionClosedError: received 1011 (internal error) internal error; no close frame sent
+
+tests\fixtures\fake_ws_transport.py:108: ConnectionClosedError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = WindowsPath('C:/Users/mhadi/AppData/Local/Temp/pytest-of-mhadi/pytest-32/test_breaker_trip_terminates_r0')
+
+    @pytest.mark.asyncio
+    async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path):
+        """OWED (3): a persistent reopen failure trips the breaker; the RUNNER SURFACES the
+        termination (forensic tail + retained partial capture), not a crash."""
+        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        adapter._reconnect_sleep = None                 # real tiny sleeps so the DURATION breaker advances
+        adapter._reconnect_max_failure_seconds = 0.1
+        unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
+        conn = ScriptedConnectionFactory(
+            [{"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"}] + [REOPEN_FAILURE] * 20)
+        runner = LiveCaptureRunner(persist_path=tmp_path / "g.jsonl", duration_seconds=30,
+                                   trading_env="paper", adapter=adapter, loop=_paper_loop())
+    
+        with patch("websockets.connect", conn.connect):
+>           result = await runner.run()   # must NOT raise — the runner surfaces the trip
+                     ^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_live_capture.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\trading\loop\live_capture.py:124: in run
+    loop_result = await loop.run(
+src\trading\loop\live.py:155: in run
+    async for market_state in self._feed_iterator:
+src\trading\loop\live_capture.py:115: in _counting_feed
+    async for state in feed_iter:
+src\trading\data\adapters\kraken_v2_book.py:2345: in get_live_market_data
+    websocket = await self._perform_reconnect(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <trading.data.adapters.kraken_v2_book.KrakenV2BookAdapter object at 0x0000025EB315CD70>
+websocket = <tests.fixtures.fake_ws_transport.FakeWebSocket object at 0x0000025EB32B8590>
+reason = 'venue closed the connection unexpectedly (received 1011 (internal error) internal error; no close frame sent)'
+
+    async def _perform_reconnect(self, websocket, reason="5 consecutive checksum failures (FR-018)"):
+        """
+        WO-014b-1 EFFECT + WO-014b-2 §2 (backoff + circuit breaker).
+    
+        Close the current socket and reopen a FRESH one, resubscribing via the committed
+        Phase 2.1 producer (`_maybe_resubscribe` — one code path serves "get a fresh
+        snapshot onto a socket"; on a fresh socket the unsubscribe is a harmless no-op).
+    
+        WO-014b-2 §2 hardens the reopen against the two §0 hazards:
+        - A FAILED reopen no longer propagates on the first failure (the hard-stop that
+          ended a 24h run on one transient blip). It RETRIES under full-jitter exponential
+          backoff (base×factor^attempt, capped), so a transient venue interruption is
+          ridden out rather than fatal.
+        - A DURATION CIRCUIT BREAKER bounds how long we try before concluding the venue is
+          gone: when the continuous-failure streak exceeds RECONNECT_MAX_FAILURE_SECONDS of
+          elapsed wall-clock (from the first failed reopen) it TRIPS — fails loud with reason
+          code RECONNECT_CIRCUIT_BREAKER_TRIPPED, carrying a forensic tail, and STOPS the
+          capture (Ruling B: STOP, never continue-with-a-silent-gap). The retained partial
+          capture is labeled a truncated-honest window.
+    
+        Backoff/breaker figures are DECLARED ENGINEERING JUDGMENT: Kraken's WS rate limits
+        are documented silence (evidence/WO-014b-2/rate_limits_research.txt; rule 0.1e).
+    
+        HONEST FIXTURE LIMIT: the close/reopen, the backoff retries, and the breaker trip
+        are exercised by simulated transport (evidence/WO-014b-2/backoff_breaker.txt). Only
+        the isolated live re-run confirms Kraken's real reopen behavior and rate tolerance.
+    
+        Returns the NEW socket for the transport to swap in.
+        """
+        import asyncio
+        import time
+    
+        self._pending_reconnect = False
+        sleep = self._reconnect_sleep or asyncio.sleep
+        jitter = self._reconnect_jitter or random.random
+    
+        logger.info(
+            "[kraken_v2_book] RECONNECT: closing and reopening the live socket after %s",
+            reason,
+        )
+        try:
+            await websocket.close()
+        except Exception as exc:
+            # A close failure on an already-dead socket must not block the reopen.
+            logger.warning("[kraken_v2_book] error closing socket during reconnect: %s", exc)
+    
+        # New reconnect operation: reset the per-operation forensic ladder. streak_start is
+        # stamped at the FIRST failed reopen; the duration breaker measures elapsed from it.
+        self._reconnect_ladder = []
+        streak_start = None
+        attempt = 0
+        while True:
+            # DURATION circuit breaker: trip once the continuous-failure streak has run
+            # longer than T seconds — the venue is presumed gone (Proposal B, ruled).
+            if (streak_start is not None
+                    and time.monotonic() - streak_start > self._reconnect_max_failure_seconds):
+>               raise self._trip_circuit_breaker(reason)
+E               trading.data.adapters.kraken_v2_book.CircuitBreakerTripped: RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect (venue closed the connection unexpectedly (received 1011 (internal error) internal error; no close frame sent)) kept failing for more than 0s of continuous retry; venue presumed gone. Capture STOPPED (no silent gap). Trip 2026-07-21T14:00:52.108858+00:00. Retry ladder: [#0@2026-07-21T14:00:51.249036+00:00 delay=0.8506s err=Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue — a live run must never fall back to fixtures.]. Last validated book: {'best_bid': '45283.5', 'best_ask': '45285.2', 'last_checksum': 3310070434, 'at': '2026-07-21T14:00:51.246941+00:00'}. Partial capture retained: 1 frames.
+
+src\trading\data\adapters\kraken_v2_book.py:1788: CircuitBreakerTripped
+---------------------------- Captured stdout call -----------------------------
+Starting live trading loop...
+Strategy: trivial-momentum-v1.0.0
+Feed Type: simulated (SIMULATED)
+Risk Engine: DeterministicRiskEngine
+Execution: PaperExecutionClient
+Data Persistence: (stub)
+Max updates: 1000000000000, Max duration: 5.5 minutes
+--------------------------------------------------
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] NO_SIGNAL: STRAT_NO_SIGNAL
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] VENUE_CONNECTION_CLOSED: unexpected close (received 1011 (internal error) internal error; no close frame sent); reconnecting
+WARNING  trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1807 [kraken_v2_book] reconnect reopen attempt 0 failed; backing off 0.851s: Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue — a live run must never fall back to fixtures.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect (venue closed the connection unexpectedly (received 1011 (internal error) internal error; no close frame sent)) kept failing for more than 0s of continuous retry; venue presumed gone. Capture STOPPED (no silent gap). Trip 2026-07-21T14:00:52.108858+00:00. Retry ladder: [#0@2026-07-21T14:00:51.249036+00:00 delay=0.8506s err=Kraken v2 connection FAILED: OSError: simulated reopen failure (scripted REOPEN_FAILURE). Refusing to continue — a live run must never fall back to fixtures.]. Last validated book: {'best_bid': '45283.5', 'best_ask': '45285.2', 'last_checksum': 3310070434, 'at': '2026-07-21T14:00:51.246941+00:00'}. Partial capture retained: 1 frames.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] INSTRUMENTS_GAPPY: lag sampler missed 1 of 8 expected samples (12% > 10%); quantitative discrimination VOID. 0 gap(s) retained as reported evidence (may NOMINATE starvation; only clean instruments convict).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_live_capture.py::test_breaker_trip_terminates_run_with_forensic_tail
+1 failed in 1.10s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.95s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : fe20560ae63034626b4a33ad44016407fcfa8e1cc777956480017cf2bafb1871
+EXACT RESTORE: YES — byte-identical
+
+RESULT [owed3_breaker_trip_surfaced]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

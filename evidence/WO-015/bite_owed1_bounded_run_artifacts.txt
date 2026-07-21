@@ -1,0 +1,84 @@
+WO-015 review — BITE PROOF — owed1_bounded_run_artifacts
+==============================================================================
+Target: src/trading/loop/live_capture.py
+Test (0.1h/0.1i): tests/integration/test_live_capture.py::test_short_bounded_run_completes_with_readable_artifacts
+sha256 BEFORE: fe20560ae63034626b4a33ad44016407fcfa8e1cc777956480017cf2bafb1871
+
+── ARTIFACT 1 — PASS (intact) ────────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.32s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the per-minute series is not measured -> the bounded run's deliverable artifact is empty
+  OLD:
+                    per_minute[minute] = per_minute.get(minute, 0) + 1
+  NEW:
+                    pass  # WEAKENED: the per-minute emitted series is not measured
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_short_bounded_run_completes_with_readable_artifacts ___________
+
+tmp_path = WindowsPath('C:/Users/mhadi/AppData/Local/Temp/pytest-of-mhadi/pytest-29/test_short_bounded_run_complet0')
+
+    @pytest.mark.asyncio
+    async def test_short_bounded_run_completes_with_readable_artifacts(tmp_path):
+        """OWED (1): a short bounded run COMPLETES and its artifacts EXIST AND ARE READABLE (0.1i) —
+        the gap-ledger JSONL (run_start..run_end) and the per-minute emitted series — not merely that
+        a method ran."""
+        persist = tmp_path / "gap_ledger.jsonl"
+        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+        runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.2, trading_env="paper",
+                                   adapter=adapter, loop=_paper_loop())
+        conn = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL], "on_drain": "heartbeat"}])
+        with patch("websockets.connect", conn.connect):
+            result = await runner.run()
+    
+        # Artifacts readable from disk (not "a flush was called").
+        assert persist.exists()
+        records = [json.loads(l) for l in persist.read_text(encoding="utf-8").splitlines() if l.strip()]
+        events = [r["event"] for r in records]
+        assert events[0] == "run_start" and events[-1] == "run_end", events
+        run_end = records[-1]
+        assert run_end["frames_captured"] >= 1 and run_end["gaps_detected"] == 0
+        # The per-minute series exists and totals the emitted states.
+>       assert sum(result["emitted_per_minute"]) == 2
+E       assert 0 == 2
+E        +  where 0 = sum([])
+
+tests\integration\test_live_capture.py:133: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Starting live trading loop...
+Strategy: trivial-momentum-v1.0.0
+Feed Type: simulated (SIMULATED)
+Risk Engine: DeterministicRiskEngine
+Execution: PaperExecutionClient
+Data Persistence: (stub)
+Max updates: 1000000000000, Max duration: 5.003333333333333 minutes
+--------------------------------------------------
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] NO_SIGNAL: STRAT_NO_SIGNAL
+[EXECUTION] MARKET_DATA_RECEIVED: DATA_RECEIVED
+[STRATEGY] NO_SIGNAL: STRAT_NO_SIGNAL
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1649 [kraken_v2_book] INSTRUMENTS_GAPPY: lag sampler missed 1 of 2 expected samples (50% > 10%); quantitative discrimination VOID. 0 gap(s) retained as reported evidence (may NOMINATE starvation; only clean instruments convict).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_live_capture.py::test_short_bounded_run_completes_with_readable_artifacts
+1 failed in 0.40s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.33s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : fe20560ae63034626b4a33ad44016407fcfa8e1cc777956480017cf2bafb1871
+EXACT RESTORE: YES — byte-identical
+
+RESULT [owed1_bounded_run_artifacts]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
