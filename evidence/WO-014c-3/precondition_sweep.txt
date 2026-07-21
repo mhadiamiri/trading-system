@@ -1,0 +1,95 @@
+WO-014c-3 §2 — WIDENED PRECONDITION SWEEP  (REPORT ONLY — NOTHING FIXED)
+================================================================================================
+Baseline: 62cef3b. Authority: constitution.md. Consumes §1's stub-lint output
+(evidence/WO-014c-3/stub_lint.txt). This is an AUDIT of the TEST SUITE for two anti-patterns
+that manufacture false confidence. It fixes nothing.
+
+DENOMINATOR (stated first — an audit without a denominator audits what it noticed)
+---------------------------------------------------------------------------------
+175 tests collected by pytest across tests/ (169 `def test_` functions + parametrizations/
+class methods). ALL were in scope. The two shapes were hunted across the whole suite, not a
+noticed subset.
+
+THE TWO SHAPES
+--------------
+SHAPE A (0.1h): a test SUPPLIES what PRODUCTION is supposed to PRODUCE — it hand-feeds a
+  precondition instead of driving production to create it. (S10: the fresh snapshot.)
+SHAPE B (0.1i): a test STOPS AT A CALL BOUNDARY the production path continues through — it
+  asserts INVOCATION and never verifies the EFFECT. (_reconnect: escalation fires, callee was
+  `pass` — so "it was called" certified nothing.)
+
+DISTINCTION APPLIED (to avoid false positives): feeding RAW VENUE FRAMES (snapshots, book
+updates, QuoteUpdate — the EXTERNAL venue's output, which a unit test cannot drive) is the
+legitimate fixture boundary, NOT Shape A. Shape A is feeding what OUR code should produce.
+Likewise, asserting a producer's real OUTPUT (e.g. the resubscribe SEND) is an effect, not a
+call boundary; only asserting "a method was invoked" with no effect check is Shape B.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+SHAPE B — how found: MECHANICAL pattern match (grep for assert_called* / assert_not_called /
+call_count / .called), then cross-referenced against §1's stub-lint output.
+═══════════════════════════════════════════════════════════════════════════════════════════════
+Call-assertions found in the whole suite:
+  tests/test_data_adapters.py:225   adapter._reconnect.assert_not_called()
+  tests/test_data_adapters.py:230   adapter._reconnect.assert_called_once()
+  (tests/integration/test_reconnect_to_effect.py:7 is a COMMENT quoting the old assertion to
+   explain the defect it fixes — not a live call-assertion.)
+
+HIT B1 — test_data_adapters.py::...reconnect... (lines 225, 230). ONE test.
+  SHAPE: it mocks `adapter._reconnect = Mock()`, drives five REAL checksum failures through the
+  production path, and asserts `_reconnect` was called on the 5th (not before). It STOPS at the
+  call boundary — it does not verify the reconnect EFFECT.
+  CROSS-REFERENCE WITH §1: `_reconnect` is NOT a stub (stub-lint: zero unexamined stubs; and
+  `_reconnect` now sets `_pending_reconnect`, exercised in production). So this is not the live
+  S13 configuration (call-assertion on a `pass` callee).
+  DISPOSITION — NOT A FALSE-CONFIDENCE GAP. The EFFECT is fully covered elsewhere:
+  test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes drives the
+  real transport and asserts the OBSERVABLE END STATE (fresh socket opened, failed socket closed,
+  EMISSION RESUMES, streak cleared, flag consumed) — and it deliberately does NOT assert
+  `_reconnect` was called ("that assertion already existed and certified nothing"). B1 is a
+  legitimate UNIT test of the escalation TRIGGER (does 5 failures fire the escalation?), with the
+  effect owned by the integration test. The two are the correct layered pair, not a gap.
+
+No other Shape B occurrences. Every other call-related assertion in the suite asserts a real
+producer OUTPUT (e.g. `sockets[1].sent == ["unsubscribe","subscribe"]` — the resubscribe SEND is
+the effect), not a bare invocation.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+SHAPE A — how found: SEMANTIC reading (grep for direct internal-producer calls
+[_maybe_resubscribe/_perform_reconnect/_process_quote_update/set_market_state] and "fresh
+snapshot / hand-fed / as Kraken would" language, then reading each candidate).
+═══════════════════════════════════════════════════════════════════════════════════════════════
+HIT A1 — test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes.
+  SHAPE: after driving a REAL checksum failure through production (asserts `_pending_resubscribe`
+  is set — production REQUESTED the snapshot), it hand-calls `await adapter._maybe_resubscribe(ws)`
+  and then feeds SNAPSHOT_FRAME as the recovery snapshot. Supplying the fresh snapshot is the S10
+  shape.
+  DISPOSITION — DECLARED FIXTURE LIMIT, not a hidden hand-feed, and effect-covered. Its docstring
+  states plainly: "this feeds the recovery snapshot as Kraken would deliver it AFTER a resubscribe.
+  Only the isolated live re-run confirms Kraken actually responds... The producer send is exercised
+  here; the venue's response is not." The PRODUCTION TRIGGER (checksum failure -> request) is
+  exercised, and the full close/reopen/resubscribe/resume EFFECT is independently covered by
+  test_reconnect_to_effect.py. The remaining un-driven step (the venue answering a resubscribe with
+  a snapshot) is EXTERNAL — the legitimate fixture boundary — and is explicitly labelled. Not a gap.
+
+EXAMINED AND REJECTED as Shape A (feeding EXTERNAL venue output or using a real interface):
+  - set_market_state(...) in test_cost_reconciliation / test_double_count_bite_proof /
+    test_preservation_guarantees / test_staleness_guard_bite_proof: `set_market_state` is the paper
+    venue's REAL interface for receiving market data (the live loop calls it in production). Feeding
+    a MarketState to test execution-layer behavior in isolation is proper layering; MarketState
+    PRODUCTION is covered by the data-layer tests. The staleness tests feed a deliberately stale/
+    absent MarketState to TRIGGER a guard — testing the guard, not hand-feeding a precondition.
+  - test_live_loop.py::...pass_through (counters): feeds RAW book frames/QuoteUpdate — the venue's
+    external output — to test raw-vs-emitted counting. Legitimate fixture input, not Shape A.
+
+═══════════════════════════════════════════════════════════════════════════════════════════════
+RESULT
+═══════════════════════════════════════════════════════════════════════════════════════════════
+- Denominator: 175 tests.
+- Shape B: 1 shaped test (test_data_adapters.py, 2 assertions) — found by PATTERN MATCH; effect
+  covered by test_reconnect_to_effect.py -> NOT a false-confidence gap.
+- Shape A: 1 shaped test (test_snapshot_recovery.py) — found by SEMANTIC READING; a DECLARED
+  fixture limit with the effect covered by test_reconnect_to_effect.py -> NOT a false-confidence gap.
+- LIVE FALSE-CONFIDENCE GAPS (the S13 defect class — a shaped test whose effect is covered NOWHERE):
+  ZERO.
+- NOT A CLUSTER. Two examined, dispositioned patterns, both legitimate; nothing returns to the lead
+  on the cluster terms. NOTHING WAS FIXED (report-only, per §2).

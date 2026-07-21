@@ -1,0 +1,78 @@
+WO-014c-3 §1 — STUB-LINT: HIT REPORT + BITE PROOF
+==============================================================================
+Scan of every production module under src/ for pass / bare-return / ... bodied
+functions (AST). §2's sweep consumes this output.
+
+TOTAL STUB-BODIED FUNCTIONS IN THE TREE: 10
+ALL are @abstractmethod interface declarations (the examined, legitimate class —
+an abstractmethod body never executes; ABCMeta forbids instantiating a subclass
+that has not overridden it). ZERO unexamined stubs. Every hit:
+
+  trading/execution/interface.py:35  place_order()  body=pass  abstractmethod=True
+  trading/execution/interface.py:68  cancel_order()  body=pass  abstractmethod=True
+  trading/execution/interface.py:85  get_market_data()  body=pass  abstractmethod=True
+  trading/risk/interface.py:42  check()  body=pass  abstractmethod=True
+  trading/risk/interface.py:72  get_kill_switch_state()  body=pass  abstractmethod=True
+  trading/risk/interface.py:77  set_kill_switch()  body=pass  abstractmethod=True
+  trading/risk/interface.py:82  get_max_position_size()  body=pass  abstractmethod=True
+  trading/risk/interface.py:87  get_max_daily_loss_pct()  body=pass  abstractmethod=True
+  trading/strategy/interface.py:35  version()  body=pass  abstractmethod=True
+  trading/strategy/interface.py:49  decide()  body=pass  abstractmethod=True
+
+UNEXAMINED (non-abstractmethod, non-allowlisted) STUBS: []
+Contract-count impact: NONE — stub-lint is a pytest guard, not an import-linter
+contract. EXPECTED_CONTRACT_COUNT stays 6.
+
+BITE PROOF — introduce a pass-bodied production function in src\trading\data\adapters\kraken_v2_book.py
+sha256 BEFORE: 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+
+── ARTIFACT 1 — PASS (no unexamined stubs) ───────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.05s
+
+── ARTIFACT 2 — ACTUAL FAIL (a pass-bodied production function introduced) ─
+INSERTED:
+        def _wo014c3_bite_proof_stub(self):  # a pass-bodied production function
+            pass
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_no_unexamined_stub_bodied_production_functions _____________
+
+    def test_no_unexamined_stub_bodied_production_functions():
+        """0.1g mechanical: no stub-bodied production function outside the examined exceptions."""
+        unexamined = _unexamined_stubs()
+>       assert unexamined == [], (
+            "UNEXAMINED STUB-BODIED production function(s) — 0.1g requires a stub to FAIL LOUDLY, "
+            "not sit silently as a no-op (the _request_snapshot/_reconnet defect class):\n"
+            + "\n".join(f"  {r}:{ln}  {name}()  body={kind}" for r, ln, name, kind, _abs in unexamined)
+            + "\nImplement it, or add an EXAMINED_STUB_ALLOWLIST entry that NAMES WHY it is a no-op."
+        )
+E       AssertionError: UNEXAMINED STUB-BODIED production function(s) — 0.1g requires a stub to FAIL LOUDLY, not sit silently as a no-op (the _request_snapshot/_reconnet defect class):
+E           trading/data/adapters/kraken_v2_book.py:2514  _wo014c3_bite_proof_stub()  body=pass
+E         Implement it, or add an EXAMINED_STUB_ALLOWLIST entry that NAMES WHY it is a no-op.
+E       assert [('trading/da...pass', False)] == []
+E         
+E         Left contains one more item: ('trading/data/adapters/kraken_v2_book.py', 2514, '_wo014c3_bite_proof_stub', 'pass', False)
+E         Use -v to get more diff
+
+tests\test_stub_lint.py:91: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_stub_lint.py::test_no_unexamined_stub_bodied_production_functions
+1 failed in 0.11s
+
+── ARTIFACT 3 — PASS (stub removed) ──────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.05s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
