@@ -1,60 +1,54 @@
-WO-008b-B-RERUN — PREFLIGHT — HALTED AT §1.3 (STOP AND REPORT, per the WO)
+WO-008b-B-RERUN — PREFLIGHT — HALTED AT §1.3 (host suspend NOT verified) — NO SOCKET OPENED
 ================================================================================================
-Date: 2026-07-21. Authority: .specify/memory/constitution.md. NO SOCKET WAS OPENED.
-This run's §1.3 is an explicit, non-negotiable STOP condition, and it is met. Per §1.3
-("If you cannot verify [host suspend disabled], STOP AND REPORT. Do not run a 60-minute
-capture on a machine that may suspend."), the preflight is halted BEFORE any live connection.
+Date: 2026-07-21. Authority: constitution.md. §1 rule: "If any item fails, STOP. Do not connect
+on a partial preflight." §1.3 fails, so the preflight is halted BEFORE any live connection.
 
 ── §1.1 REPO STATE — OK ────────────────────────────────────────────────────────────────────
-- git status --porcelain: ` M instructions.md` only — the WO-008b-B-RERUN work order text
-  itself (the previous WO-014c-3 A-F update block was superseded here). Per §1.1 a modified
-  instructions.md means the WO text changed mid-flight; it did (the lead swapped WOs).
-- git worktree list: `C:/Projects/bot/trading-system 989600b [master]` — ONLY main. OK.
-- HEAD: 989600b — "WO-014c-3 addendum A-F" — the declared baseline ("the WO-014c-3 addendum
-  commit — 177 passed both orders"). Committed and pushed (local == remote == 989600b).
-- Package path inside the repo: src/trading (preflight guards printed
-  "trading package OK: ...src/trading/__init__.py" and "import-linter evaluated 6/6 contracts").
+HEAD 6f9a036 (the declared baseline — 190 passed both orders). git worktree = main only.
+Only instructions.md modified (the WO-008b-B-RERUN text itself). Package path src/trading.
 
-── §1.2 FULL SUITE, BOTH ORDERS — OK ───────────────────────────────────────────────────────
-- Deterministic:  pytest tests/ -p no:randomly -rX   -> 177 passed in 243.52s, 0 failed / 0
-  xfailed / 0 xpassed.
-- Randomized:      pytest tests/ --randomly-seed=20260725 -rX -> 177 passed in 243.35s, same.
-- lint-imports 6 kept / 0 broken; contract_count_check 6/6; ruff clean.
+── §1.3 HOST SUSPEND — CANNOT BE CONFIRMED AS STATED -> STOP ────────────────────────────────
+The WO states "sleep is set to 24h." The ACTUAL settings on this host do NOT match:
+  powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE:
+    Current AC Power Setting Index: 0x00001c20 = 7200 s = 2 HOURS   (not 24h)
+    Current DC Power Setting Index: 0x00000258 =  600 s = 10 MINUTES
+  Sleep states available: Standby (S3), Hibernate, Fast Startup — i.e. sleep is ENABLED.
+Findings:
+  - On BATTERY (DC) the host sleeps after 10 minutes of idle — catastrophic for a 60-minute
+    single-uninterrupted-window capture.
+  - On AC it is 2h idle-standby, not the 24h the WO asserts and not "disabled."
+  - DIRECT EVIDENCE this session: the WO-014c-3 deterministic suite recorded 24063.39s
+    (6:41:03) for ~4 min of CPU — the host DID suspend mid-run. So the machine's staying-awake
+    behavior is not reliable in practice, independent of the idle-timeout numbers.
+§1.3 is NON-NEGOTIABLE and requires CONFIRMING suspend is disabled. It is not: sleep is enabled,
+the timeouts are 2h AC / 10min DC (not 24h), and a suspend has already been observed this session.
+A suspend mid-capture is indistinguishable from catastrophic starvation and would contaminate both
+the throughput series and the discrimination; running anyway would fabricate an invalid result
+(rule 0.6). => STOP. No socket opened.
 
-── §1.3 HOST SUSPEND — CANNOT BE VERIFIED DISABLED; DIRECT EVIDENCE IT SUSPENDS -> STOP ─────
-DECISIVE. §1.3 is non-negotiable and is the exact hazard this run must avoid.
-- DIRECT EVIDENCE, THIS SESSION: the WO-014c-3 DETERMINISTIC suite recorded
-      ====================== 175 passed in 24063.39s (6:41:03) ======================
-  6h41m of wall time for a suite whose CPU time is ~4 minutes (the randomized order, run while
-  awake, completed in 243.35s). The ONLY explanation is the machine SUSPENDED mid-run. This is
-  the very number §1.3 cites as the reason the gate exists.
-- I cannot verify sleep/hibernate/display-suspend are disabled for a 60-minute window, and I
-  have PROOF the host suspends. A suspend during a live capture drops the WebSocket, injects an
-  enormous lag reading, and contaminates BOTH the throughput series and the starvation
-  discrimination — a suspend is indistinguishable from catastrophic starvation (§1.3). Running
-  anyway would manufacture an INVALID measurement, which is worse than not running (and
-  fabricated/contaminated evidence invalidates the WO — rule 0.6).
-=> STOP AND REPORT. No socket opened.
+REQUIRED BEFORE A RE-ATTEMPT (Ops/Hadi):
+  - Actually disable sleep for BOTH power states, e.g.
+        powercfg /change standby-timeout-ac 0
+        powercfg /change standby-timeout-dc 0
+        powercfg /change hibernate-timeout-ac 0
+        powercfg /change hibernate-timeout-dc 0
+    and keep the host on AC power. Then re-confirm via powercfg /query ... STANDBYIDLE == 0.
 
-── ADDITIONAL BLOCKERS (surfaced, not absorbed) ────────────────────────────────────────────
-(2) NO LIVE-CAPTURE RUNNER EXISTS. get_live_market_data is called ONLY by tests (with
-    websockets.connect patched); grep across src/ and tools/ finds no entrypoint that opens a
-    REAL socket and drives the Data->Strategy->Risk->Execution(paper) loop for 60 minutes with
-    persistence configured. §2 requires that end-to-end runner. Building it is real, careful
-    work — and the WO FORBIDS "any code change affecting throughput, counting, or instruments
-    once the run begins," so the runner must be built and reviewed BEFORE a run, not improvised
-    around one. This is itself a slice that precedes the live capture.
-(3) FIRST REAL EXTERNAL CONNECTION. The whole project has run under "NO VENUE CONNECTION,
-    simulated transport." This is the first real connection (Kraken PUBLIC v2 book, no
-    credentials, TRADING_ENV=paper, no orders — low risk, but outward-facing and 60 minutes).
-    The prior WO explicitly deferred the re-run to "a fresh session." Explicit go-ahead + a
-    confirmed always-on host is warranted before opening a live socket.
+── SECOND, INDEPENDENT REASON — FRESH SESSION (per the WO header) ───────────────────────────
+The WO header says "Fresh session," and this order is a 60-minute single-uninterrupted-window
+live capture plus a 17-item §9 report (full 60-value per-minute series, discrimination against the
+five branches, every gap record, every checksum-failure artifact, retained raw frames). This
+session is at ~80% context with automatic compaction imminent; a compaction mid-run or mid-report
+would risk corrupting the single-window measurement and the report — the exact partial/contaminated
+outcome the WO forbids ("do not extrapolate a partial window"). The first real venue socket, held
+for an hour, should be opened from a genuinely fresh context so the run and its interpretation are
+held coherently. Recommend running this WO in a fresh session once §1.3 is genuinely satisfied.
 
 ── NOT DONE (correctly) ────────────────────────────────────────────────────────────────────
-§1.4 persistence-configured, §1.5 environment, §1.6 bite proofs, and §2-§9 were NOT executed:
-the preflight GATE is not passable while §1.3 fails, and the WO says "Do not connect on a
-partial preflight." No live_run.txt / throughput_series.txt exists — none is fabricated.
+§1.2 (both-order suite), §1.4-§1.7 (persistence, DATA_SOURCE, env, bite proofs), and §2-§9 were
+NOT executed: the GATE is not passable while §1.3 fails, and the WO says do not connect on a
+partial preflight. No live_run.txt / throughput_series.txt exists — none is fabricated. Was any
+order placed at any venue? NO. Did any socket open? NO.
 
-GATE: **NOT** "PREFLIGHT COMPLETE." Halted at §1.3. Awaiting (a) a confirmed non-suspending
-host, (b) the live-capture runner as its own reviewed slice, and (c) explicit go-ahead to open
-the first real venue connection.
+GATE: NOT "PREFLIGHT COMPLETE." Halted at §1.3. Awaiting sleep genuinely disabled (AC+DC) on a
+host held on AC power, and a fresh session for the run.
