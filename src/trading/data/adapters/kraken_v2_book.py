@@ -1212,9 +1212,25 @@ class KrakenV2BookAdapter:
         return updates
 
     def _current_ladder_strings(self) -> tuple:
-        """Return (bid_levels, ask_levels) as strings for checksum computation."""
-        bid_levels = [(str(p), str(q)) for p, q in self._local_book.bids[:10]]
-        ask_levels = [(str(p), str(q)) for p, q in self._local_book.asks[:10]]
+        """Return (bid_levels, ask_levels) as strings for checksum computation.
+
+        WO-016 INTERIM FIX (project-lead ruling D26). Render each Decimal in FIXED-POINT
+        (`format(x, "f")`), NOT `str()`. `str(Decimal)` emits SCIENTIFIC notation for small
+        quantities (e.g. `Decimal("1.0E-7")` -> `"1.0E-7"`); the checksum's remove-"."-and-
+        lstrip-zeros rule then yields `"10E-7"` instead of Kraken's `"10"`, so the CRC diverges.
+        This was the WO-008b-B-RERUN defect: 234 checksum failures (0.198%). `parse_float=Decimal`
+        already preserves the transmitted DIGITS (FR-018a(f) / WO-008b-A3, the parse edge);
+        `format(x, "f")` renders those digits without scientific notation. Verified: reproduces
+        Kraken's expected checksum for ALL 200 captured failures (tests/integration/
+        test_checksum_capture_replay.py; fixture tests/fixtures/kraken_v2_checksum_captures_wo016.json).
+
+        INTERIM by ruling: this makes the RE-RENDER correct; it does NOT eliminate re-rendering,
+        which FR-018a(f) prohibits in letter. The structural close (checksum over the venue's
+        TRANSMITTED STRING, not a re-render) is feasible (WO-016 report, wire-string §) and is
+        scoped to its own WO. Until then the 200-capture fixture is the standing guard on this edge.
+        """
+        bid_levels = [(format(p, "f"), format(q, "f")) for p, q in self._local_book.bids[:10]]
+        ask_levels = [(format(p, "f"), format(q, "f")) for p, q in self._local_book.asks[:10]]
         return bid_levels, ask_levels
 
     # ── WO-014c-2 §2: gap-ledger primitives ─────────────────────────────────────

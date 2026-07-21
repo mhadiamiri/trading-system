@@ -1,9 +1,10 @@
 # WO-016 — FINAL REPORT — Checksum-Failure Diagnosis (offline) + Gappy-Threshold Re-Declaration
 
-**STOPPED AT THE §1 SEAM (rule 0.9).** Diagnosis + citation + hypothesis test + replay harness are
-done and the fix is PROPOSED, NOT IMPLEMENTED — awaiting approval before §2. §3 (threshold
-re-declaration), §4 (decision logs), §5 (verify), §6 (this report) are complete. No production code
-was changed. Baseline HEAD `6e977c2`. NO VENUE CONNECTION.
+**UPDATED for project-lead ruling D26 — the fix is APPROVED (INTERIM) and IMPLEMENTED.** The
+original §1 diagnosis (below) stands; the D26 addendum work is in the **"D26 ADDENDUM"** section at
+the end (fix implemented, 200/200 regression + bite proof, wire-string feasibility, domain
+completeness, proven §3 partition, fixture label, extra decision log). Baseline HEAD `6e977c2`.
+NO VENUE CONNECTION. Then STOP for review.
 
 **Headline:** the 234 checksum failures (0.198%) are **ours and specific** — **scientific-notation
 formatting of small quantities** in the checksum string, present in **200/200** captures. The
@@ -52,7 +53,7 @@ Honest limit (0.1f): the 20 preceding frames cannot rebuild a thousands-of-frame
 captured post-update ladder **is** the production ground truth the CRC ran over, so the replay is
 faithful. Output: `evidence/WO-016/replay_harness_output.txt` (200/200 reproduce; 200/200 fix-yields-expected).
 
-## 5. The fix — PROPOSED, NOT IMPLEMENTED (gated at the §1 seam)
+## 5. The fix — IMPLEMENTED (INTERIM, per ruling D26) — full detail in the D26 ADDENDUM below
 Format Decimal price/qty **fixed-point** at the single Decimal→string site (`_current_ladder_strings`:
 `format(q, 'f')`/`format(p, 'f')` instead of `str(q)`). Verified to yield expected **200/200**.
 - **Interfaces touched:** `_current_ladder_strings` — a **private** method; **no public signature
@@ -61,7 +62,9 @@ Format Decimal price/qty **fixed-point** at the single Decimal→string site (`_
 - **§2 requirements (post-approval):** replay all 200 captures to **200/200** as a permanent
   regression fixture; bite proof (four artifacts, sha256: revert → replay FAILS with real output →
   restore → 200/200); retain artifacts as an immutable fixture (do not overwrite A2/A3).
-- **Not done this session by ruling** (0.9 seam) — awaiting approval.
+- **DONE per D26:** implemented in `_current_ladder_strings` (labelled INTERIM), **200/200**
+  regression (`test_checksum_capture_replay.py`), four-artifact sha256 bite proof
+  (`evidence/WO-016/bite_proof.txt`). See the D26 ADDENDUM section.
 
 ## 6. Threshold re-declaration (`evidence/WO-016/gappy_threshold_redeclaration.txt`) — nothing implemented (0.4/3.1)
 Four figures, with arithmetic:
@@ -117,5 +120,64 @@ uncommitted — not mine to commit).
 - Everything else in §1/§3/§4/§5 is complete.
 
 ---
-**STOP at the §1 seam for approval before implementing the fix (§2). Then STOP again for review.**
-Do NOT proceed to WO-013 or the corpus.
+
+# D26 ADDENDUM — FIX IMPLEMENTED + FOLLOW-UP RULINGS
+
+Project-lead ruling **D26** approved the fix (INTERIM) and added four report items. All done below.
+
+### D26.1 — The fix (APPROVED, INTERIM, IMPLEMENTED)
+- `src/trading/data/adapters/kraken_v2_book.py::_current_ladder_strings` now renders
+  `format(p,'f')`/`format(q,'f')` (fixed-point) instead of `str()`, **labelled INTERIM in-code**:
+  it makes the re-render CORRECT; it does not ELIMINATE re-rendering (which FR-018a(f) prohibits in
+  letter). Private method; **no public signature change** (0.1a not triggered); nothing weakened (0.4).
+- **Acceptance (ruled): 200/200.** `tests/integration/test_checksum_capture_replay.py` replays all
+  200 captured artifacts through the **production** path and validates each to Kraken's expected
+  checksum — **200/200** (before the fix: 0/200). Permanent regression test added (not xfail/skip, 0.1b).
+- **Bite proof** (`evidence/WO-016/bite_proof.txt`, rules 0.7/0.1i): A1 PASS (200/200) → A2 revert
+  `format→str` → **real FAIL** (0/200, assertion text) → A3 restore → PASS → **A4 sha256 byte-identical**.
+- **Fixture retained + labelled** (D26.4): `tests/fixtures/kraken_v2_checksum_captures_wo016.json`
+  (200 captures, evidentiary bounds), labelled *"witnesses SMALL-QUANTITY RENDERING and
+  REPEATED-PRICE APPLICATION"* — accretion doctrine; **A2/A3 not overwritten**.
+
+### D26.2 — Wire-string feasibility (REPORT ONLY — `evidence/WO-016/wire_string_feasibility.txt`)
+**FEASIBLE at acceptable cost (outcome (a)) → its own WO.** The apply path **REPLACES** qty
+(`apply_incremental_update`:478), never synthesizes — so every book qty is a transmitted value, and
+the wire string exists. `parse_float=Decimal` already receives the **raw token text** (:2363) and
+discards it at parse — retention is **plumbing, not architecture** (a `WireDecimal` carrying `.src`;
+~20 short strings live; no signature change). Implementing it **closes FR-018a(f) literally** and the
+defect class dies structurally. Recommend a dedicated WO; the gap is named, not implicit.
+
+### D26.3 — Domain completeness (REPORT ONLY — `evidence/WO-016/domain_completeness.txt`)
+`format(x,'f')` reproduces Kraken's transmitted string **for the observed/realistic domain** — every
+fixed-point decimal, **trailing zeros** (`0.00005100` preserved via `parse_float=Decimal`), **integer
+qty** (`5`, `5.00000000`), **exponent extremes** (`1E-8`→`0.00000001`), verified 200/200 + edge cells.
+It is **not** a proof over the *entire* domain: the one unproven cell is a **non-fixed-point wire
+token** (JSON scientific notation), unobserved and doc-silent — precisely what makes the fix INTERIM
+and what the wire-string structural fix (D26.2) closes by construction.
+
+### D26.§3 — Partition PROVEN + numeric bound (`evidence/WO-016/partition_proof.txt`)
+Numeric missed-wake bound (0.1j): `LAG_GAP_FACTOR 2.0 × 0.1s` ⇒ a wake is missed when its interval
+**≥ 200 ms**. **Partition of the 8.16% deficit, proven by identity** (actual × mean_cycle ≡ span):
+mean cycle **108.886 ms** → **2,908 samples (8.08%) per-cycle overhead** (measurement artifact) +
+**29 samples (0.080%) recorded missed-wakes** (real transient loop-busy) + **~0 disconnect-idle**
+(29 + 2,908 = 2,937 ✓). **Rule on the partition:** the VOID gate must measure the 0.080%
+(recorded missed-wakes), not the overhead-dominated 8.16%. Verdict fraction F remains the lead's number.
+
+### D26.5 — Decision log (verbatim, added)
+`docs/decisions/2026-07-21-certification-bounded-by-fixture-content.md` — *"A fixture cannot witness
+a code path its data does not reach…"* (ratified verbatim).
+
+### Updated answers to §6 items
+- **8. Verification (post-fix):** `evidence/WO-016/verify_postfix.txt` — both orders (seed 20260725),
+  **192 passed** (190 + 2 new regression tests), 0 failed/xfailed/xpassed; lint-imports 6/6, contract
+  6/6, ruff clean. Delta = the 2 new tests, explained. Local == remote HEAD (SHA in session hand-off).
+- **11. Changed but not asked?** Beyond §1: `src/…/kraken_v2_book.py` (the approved D26 fix),
+  `tests/integration/test_checksum_capture_replay.py`, `tests/fixtures/kraken_v2_checksum_captures_wo016.json`,
+  `docs/decisions/2026-07-21-certification-bounded-by-fixture-content.md`, and the D26 evidence files.
+  All D26-mandated. `instructions.md` carries the lead's WO/D26 text (their edit, uncommitted).
+- **12. Not completed:** the **structural** FR-018a(f) fix (wire-string) — feasible, scoped to its
+  own WO by ruling; and the VOID verdict-fraction F — the lead's number.
+
+---
+**STOP for review** (the fix is implemented per D26; the structural wire-string fix and the VOID-F
+number are the lead's next calls). Do NOT proceed to WO-013 or the corpus.

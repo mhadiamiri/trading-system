@@ -1,0 +1,44 @@
+WO-016 ADDENDUM §2 — WIRE-STRING RETENTION FEASIBILITY (REPORT ONLY — not implemented)
+================================================================================================
+Question: can ladder entries carry (Decimal, wire_string) pairs — arithmetic on the Decimal,
+checksumming on the wire string — so the checksum derives from the venue's TRANSMITTED
+representation (FR-018a(f)) instead of a re-render? Report feasibility, memory/complexity, and the
+specific synthesis check. Do NOT implement.
+
+── DOES THE APPLY PATH SYNTHESIZE A QTY? (the specific case) ─────────────────────────────────
+NO. LocalBookData.apply_incremental_update (kraken_v2_book.py:451) REPLACES a level's qty with the
+transmitted value (`self.bids[i] = (price, size)`, :478) or REMOVES it on qty==0. There is no
+add/subtract/derive — Kraken v2 sends absolute quantities, not deltas. The residual-quantity
+mechanism the diagnosis flagged (repeated prices → last-wins → a tiny residual like 0.00000010) is
+the LAST TRANSMITTED entry's qty, applied verbatim; it is NOT synthesized. ⇒ every qty in the book
+is a value Kraken transmitted, so a transmitted STRING exists for each.
+
+── ARE THE WIRE STRINGS AVAILABLE? ──────────────────────────────────────────────────────────
+YES, at parse time. The live path uses `json.loads(message, parse_float=Decimal, parse_int=Decimal)`
+(kraken_v2_book.py:2372) and — per the in-code note at :2363 — "parse_float/parse_int receive the
+RAW TEXT of each number." So the transmitted string is present in the hook; today it is converted
+to Decimal and the string is DISCARDED at _parse_levels (:1144). The lead's prior is confirmed:
+"the strings already arrive and we DISCARD them at parse" — retention is PLUMBING, not architecture.
+
+── FEASIBILITY / COST ────────────────────────────────────────────────────────────────────────
+FEASIBLE at acceptable cost (pre-ruled outcome (a)). Sketch: a `parse_float` that returns a Decimal
+subclass carrying its source text (e.g. `class WireDecimal(Decimal): src`), so each level tuple
+becomes (WireDecimal price, WireDecimal qty); apply REPLACES tuples (the string rides along, since
+apply never synthesizes); the checksum path uses `.src` instead of `format(x,'f')`.
+  Memory: one short string (~8-12 chars) per retained level. Book holds ≤10/side after truncation;
+    the checksum needs only the top-10, so ~20 extra strings live at any time — negligible.
+  Complexity: a small custom numeric type + threading it through _parse_levels and the checksum
+    formatter. No public signature change. The one edge to handle: values SYNTHESIZED by non-book
+    code (best_bid_price does `Decimal(str(size))`, :409; rolling-trade sums) — those never feed the
+    BOOK checksum, so they are out of scope for this change.
+
+── RECOMMENDATION ────────────────────────────────────────────────────────────────────────────
+Outcome (a): FEASIBLE → its OWN WO. Implementing it closes FR-018a(f) literally and permanently —
+the render step that can be wrong ceases to exist, and the defect class dies STRUCTURALLY rather
+than being patched one capture-set at a time. Until then the INTERIM fix (this WO) + the 200-capture
+fixture are the standing guard. The gap is NOT left implicit: it is named here and in the report,
+and the INTERIM label in _current_ladder_strings points to it.
+(Note the nuance for the domain question — see domain_completeness.txt: because parse_float=Decimal
+already preserves the transmitted digits, format(x,'f') reproduces the transmitted string for every
+FIXED-POINT wire value observed; the wire-string fix's unique marginal value is closing the
+theoretical case where Kraken transmits a NON-fixed-point token whose re-render differs from its text.)

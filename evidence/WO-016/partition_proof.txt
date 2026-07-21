@@ -1,0 +1,40 @@
+WO-016 §3 — PARTITION PROOF + NUMERIC MISSED-WAKE BOUND (rule the partition, not the number)
+================================================================================================
+The addendum: "declare the missed-wake bound numerically per 0.1j, then PROVE the partition rather
+than assert it." Below is the arithmetic decomposition of the 8.16% lag-sampler deficit — proven,
+not asserted — so the lead rules on the PARTITION (which quantity the VOID metric should measure).
+
+── NUMERIC MISSED-WAKE BOUND (rule 0.1j, per-sample component) ───────────────────────────────
+  LAG_GAP_FACTOR = 2.0  (kraken_v2_book.py:887);  LAG_SAMPLE_INTERVAL = 0.1 s (:886).
+  ⇒ a wake is MISSED when its actual inter-wake interval ≥ 2.0 × 0.1 s = 0.200 s (200 ms).
+  (Code: kraken_v2_book.py:1956 `if actual >= interval * self.LAG_GAP_FACTOR`.)
+
+── INPUTS (from _lag_record) ────────────────────────────────────────────────────────────────
+  span (ended−started monotonic) = 3600.00 s ; interval = 0.1 s
+  actual samples = 33,062 ; expected (span/interval) = 35,999 ; DEFICIT = 2,937 (= 8.16%)
+  recorded gaps (wakes ≥ 200 ms): 12 gaps, Σ = 2.88 s
+  sampler ran THROUGH both venue disconnects: 44/~47 and 41/~45 samples inside them.
+
+── THE PARTITION, PROVEN ─────────────────────────────────────────────────────────────────────
+  mean cycle = span / actual = 3600.00 / 33,062 = 108.886 ms  (vs 100 ms nominal)
+  overhead per cycle = 108.886 − 100 = 8.886 ms
+  cumulative overhead time = 33,062 × 8.886 ms = 293.8 s  →  293.8 / 0.1 = 2,938 samples
+  ⇒ the per-cycle overhead ALONE accounts for ~2,938 of the 2,937-sample deficit. The sampler
+    spent the whole 3600 s span taking 33,062 samples at 108.886 ms each; there is no missing time
+    to attribute elsewhere. This is identity, not estimate: actual × mean_cycle ≡ span.
+
+  Decomposition (samples; % of window):
+    recorded missed-wakes (≥200 ms, real transient loop-busy) :    29   =  0.080 %
+    per-cycle overhead (sub-200 ms, cumulative; MEASUREMENT ARTIFACT): 2,908 = 8.08 %
+    disconnect-idle (sampler sampled through disconnects)      :    ~0   =  0.00 %
+    ------------------------------------------------------------------------------
+    TOTAL                                                       : 2,937 =  8.16 %   (29 + 2,908 = 2,937 ✓)
+
+── WHAT THIS PROVES (for the lead's ruling on the PARTITION) ─────────────────────────────────
+  99.0% of the 8.16% deficit is per-cycle overhead (a property of the measuring apparatus, not the
+  loop's health); 1.0% (0.080% of the window) is real missed-wakes; 0% is disconnect-idle. The VOID
+  gate must measure the 0.080% (recorded missed-wakes = the closest thing to starvation), NOT the
+  8.16% (dominated by cycle cost). This is the partition; the verdict FRACTION on the recorded-gaps
+  metric remains the lead's number (0.4 / 3.1) — proposed form in gappy_threshold_redeclaration.txt
+  with all three rule-0.1j components (bound = 200 ms above; window = measurement window; fraction
+  = VOID if Σ recorded-gap / window > F).

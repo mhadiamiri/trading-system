@@ -1,0 +1,60 @@
+WO-016 §2 BITE PROOF — checksum-capture replay 200/200 (four artifacts, sha256)
+Target: src/trading/data/adapters/kraken_v2_book.py  Test: test_all_200_captures_validate_through_production_checksum
+sha256 BEFORE (fixed): 1ff4efa1f13c8a1f45ccd475adef57dd04f186a3b10578f49de31854a2de9d2d
+
+-- ARTIFACT 1 — PASS (INTERIM fix in place) --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_capture_replay.py::test_all_200_captures_validate_through_production_checksum PASSED [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+-- ARTIFACT 2 — ACTUAL FAIL (fix reverted: format(x,"f") -> str(x)) --
+WEAKENING: _current_ladder_strings reverted to str() (re-introduces scientific notation)
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_capture_replay.py::test_all_200_captures_validate_through_production_checksum FAILED [100%]
+
+================================== FAILURES ===================================
+_________ test_all_200_captures_validate_through_production_checksum __________
+tests\integration\test_checksum_capture_replay.py:70: in test_all_200_captures_validate_through_production_checksum
+    assert not mismatches, (
+E   AssertionError: 0/200 validated; 200 still mismatch Kraken's expected checksum (first 5: [(5121, 3719506859, 841650901), (6071, 997629592, 1842123871), (6175, 642374819, 3217154945), (6180, 4144464593, 434086196), (6185, 663056567, 1095003279)]). The captured-failure defect class is NOT closed.
+E   assert not [(5121, 3719506859, 841650901), (6071, 997629592, 1842123871), (6175, 642374819, 3217154945), (6180, 4144464593, 434086196), (6185, 663056567, 1095003279), (6190, 3721330180, 24460273), ...]
+=========================== short test summary info ===========================
+FAILED tests/integration/test_checksum_capture_replay.py::test_all_200_captures_validate_through_production_checksum
+============================== 1 failed in 0.10s ==============================
+
+-- ARTIFACT 3 — PASS (fix restored) --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_checksum_capture_replay.py::test_all_200_captures_validate_through_production_checksum PASSED [100%]
+
+============================== 1 passed in 0.05s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 1ff4efa1f13c8a1f45ccd475adef57dd04f186a3b10578f49de31854a2de9d2d
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

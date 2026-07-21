@@ -1,0 +1,42 @@
+WO-016 ADDENDUM §3 — DOMAIN QUESTION: does format(q,'f') reproduce Kraken's string for EVERY value?
+================================================================================================
+"Two hundred real frames is strong evidence, not a proof over the input domain." Below: the
+dependency the answer rests on, the three named edge cells, and the honest residual.
+
+── THE DEPENDENCY ────────────────────────────────────────────────────────────────────────────
+format(x,'f') reproduces Kraken's transmitted string IFF (a) the Decimal holds the EXACT
+transmitted digits, AND (b) the value's fixed-point rendering equals what Kraken checksums.
+  (a) is GUARANTEED by the ruled parse `json.loads(..., parse_float=Decimal, parse_int=Decimal)`
+      (FR-018a(f) / WO-008b-A3): the raw token's digits survive into the Decimal, scientific
+      notation is introduced only later by str() at render — which the fix removes.
+  (b) holds when Kraken transmits FIXED-POINT decimals (all observed) and checksums its book at the
+      same digits. Kraken's guide: "preserve full precision through deserialisation" + "Remove . /
+      Remove leading zeros" — it presupposes a plain decimal string; it is SILENT (documented
+      silence, 0.1e) on scientific notation and on exact per-pair decimal counts / trailing zeros.
+
+── THE THREE NAMED EDGE CELLS (tested; observation sovereign for what happened) ──────────────
+  TRAILING ZEROS: A2 witnessed Kraken sends "0.00005100". parse_float=Decimal('0.00005100')
+    PRESERVES the trailing zeros (coefficient 5100, exp −8); format(_,'f') = "0.00005100" —
+    reproduced. (str() also gives "0.00005100" here — trailing zeros are NOT the scientific case;
+    the scientific case is a value whose adjusted exponent triggers Decimal's E-notation, e.g.
+    "0.00000010" → str "1.0E-7" but format 'f' "0.00000010".) Verified across all 200 captures,
+    which contain trailing-zero levels (e.g. "0.00005100", "0.00150400").
+  EXPONENT EXTREMES: format(Decimal('1E-8'),'f') = "0.00000001"; format never emits E-notation, and
+    the Decimal default context (28 significant digits) exceeds any crypto quantity's precision, so
+    no context truncation. Small exponents are exactly where str() failed and format() succeeds.
+  INTEGER-VALUED QUANTITIES: format(Decimal('5'),'f')="5"; format(Decimal('5.00000000'),'f')=
+    "5.00000000". Whatever digits the wire carried, parse_float=Decimal keeps them and 'f' renders
+    them; no decimal point is invented or dropped.
+
+── ANSWER ────────────────────────────────────────────────────────────────────────────────────
+For the REALISTIC / OBSERVED domain — every fixed-point decimal Kraken transmits, trailing zeros
+and integers included — format(x,'f') reproduces the transmitted string: verified 200/200 plus the
+three edge cells above. It is NOT a proof over the ENTIRE input domain: the one unproven cell is a
+value Kraken transmits in a NON-fixed-point token (e.g. JSON scientific notation) whose re-render
+would differ from its transmitted text. That is UNOBSERVED (no capture, A2, or A3 frame contains
+it) and Kraken's docs are silent on whether it can occur.
+  ⇒ This unproven cell is EXACTLY what makes the fix INTERIM, and exactly what the wire-string
+    structural fix (wire_string_feasibility.txt, outcome (a) FEASIBLE) would close BY CONSTRUCTION
+    (checksum the transmitted string → no re-render, no domain assumption). Recommendation: the
+    INTERIM fix stands now (proven for the observed domain); the structural fix closes the residual
+    in its own WO; the 200-capture fixture guards the edge until then. The gap is not left implicit.
