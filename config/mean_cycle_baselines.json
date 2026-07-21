@@ -1,0 +1,14 @@
+{
+ "ba47c96a36f36642": {
+  "fingerprint": {
+   "machine_id": "a28a45c1cac79570",
+   "python_version": "3.14.6",
+   "os": "Windows 11",
+   "cpu_arch": "AMD64"
+  },
+  "mean_cycle_seconds": 0.108886,
+  "date": "2026-07-21",
+  "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z)",
+  "load": "LIVE, representative: ~1959 book msgs/min received (WO-008b-B-RERUN). Derived under load, so compatible with the establishment protocol's representative-load replay, not superseded by it."
+ }
+}

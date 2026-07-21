@@ -97,6 +97,12 @@ VALID_REASON_CODES = {
         # ledger; fixture/test paths opt out explicitly. Prefix-free (GAP_PERSIST_ vs
         # GAP_LEDGER_ — neither prefixes the other).
         "GAP_PERSIST_UNCONFIGURED",
+        # WO-016 §D28: raised by the live-capture runner's preflight when this HOST has no frozen
+        # mean-cycle baseline (kraken_v2_book.MEAN_CYCLE_BASELINE_SECONDS is host-scoped — scheduler,
+        # Python build, load). Without a matching baseline the UNIFORM drift component would convict
+        # against a reference from another machine, so the run REFUSES to start (before any
+        # connection) rather than limp or guess. New host => run tools/establish_mean_cycle_baseline.py.
+        "MEAN_CYCLE_BASELINE_HOST_MISMATCH",
         # WO-015: raised by the live-capture runner's preflight when TRADING_ENV is not 'paper'
         # — a live capture must never run where the order-capable path could be reachable. The
         # refusal lives IN the runner (checklist-enforced rules are 0-for-N), before any component

@@ -1,0 +1,8 @@
+=== WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===
+host fingerprint: ba47c96a36f36642  {'machine_id': 'a28a45c1cac79570', 'python_version': '3.14.6', 'os': 'Windows 11', 'cpu_arch': 'AMD64'}
+duration=60.0s  frames_sent=1959  lag_samples=551
+target rate=1959/min  achieved=1959/min  REPRESENTATIVE(<=10%)=True
+REPLAY CAN SUSTAIN THE RATE: True (finding, not worked around, if False)
+measured mean_cycle=108.894ms  vs standing baseline 108.886ms  delta=+0.008ms (+0.0%)
+(the standing 0.108886s was derived under LIVE load at ~1,959/min -> compatible with this protocol, not superseded)
+[report only] not written; pass --write to save this host's record (new host).

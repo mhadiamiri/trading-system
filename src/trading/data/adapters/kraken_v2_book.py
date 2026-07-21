@@ -1063,6 +1063,10 @@ class KrakenV2BookAdapter:
         # Fixture/test paths opt out EXPLICITLY by setting this True; a real capture must set a
         # path instead. Default False = the safe default (refuse rather than silently not persist).
         self._persistence_optional = False
+        # WO-016 §D28: the UNIFORM drift gate's baseline is HOST-SCOPED. Defaults to the class
+        # constant (this host's / tests' value); the live-capture runner overrides it from the
+        # per-host store (config/mean_cycle_baselines.json) after verifying the fingerprint.
+        self._mean_cycle_baseline_s = self.MEAN_CYCLE_BASELINE_SECONDS
         # WO-015 addendum A: host-suspend detection threshold (instance-overridable for tests).
         self._host_suspend_divergence = self.HOST_SUSPEND_DIVERGENCE_SECONDS
         # Injectable wall clock (test seam, like _reconnect_sleep); defaults to time.time. Used
@@ -2170,7 +2174,7 @@ class KrakenV2BookAdapter:
                     f"{self.ELEVATED_LAG_VOID_FRACTION:.0%}; quantitative discrimination VOID."
                 )
                 gappy = True
-            base = self.MEAN_CYCLE_BASELINE_SECONDS
+            base = self._mean_cycle_baseline_s   # WO-016 §D28: host-scoped (runner-set) baseline
             drift = (lag_record.mean_cycle_s - base) / base if base > 0 else 0.0
             if drift > self.MEAN_CYCLE_DRIFT_VOID_FRACTION:
                 self._log_error(

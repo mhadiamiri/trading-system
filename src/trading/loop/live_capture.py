@@ -69,6 +69,7 @@ class LiveCaptureRunner:
         self._loop = loop
         self._clock = clock or time.time
         self._data_source = data_source
+        self._mean_cycle_baseline = None   # WO-016 §D28: set by _preflight from the host store
         self._preflight()
 
     def _preflight(self) -> None:
@@ -87,6 +88,23 @@ class LiveCaptureRunner:
                 "GAP_PERSIST_UNCONFIGURED: live capture requires a gap-ledger persistence path "
                 "(persist_path). Refusing to run a silently-unpersisted capture."
             )
+        # REFUSE a host with no frozen mean-cycle baseline (WO-016 §D28). The UNIFORM drift
+        # component is judged against a HOST-SCOPED baseline (scheduler/Python/load); on a host
+        # with no matching fingerprint it would convict at startup against a reference from another
+        # machine — a false conviction manufactured by our own instrument. So the run REFUSES to
+        # start (before any connection) rather than limp or reactively re-baseline (the drift
+        # metric's own 0.1d). BEFORE the drift component arms, the fingerprint must match.
+        from trading.loop import host_baseline
+        rec = host_baseline.load_baseline()
+        if rec is None:
+            fp = host_baseline.host_fingerprint()
+            raise LiveCaptureError(
+                f"MEAN_CYCLE_BASELINE_HOST_MISMATCH: no frozen mean-cycle baseline for this host "
+                f"(fingerprint {host_baseline.fingerprint_key()}: {fp}). The UNIFORM drift gate "
+                f"would convict against another machine's reference. Establish one first: "
+                f"python tools/establish_mean_cycle_baseline.py. Refusing to start."
+            )
+        self._mean_cycle_baseline = rec["mean_cycle_seconds"]
 
     def _resolve_feed(self):
         """Return (adapter, live_feed_iterator). Production goes through the factory/registry (the
@@ -104,6 +122,10 @@ class LiveCaptureRunner:
         """Run the capture. Returns the throughput series + the wired instrumentation.
         Opens no socket itself — get_live_market_data does (real in production, patched in tests)."""
         adapter, feed_iter = self._resolve_feed()
+        # WO-016 §D28: hand the host-scoped baseline (fingerprint verified in preflight) to the
+        # adapter's UNIFORM drift gate — same direct-private-attr pattern as _gap_persist_path.
+        if self._mean_cycle_baseline is not None:
+            adapter._mean_cycle_baseline_s = self._mean_cycle_baseline
         loop = self._loop or LiveTradingLoop(execution_client=PaperExecutionClient())
 
         per_minute: dict = {}          # wall-minute index -> MarketStates EMITTED (the §2.2 series)
