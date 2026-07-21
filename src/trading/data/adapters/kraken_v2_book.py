@@ -26,6 +26,10 @@ import json
 import random
 
 from trading.data.market_state import MarketState
+from trading.logkit.redaction import redact
+# ^ WO-014c-2 §3: the MECHANICAL redaction module (WO-011 §6.2). data->logkit is an
+#   established dependency (factory.py, kraken_public.py import logkit.decision) and no
+#   import-linter contract forbids it. Failure captures are redacted BY DEFAULT.
 
 
 logger = logging.getLogger(__name__)
@@ -744,6 +748,25 @@ class KrakenV2BookAdapter:
     # Checksum failure threshold
     CHECKSUM_FAILURE_THRESHOLD = 5
 
+    # ── WO-014c-2 §3: failure-targeted checksum capture ──────────────────────
+    # On EVERY checksum failure, persist the preceding N raw frames for reconstruction.
+    # N = 20 is DECLARED ENGINEERING JUDGMENT (Kraken publishes nothing on this; rule 0.1e),
+    # instance-overridable. DERIVATION:
+    #   - The checksum validates on EVERY update (FR-018a(c)) and the streak resets on every
+    #     GOOD checksum, so the book was checksum-GOOD immediately before this frame: the
+    #     FAILING FRAME ITSELF is the prime suspect (the update that produced the mismatch).
+    #     Diagnosis does not depend on deep history; it depends on the failing frame + the
+    #     last-good book state (both captured in full).
+    #   - The book is truncated to BOOK_DEPTH=10 per side, so no latent error can hide in a
+    #     never-checksummed deep level — the fault is localized to the retained top-of-book.
+    #   - The preceding N frames are CORROBORATING run-up (did a recent update shape the level
+    #     that now mismatches?). At the WO-008b-B anchor ~26 msg/s (~38 ms/frame), 20 frames
+    #     ~= 0.76 s of the most recent history — generous margin over the "handful of recent
+    #     updates that touched the top-of-book," while BOUNDED so retention stays small and the
+    #     window is principled, not positional. NOT positional sampling — this is the exact
+    #     window around each failure, which is what WO-008b-B's positional sampling LOST.
+    CHECKSUM_CAPTURE_PRECEDING_FRAMES = 20
+
     # ── WO-014b-2 §2: reconnect backoff + circuit breaker ────────────────────
     # Figures are DECLARED ENGINEERING JUDGMENT, not a citation: Kraken's WS
     # connection/subscription rate limits are DOCUMENTED SILENCE on the reachable
@@ -888,6 +911,12 @@ class KrakenV2BookAdapter:
         self._gap_seq = 0
         self._open_gaps = []                 # GapRecords still open (not yet closed/terminal)
         self._last_frame_server_ts = None
+        # WO-014c-2 §3: failure-targeted checksum capture. On EVERY checksum failure, a full
+        # artifact is appended here (redacted). This is the corpus's blessing gate: the A3
+        # 1254/1254 rate is UNDIAGNOSED, so no run is blessed until a capture shows whether
+        # residual failures are wire anomalies or our parse/apply bug.
+        self._checksum_capture_preceding = self.CHECKSUM_CAPTURE_PRECEDING_FRAMES
+        self._checksum_failure_captures = []
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -1158,6 +1187,51 @@ class KrakenV2BookAdapter:
         for record in self._open_gaps:
             record.retry_ladder = ladder
 
+    def _capture_checksum_failure(self, quote_update, computed_checksum) -> dict:
+        """
+        WO-014c-2 §3. Persist the FULL forensic artifact for one checksum failure. Called on
+        EVERY failure (never positionally sampled — positional sampling is exactly what lost
+        WO-008b-B's three failures). Every field the WO rules is present:
+          - the RAW WIRE TEXT of the failing frame, verbatim (self.captured_raw_text[-1] — the
+            transport appends the untouched wire text before process_raw_frame; §B preserved it);
+          - the LOCAL BOOK at failure, BOTH ladders at subscribed depth (post-apply state);
+          - EXPECTED (Kraken's) and COMPUTED checksums;
+          - the preceding N frames for reconstruction (N justified at CHECKSUM_CAPTURE_PRECEDING_
+            FRAMES); - UTC AND monotonic timestamps, plus the sequence POSITION in the run.
+        Text fields are redacted via the MECHANICAL redaction module (redact) so a session/
+        connection identifier can never ship in the clear (WO-011 §6.2); scan() over the
+        artifact is empty by construction.
+
+        HONEST LIMIT: the raw wire text and the run position exist only in a LIVE capture (the
+        transport retains them); a bare process_raw_frame call outside the transport leaves them
+        empty — the same fixture boundary as capture_terminated. The bite proof drives the LIVE
+        path so every field is populated.
+        """
+        import time
+
+        raw_texts = getattr(self, "captured_raw_text", None) or []
+        failing_raw = raw_texts[-1] if raw_texts else ""
+        n = self._checksum_capture_preceding
+        preceding = raw_texts[-(n + 1):-1] if len(raw_texts) > 1 else []
+        bids = [(str(p), str(q)) for p, q in self._local_book.bids[:self.BOOK_DEPTH]]
+        asks = [(str(p), str(q)) for p, q in self._local_book.asks[:self.BOOK_DEPTH]]
+        artifact = {
+            "sequence_position_in_run": getattr(self, "_raw_received", None),
+            "utc": datetime.now(UTC).isoformat(),
+            "monotonic": time.monotonic(),
+            "symbol": quote_update.symbol,
+            "message_type": quote_update.message_type,
+            "expected_checksum": quote_update.checksum,   # Kraken's, off the wire
+            "computed_checksum": computed_checksum,        # ours, over the applied ladder
+            "failing_frame_raw_text": redact(failing_raw),
+            "preceding_frames_n": n,
+            "preceding_frames_raw_text": [redact(t) for t in preceding],
+            "local_book_bids": bids,                       # both ladders at subscribed depth
+            "local_book_asks": asks,
+        }
+        self._checksum_failure_captures.append(artifact)
+        return artifact
+
     def _enter_resync(self, reason: str) -> None:
         """
         Begin the no-emission window (FR-018a(d)).
@@ -1237,6 +1311,10 @@ class KrakenV2BookAdapter:
                 f"type={quote_update.message_type} "
                 f"expected={quote_update.checksum}, computed={computed_checksum}"
             )
+            # WO-014c-2 §3: capture the failure ON EVERY OCCURRENCE (never positionally — that
+            # is what lost WO-008b-B's three failures). The full forensic artifact is persisted
+            # so a run's blessing can rule wire-anomaly vs residual parse/apply bug.
+            self._capture_checksum_failure(quote_update, computed_checksum)
             if self._local_book.consecutive_failures >= self.CHECKSUM_FAILURE_THRESHOLD:
                 self._reconnect()
             self._enter_resync("post-update checksum mismatch")
@@ -2237,6 +2315,12 @@ class KrakenV2BookAdapter:
         has run). The default-deny corpus reader (a later WO) consumes gaps + the run anchor
         + the completeness accounting from here; it is NOT built in this WO."""
         return self._gap_ledger
+
+    def get_checksum_failure_captures(self) -> list:
+        """WO-014c-2 §3: the full, redacted forensic artifact for EVERY checksum failure seen
+        this capture (empty if none). Captured on every occurrence, never positionally sampled
+        — this is the corpus-blessing gate that rules wire-anomaly vs residual parse/apply bug."""
+        return list(self._checksum_failure_captures)
 
     async def _trigger_pause_for_test(self) -> None:
         """

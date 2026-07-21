@@ -1,0 +1,94 @@
+WO-014c-2 §3 — FAILURE-TARGETED CHECKSUM CAPTURE — BITE PROOF
+==============================================================================
+Test (drives a synthetic failure through the LIVE production path, 0.1h): tests/integration/test_failure_capture.py::test_checksum_failure_capture_has_every_ruled_field
+sha256 BEFORE: c3e41cc705a71d04901b1a916c29e007d4b6aeaa51847e5fb1deb8864ecc56b3
+
+── THE SYNTHETIC FAILURE ARTIFACT (every ruled field, redacted) ──────────
+Injected: a snapshot with checksum=1 (never valid) carrying connection_id=1234567890 on the wire. N preceding frames = 20.
+
+{
+  "sequence_position_in_run": 2,
+  "utc": "2026-07-21T04:30:10.036168+00:00",
+  "monotonic": 291334.6657944,
+  "symbol": "BTC/USD",
+  "message_type": "snapshot",
+  "expected_checksum": 1,
+  "computed_checksum": 3310070434,
+  "failing_frame_raw_text": "{\"channel\": \"book\", \"type\": \"snapshot\", \"data\": [{\"symbol\": \"BTC/USD\", \"bids\": [{\"price\": \"45283.5\", \"qty\": \"0.10000000\"}, {\"price\": \"45283.4\", \"qty\": \"1.54582015\"}, {\"price\": \"45282.1\", \"qty\": \"0.10000000\"}, {\"price\": \"45281.0\", \"qty\": \"0.10000000\"}, {\"price\": \"45280.3\", \"qty\": \"1.54592586\"}, {\"price\": \"45279.0\", \"qty\": \"0.07990000\"}, {\"price\": \"45277.6\", \"qty\": \"0.03310103\"}, {\"price\": \"45277.5\", \"qty\": \"0.30000000\"}, {\"price\": \"45277.3\", \"qty\": \"1.54602737\"}, {\"price\": \"45276.6\", \"qty\": \"0.15445238\"}], \"asks\": [{\"price\": \"45285.2\", \"qty\": \"0.00100000\"}, {\"price\": \"45286.4\", \"qty\": \"1.54571953\"}, {\"price\": \"45286.6\", \"qty\": \"1.54571109\"}, {\"price\": \"45289.6\", \"qty\": \"1.54560911\"}, {\"price\": \"45290.2\", \"qty\": \"0.15890660\"}, {\"price\": \"45291.8\", \"qty\": \"1.54553491\"}, {\"price\": \"45294.7\", \"qty\": \"0.04454749\"}, {\"price\": \"45296.1\", \"qty\": \"0.35380000\"}, {\"price\": \"45297.5\", \"qty\": \"0.09945542\"}, {\"price\": \"45299.5\", \"qty\": \"0.18772827\"}], \"checksum\": 1, \"timestamp\": \"2026-07-19T14:00:00.000000Z\"}], \"connection_id\": \"<REDACTED>\"}",
+  "preceding_frames_n": 20,
+  "preceding_frames_raw_text_count": 1,
+  "preceding_frames_raw_text[0]": "{\"channel\": \"book\", \"type\": \"snapshot\", \"data\": [{\"symbol\": \"BTC/USD\", \"bids\": [{\"price\": \"45283.5\", \"qty\": \"0.10000000\"}, {\"price\": \"45283.4\", \"qty\": \"1.54582015\"}, {\"price\": \"45282.1\", \"qty\": \"0.10000000\"}, {\"price\": \"45281.0\", \"qty\": \"0.10000000\"}, {\"price\": \"45280.3\", \"qty\": \"1.54592586\"}, {\"price\": \"45279.0\", \"qty\": \"0.07990000\"}, {\"price\": \"45277.6\", \"qty\": \"0.03310103\"}, {\"price\": \"45277.5\", \"qty\": \"0.30000000\"}, {\"price\": \"45277.3\", \"qty\": \"1.54602737\"}, {\"price\": \"45276.6\", \"qty\": \"0.15445238\"}], \"asks\": [{\"price\": \"45285.2\", \"qty\": \"0.00100000\"}, {\"price\": \"45286.4\", \"qty\": \"1.54571953\"}, {\"price\": \"45286.6\", \"qty\": \"1.54571109\"}, {\"price\": \"45289.6\", \"qty\": \"1.54560911\"}, {\"price\": \"45290.2\", \"qty\": \"0.15890660\"}, {\"price\": \"45291.8\", \"qty\": \"1.54553491\"}, {\"price\": \"45294.7\", \"qty\": \"0.04454749\"}, {\"price\": \"45296.1\", \"qty\": \"0.35380000\"}, {\"price\": \"45297.5\", \"qty\": \"0.09945542\"}, {\"price\": \"45299.5\", \"qty\": \"0.18772827\"}], \"checksum\": 3310070434, \"timestamp\": \"2026-07-19T14:00:00.000000Z\"}]}",
+  "local_book_bids_count": 10,
+  "local_book_asks_count": 10,
+  "local_book_bids[0]": [
+    "45283.5",
+    "0.10000000"
+  ],
+  "local_book_asks[0]": [
+    "45285.2",
+    "0.00100000"
+  ]
+}
+
+FIELD CHECK: raw wire text present & connection_id REDACTED (<REDACTED>, no '1234567890'); both ladders at depth=10; expected(1) != computed; N=20 preceding; UTC + monotonic + run position all present.
+REDACTION BIT: OK
+
+── ARTIFACT 1 — PASS (capture intact) ────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.25s
+
+── ARTIFACT 2 — ACTUAL FAIL (capture weakened: failure NOT persisted) ────
+WEAKENING:
+  OLD:         self._checksum_failure_captures.append(artifact)
+  OLD:         return artifact
+  NEW:         pass  # WEAKENED (bite proof): checksum failure NOT captured
+  NEW:         return artifact
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_checksum_failure_capture_has_every_ruled_field _____________
+
+    @pytest.mark.asyncio
+    async def test_checksum_failure_capture_has_every_ruled_field():
+        """Drive ONE real checksum failure through the live transport; assert the artifact carries
+        every ruled field, populated, and is redacted."""
+        adapter = _live_adapter()
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, _bad_snapshot(with_identifier=True)], "on_drain": "heartbeat"},
+        ])
+    
+        with patch("websockets.connect", factory.connect):
+            async for _ in adapter.get_live_market_data(duration_seconds=0.2):
+                pass
+    
+        caps = adapter.get_checksum_failure_captures()
+>       assert len(caps) >= 1, "a checksum failure must be captured"
+E       AssertionError: a checksum failure must be captured
+E       assert 0 >= 1
+E        +  where 0 = len([])
+
+tests\integration\test_failure_capture.py:64: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1443 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1443 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1443 [kraken_v2_book] INSTRUMENTS_GAPPY: lag sampler missed 1 of 2 expected samples (50% > 10%); quantitative discrimination VOID. 0 gap(s) retained as reported evidence (may NOMINATE starvation; only clean instruments convict).
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1443 [kraken_v2_book] GAP_LEDGER_INCOMPLETE: 1 of 1 recorded gap(s) opened but never closed or terminated — the capture ended with them open. Retained as open-ended (default-deny from open onward), NOT dropped: [#0(CHECKSUM_RESYNC, opened@291336.0566mono)].
+=========================== short test summary info ===========================
+FAILED tests/integration/test_failure_capture.py::test_checksum_failure_capture_has_every_ruled_field
+1 failed in 0.32s
+
+── ARTIFACT 3 — PASS (capture restored) ──────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.26s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : c3e41cc705a71d04901b1a916c29e007d4b6aeaa51847e5fb1deb8864ecc56b3
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  REDACT=True  => OK
