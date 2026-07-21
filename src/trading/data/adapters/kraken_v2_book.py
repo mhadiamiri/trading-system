@@ -780,6 +780,17 @@ class KrakenV2BookAdapter:
     #     window around each failure, which is what WO-008b-B's positional sampling LOST.
     CHECKSUM_CAPTURE_PRECEDING_FRAMES = 20
 
+    # ── WO-014c-3 §0.2: failure-capture RETENTION CAP (keep-first-N; count all) ──
+    # Bounds disk/RAM growth if failures cluster pathologically, so the instrument cannot end
+    # the run it documents. Declared engineering judgment (same standard as T=600s), instance-
+    # overridable. The cap binds on COUNT or TOTAL BYTES, whichever comes first (a cluster of
+    # large frames and one of small frames fail differently). KEEP THE FIRST N, not the last:
+    # the ONSET is the most diagnostic part (the first failures show what changed) — ruled §0.2(a).
+    # Anchor: ~21 frames/capture at the WO-008b-B profile (~900 B/frame) ~= ~19 KB/capture, so
+    # 200 captures ~= ~3.8 MB; the 8 MB byte cap gives headroom yet binds first if frames are large.
+    MAX_FAILURE_CAPTURES = 200
+    MAX_FAILURE_CAPTURE_BYTES = 8 * 1024 * 1024  # 8 MiB
+
     # ── WO-014b-2 §2: reconnect backoff + circuit breaker ────────────────────
     # Figures are DECLARED ENGINEERING JUDGMENT, not a citation: Kraken's WS
     # connection/subscription rate limits are DOCUMENTED SILENCE on the reachable
@@ -930,6 +941,19 @@ class KrakenV2BookAdapter:
         # residual failures are wire anomalies or our parse/apply bug.
         self._checksum_capture_preceding = self.CHECKSUM_CAPTURE_PRECEDING_FRAMES
         self._checksum_failure_captures = []
+        # WO-014c-3 §0.2: retention cap state. COUNT every failure (a finding in itself);
+        # KEEP only the first N (or byte budget). _capped announces ONCE; no run-termination.
+        self._checksum_failure_count = 0
+        self._checksum_capture_bytes = 0
+        self._checksum_capture_capped = False
+        self._max_failure_captures = self.MAX_FAILURE_CAPTURES
+        self._max_failure_capture_bytes = self.MAX_FAILURE_CAPTURE_BYTES
+        # WO-014c-3 §0.1: gap-ledger persistence. EXPLICIT opt-in (like mode — never inferred):
+        # set _gap_persist_path to enable append-only redacted JSONL. A capture then flushes each
+        # gap event as it happens (incremental — survives a process kill), plus a terminal flush
+        # on a breaker trip and a finalize summary. Default None = no persistence (fixture tests).
+        self._gap_persist_path = None
+        self._gap_persist_fh = None
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -1176,6 +1200,10 @@ class KrakenV2BookAdapter:
         self._gap_seq += 1
         self._gap_ledger.gaps.append(record)
         self._open_gaps.append(record)
+        # WO-014c-3 §0.1: INCREMENTAL persist at OPEN — the load-bearing write. If the process
+        # is killed before the gap resolves, this "open" line is already durable on disk, so the
+        # gap is not lost (default-deny: an open with no resolve reads as open-ended).
+        self._persist_gap_event(record, "open")
         return record
 
     def _close_open_gaps(self, close_monotonic: float) -> None:
@@ -1189,6 +1217,7 @@ class KrakenV2BookAdapter:
         for record in self._open_gaps:
             record.close_monotonic = close_monotonic
             record.resumed = True
+            self._persist_gap_event(record, "resolved")  # WO-014c-3 §0.1: incremental
         self._open_gaps = []
 
     def _attach_ladder_to_open_gaps(self) -> None:
@@ -1200,11 +1229,76 @@ class KrakenV2BookAdapter:
         for record in self._open_gaps:
             record.retry_ladder = ladder
 
-    def _capture_checksum_failure(self, quote_update, computed_checksum) -> dict:
+    # ── WO-014c-3 §0.1: gap-ledger persistence (append-only, redacted, crash-durable) ──
+    @staticmethod
+    def _gap_record_to_dict(record: "GapRecord", event: str) -> dict:
+        return {
+            "event": event,               # "open" | "resolved" | "terminal"
+            "gap_id": record.gap_id,
+            "cause": record.cause,
+            "reason_code": record.reason_code,
+            "open_monotonic": record.open_monotonic,
+            "close_monotonic": record.close_monotonic,
+            "resumed": record.resumed,
+            "terminal": record.terminal,
+            "duration_s": record.duration_s,
+            "last_validated_book": record.last_validated_book,
+            "retry_ladder": record.retry_ladder,
+            "detail": record.detail,
+            "open_server_ts": record.open_server_ts,
+        }
+
+    def _persist_write(self, obj: dict) -> None:
+        """Append ONE redacted JSONL line and fsync it, so the record is durable the instant it
+        is written — BEFORE any clean shutdown. This is what makes the ledger survive a process
+        kill: 'the mechanism that records the terminal event must survive the terminal event.'
+        Best-effort and NON-fatal: a persist error must never end the capture it documents (that
+        would be the disk-exhaustion hazard §0.2 guards) — it is logged (lowercase, so it is not
+        a reason-code-shaped string) and the run continues."""
+        if self._gap_persist_fh is None:
+            return
+        try:
+            self._gap_persist_fh.write(redact(json.dumps(obj, default=str)) + "\n")
+            self._gap_persist_fh.flush()
+            import os
+            os.fsync(self._gap_persist_fh.fileno())
+        except Exception as exc:  # noqa: BLE001 — durability is best-effort, never fatal
+            logger.warning("[kraken_v2_book] gap ledger persist write failed: %s", exc)
+
+    def _persist_gap_event(self, record: "GapRecord", event: str) -> None:
+        self._persist_write(self._gap_record_to_dict(record, event))
+
+    def _open_gap_persistence(self) -> None:
+        """Open the append-only ledger file for this capture (if a path is configured). Mode
+        'a' (append) never truncates an existing file — the raw path is append-only (Principle
+        VIII). Best-effort: a failure to open disables persistence for the run but never ends it."""
+        self._gap_persist_fh = None
+        path = self._gap_persist_path
+        if not path:
+            return
+        try:
+            import os
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            self._gap_persist_fh = open(path, "a", encoding="utf-8")
+            logger.info("[kraken_v2_book] gap ledger persisting (append-only) to %s", path)
+        except Exception as exc:  # noqa: BLE001 — persistence is opt-in and never fatal
+            logger.warning("[kraken_v2_book] could not open gap ledger file %s: %s", path, exc)
+            self._gap_persist_fh = None
+
+    def _close_gap_persistence(self) -> None:
+        fh = self._gap_persist_fh
+        self._gap_persist_fh = None
+        if fh is not None:
+            try:
+                fh.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[kraken_v2_book] error closing gap ledger file: %s", exc)
+
+    def _capture_checksum_failure(self, quote_update, computed_checksum) -> Optional[dict]:
         """
-        WO-014c-2 §3. Persist the FULL forensic artifact for one checksum failure. Called on
-        EVERY failure (never positionally sampled — positional sampling is exactly what lost
-        WO-008b-B's three failures). Every field the WO rules is present:
+        WO-014c-2 §3 + WO-014c-3 §0.2. Persist the FULL forensic artifact for one checksum
+        failure. Called on EVERY failure (never positionally sampled — positional sampling is
+        exactly what lost WO-008b-B's three failures). Every field the WO rules is present:
           - the RAW WIRE TEXT of the failing frame, verbatim (self.captured_raw_text[-1] — the
             transport appends the untouched wire text before process_raw_frame; §B preserved it);
           - the LOCAL BOOK at failure, BOTH ladders at subscribed depth (post-apply state);
@@ -1219,8 +1313,24 @@ class KrakenV2BookAdapter:
         transport retains them); a bare process_raw_frame call outside the transport leaves them
         empty — the same fixture boundary as capture_terminated. The bite proof drives the LIVE
         path so every field is populated.
+
+        WO-014c-3 §0.2 RETENTION CAP: COUNT every failure (never capped — the count is a finding);
+        KEEP only the FIRST N (or byte budget) — the onset is the most diagnostic part. When the
+        cap binds, announce ONCE (FAILURE_CAPTURE_CAPPED) and stop KEEPING (never stop counting,
+        never silently truncate). The cap guards disk exhaustion; it does NOT terminate the run
+        (the breaker owns termination). Returns the artifact when kept, else None.
         """
         import time
+
+        # COUNT every failure (uncapped) — "3 failures" and "40,000 failures" are different
+        # worlds and both must stay reportable (§0.2(b)).
+        self._checksum_failure_count += 1
+        if self._checksum_capture_capped:
+            return None  # already announced: count only, build nothing
+        # COUNT cap — keep the FIRST N (§0.2(a): the onset shows what changed).
+        if len(self._checksum_failure_captures) >= self._max_failure_captures:
+            self._announce_capture_capped(f"count cap {self._max_failure_captures} reached")
+            return None
 
         raw_texts = getattr(self, "captured_raw_text", None) or []
         failing_raw = raw_texts[-1] if raw_texts else ""
@@ -1242,8 +1352,30 @@ class KrakenV2BookAdapter:
             "local_book_bids": bids,                       # both ladders at subscribed depth
             "local_book_asks": asks,
         }
+        # BYTE cap — binds independently of the count cap (whichever comes first). A cluster of
+        # large frames exhausts bytes before count; a cluster of small ones exhausts count first.
+        size = len(json.dumps(artifact, default=str).encode("utf-8"))
+        if self._checksum_capture_bytes + size > self._max_failure_capture_bytes:
+            self._announce_capture_capped(
+                f"byte cap {self._max_failure_capture_bytes} B reached"
+            )
+            return None
+        self._checksum_capture_bytes += size
         self._checksum_failure_captures.append(artifact)
         return artifact
+
+    def _announce_capture_capped(self, why: str) -> None:
+        """WO-014c-3 §0.2(b): announce the retention cap ONCE, never silently truncate. Counting
+        continues; the run is NOT terminated (the breaker owns termination — §0.2(c))."""
+        if self._checksum_capture_capped:
+            return
+        self._checksum_capture_capped = True
+        self._log_error(
+            f"FAILURE_CAPTURE_CAPPED: failure-capture retention cap hit ({why}); "
+            f"{len(self._checksum_failure_captures)} captures KEPT (the first, incl. the onset). "
+            f"Further failures are still COUNTED but not fully captured — the failure ledger is "
+            f"capped, NOT complete, and never silently truncated. Run NOT terminated by the cap."
+        )
 
     def _enter_resync(self, reason: str) -> None:
         """
@@ -1686,8 +1818,18 @@ class KrakenV2BookAdapter:
                 record.terminal = True
                 record.reason_code = "RECONNECT_CIRCUIT_BREAKER_TRIPPED"
                 record.retry_ladder = list(ladder)
+                # WO-014c-3 §0.1: TERMINAL flush — the trip is the event the ledger most needs
+                # to survive; write it durably here, before the exception leaves this method.
+                self._persist_gap_event(record, "terminal")
             self._gap_ledger.frames_captured = frames
             self._gap_ledger.evidentiary_bounds = self.capture_terminated["evidentiary_bounds"]
+            self._persist_write({
+                "event": "terminal_summary",
+                "reason_code": "RECONNECT_CIRCUIT_BREAKER_TRIPPED",
+                "trip_time": trip_time,
+                "frames_captured": frames,
+                "evidentiary_bounds": self._gap_ledger.evidentiary_bounds,
+            })
             self._open_gaps = []
         self._log_error(message)
         return CircuitBreakerTripped(
@@ -1934,6 +2076,25 @@ class KrakenV2BookAdapter:
                 run_start_monotonic=anchor_monotonic,
             )
             self._throughput_record.start_monotonic = anchor_monotonic
+            # WO-014c-3 §0.2: reset failure-capture retention state per capture (count, kept
+            # captures, byte total, and the cap-announced flag) so a reused adapter never carries
+            # a prior run's cap or counts.
+            self._checksum_failure_count = 0
+            self._checksum_failure_captures = []
+            self._checksum_capture_bytes = 0
+            self._checksum_capture_capped = False
+            # WO-014c-3 §0.1: open the append-only ledger file (if persistence is enabled) and
+            # write the run anchor FIRST, so even a run that dies seconds in leaves the anchor +
+            # any gaps on disk.
+            self._open_gap_persistence()
+            self._persist_write({
+                "event": "run_start",
+                "run_wall_anchor": anchor_wall,
+                "run_monotonic_anchor": anchor_monotonic,
+                "run_start_monotonic": anchor_monotonic,
+                "venue": self.venue_name,
+                "mode": self._mode,
+            })
             while time.time() < deadline:
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
@@ -2174,6 +2335,20 @@ class KrakenV2BookAdapter:
                         f"closed or terminated — the capture ended with them open. Retained as "
                         f"open-ended (default-deny from open onward), NOT dropped: [{ids}]."
                     )
+                # WO-014c-3 §0.1: FINALIZE flush (always runs unless SIGKILL) — the run summary,
+                # then close the ledger file. Incremental writes already made the per-gap records
+                # durable; this records the clean end and the integrity accounting.
+                self._persist_write({
+                    "event": "run_end",
+                    "run_end_monotonic": self._gap_ledger.run_end_monotonic,
+                    "frames_captured": self._gap_ledger.frames_captured,
+                    "gaps_detected": self._gap_ledger.gaps_detected,
+                    "incomplete": len(self._gap_ledger.incomplete),
+                    "checksum_failures_total": self._checksum_failure_count,
+                    "checksum_captures_kept": len(self._checksum_failure_captures),
+                    "checksum_capture_capped": self._checksum_capture_capped,
+                })
+                self._close_gap_persistence()
             try:
                 await websocket.close()
                 logger.info(
@@ -2330,10 +2505,17 @@ class KrakenV2BookAdapter:
         return self._gap_ledger
 
     def get_checksum_failure_captures(self) -> list:
-        """WO-014c-2 §3: the full, redacted forensic artifact for EVERY checksum failure seen
-        this capture (empty if none). Captured on every occurrence, never positionally sampled
-        — this is the corpus-blessing gate that rules wire-anomaly vs residual parse/apply bug."""
+        """WO-014c-2 §3: the full, redacted forensic artifacts KEPT this capture (the first N by
+        count/bytes; empty if none). Captured on every occurrence until the §0.2 cap binds, never
+        positionally sampled — the corpus-blessing gate that rules wire-anomaly vs parse/apply bug.
+        Pair with get_checksum_failure_count(): captures may be capped, the count never is."""
         return list(self._checksum_failure_captures)
+
+    def get_checksum_failure_count(self) -> int:
+        """WO-014c-3 §0.2(b): the TOTAL number of checksum failures seen this capture — NEVER
+        capped (the count is itself a finding). If it exceeds len(get_checksum_failure_captures())
+        the capture cap bound and FAILURE_CAPTURE_CAPPED was announced."""
+        return self._checksum_failure_count
 
     async def _trigger_pause_for_test(self) -> None:
         """

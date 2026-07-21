@@ -74,6 +74,14 @@ VALID_REASON_CODES = {
         # exact failure gap recording exists to prevent. The ledger reports its own integrity
         # (Principle VIII). Prefix-free against the vocabulary (GAP_ is a unique stem).
         "GAP_LEDGER_INCOMPLETE",
+        # WO-014c-3 §0.2: logged ONCE when failure-targeted checksum capture reaches its
+        # retention cap (first-N by count OR total bytes, whichever binds first). Further
+        # failures are still COUNTED (the count is itself a finding) but not fully captured.
+        # Announces the truncation rather than silently dropping — a silently-truncated failure
+        # ledger is the same defect class as the positional sampling §3 exists to kill. The cap
+        # prevents DISK EXHAUSTION from ending a run; it does NOT terminate the run (the breaker
+        # owns termination). Prefix-free (FAILURE_ stem is unique in the vocabulary).
+        "FAILURE_CAPTURE_CAPPED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

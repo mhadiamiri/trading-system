@@ -59,3 +59,14 @@ declared reason code and a truncation policy that must be bite-proven (drive > c
 the counter and the announced code). Per §0 it is REPORTED, not absorbed.
 
 DISPOSITION: FINDING. Retention is UNBOUNDED. Not implemented. Awaiting approval.
+
+────────────────────────────────────────────────────────────────────────────────
+RESOLUTION (approved in the instructions.md UPDATE; implemented this slice)
+────────────────────────────────────────────────────────────────────────────────
+Retention cap implemented per the ruled policy: KEEP the FIRST N (onset), COUNT every failure
+(uncapped — get_checksum_failure_count), cap by COUNT (MAX_FAILURE_CAPTURES=200) AND BYTES
+(MAX_FAILURE_CAPTURE_BYTES=8 MiB), whichever binds first, announce ONCE via FAILURE_CAPTURE_CAPPED
+(declared same commit), NEVER silently truncate, and NO run-termination path (the breaker owns
+termination). State reset per capture. Bite proof (evidence/WO-014c-3/bite_failure_cap.txt): 6
+failures / cap 3 -> first three kept (positions 2,3,4), all six counted, announced, run not
+terminated; weakening the cap grows captures to 6 without announcing — 4 artifacts, sha256 exact.

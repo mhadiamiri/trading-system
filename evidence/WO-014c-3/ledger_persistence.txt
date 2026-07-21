@@ -71,3 +71,16 @@ absorbed. Recommend it be its own slice with a bite proof (kill the process mid-
 JSONL holds the gaps accumulated before the kill).
 
 DISPOSITION: FINDING. Persistence is ABSENT. Not implemented. Awaiting approval.
+
+────────────────────────────────────────────────────────────────────────────────
+RESOLUTION (approved in the instructions.md UPDATE; implemented this slice)
+────────────────────────────────────────────────────────────────────────────────
+Append-only redacted JSONL persistence implemented: _open_gap_persistence (append mode),
+_persist_gap_event on OPEN (incremental — the load-bearing, kill-durable write), on RESOLVED,
+and TERMINAL flush in _trip_circuit_breaker before the exception leaves; run_start written first,
+run_end in the finally. Every line redacted via the mechanical module + fsync'd. Opt-in via
+_gap_persist_path (explicit, like mode; the capture harness enables it). Best-effort, never fatal
+(a persist error must not end the run it documents). No new reason code needed.
+Bite proof (evidence/WO-014c-3/bite_ledger_persistence.txt): a crash (unhandled exception at a
+gap) leaves the gap OPEN record readable on disk; weakening the incremental write leaves only
+run_start+run_end (a real kill would not even reach run_end) — 4 artifacts, sha256 exact.

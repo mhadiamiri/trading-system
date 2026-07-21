@@ -119,3 +119,74 @@ push if you cannot reach it. Secret scan, push, paste local vs remote HEAD.
     committed), before §1.
 
 STOP for review. Do NOT proceed to the re-run.
+
+
+----
+
+update:
+
+
+§0 RULINGS — both fixes APPROVED. Implement as ONE slice with bite proofs, then assess
+budget before §1/§2.
+
+Stopping at the seam rather than absorbing two non-trivial production changes was right,
+and §0's explicit rule required it. §0.3 accepted as a declared limit (≤43s worst case,
+fine for minute-level gap location); the docstring change is proportionate.
+
+Neither fix is a new decision. §0.1 completes a ruling already made — the lead ruled gap
+recording in because "a gap not recorded when it happens cannot be reconstructed later,"
+and a ledger that evaporates on the terminal event does not record. §0.2 follows
+established doctrine — a silently-truncated failure ledger is the same defect class as
+the positional sampling that lost the original three failures.
+
+=== §0.1 — LEDGER PERSISTENCE: APPROVED, append-only redacted JSONL ===
+Approach approved: incremental + terminal + finalize flush.
+- **Incremental is the load-bearing part.** End-only flushing loses everything on the
+  breaker trip — the exact event the ledger most needs to document. Note the shape: this
+  is `_reconnect()` again. The mechanism that records the terminal event must survive the
+  terminal event.
+- Must survive: breaker trip, unhandled exception, AND process kill. A kill gives no
+  chance to flush, so incremental append is what makes it durable — state the write
+  cadence and justify it.
+- Append-only, redacted through the mechanical redaction module.
+- **Bite proof, four artifacts, sha256:** kill the process mid-run (or simulate an
+  unhandled exception at a gap) and show the accumulated records are ON DISK. Assert the
+  observable end state — records readable from the file — not that a flush was called
+  (0.1i).
+- Declare any new reason code in the same commit.
+
+=== §0.2 — CAPTURE CAP: APPROVED, with the retention policy ruled ===
+Cap approved with a self-announcing counter and `FAILURE_CAPTURE_CAPPED`. Three
+specifics:
+
+**(a) KEEP THE FIRST N, NOT THE LAST N.** A ring buffer keeping newest would discard the
+ONSET, which is the most diagnostic part — the first failures show what changed. Keep
+earliest; drop later ones.
+
+**(b) COUNT EVERY FAILURE, CAPTURE THE FIRST N.** The count is cheap and is itself a
+finding: "3 failures" and "40,000 failures" are different worlds and both must be
+reportable. Capping capture must never cap counting.
+
+**(c) DO NOT ADD A RUN-TERMINATION PATH.** The breaker already owns termination: a
+pathological failure rate drives consecutive failures to five, triggers reconnects, and
+exhausts the ladder. The cap exists to prevent DISK EXHAUSTION from ending a run that
+would otherwise complete — not to make a second judgment about whether the venue is gone.
+
+Propose the cap with reasoning — **by count AND by total bytes, whichever binds first**
+(a cluster of large frames and a cluster of small ones fail differently). Declared
+engineering judgment, same standard as `T = 600s`. Anchor: ~21 frames/capture at the
+WO-008b-B message profile.
+
+**Bite proof, four artifacts, sha256:** drive failures past the cap and show the counter
+keeps counting, `FAILURE_CAPTURE_CAPPED` is emitted, and capture stops without silent
+truncation. Assert the observable end state.
+
+=== SEQUENCING — your call, with a preference ===
+Do the two fixes as ONE slice (both live in the capture/evidence path and share the
+redaction and reason-code surface). Then assess budget: §1 (stub-lint) + §2 (sweep) are
+lighter and self-contained, and §2 consumes §1's output so they stay together.
+
+If budget allows both, proceed. If not, checkpoint after the fixes — they are the
+re-run-blocking items; §1/§2 are audit work that blocks nothing.
+
+Everything else in WO-014c-3 stands. STOP for review at the end.

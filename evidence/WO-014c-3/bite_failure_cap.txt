@@ -1,0 +1,84 @@
+WO-014c-3 — BITE PROOF — failure_cap
+==============================================================================
+Test (real production trigger, 0.1h; observable end state on disk, 0.1i): tests/integration/test_failure_cap.py::test_count_cap_keeps_first_n_counts_all_announces
+sha256 BEFORE: 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+
+── ARTIFACT 1 — PASS (fix intact) ────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.30s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the retention cap is disabled -> captures grow past N and FAILURE_CAPTURE_CAPPED never announces
+  OLD:         if len(self._checksum_failure_captures) >= self._max_failure_captures:
+  OLD:             self._announce_capture_capped(f"count cap {self._max_failure_captures} reached")
+  OLD:             return None
+  NEW:         if False:  # WEAKENED (bite proof): retention cap disabled (unbounded/silent)
+  NEW:             self._announce_capture_capped(f"count cap {self._max_failure_captures} reached")
+  NEW:             return None
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_count_cap_keeps_first_n_counts_all_announces ______________
+
+caplog = <_pytest.logging.LogCaptureFixture object at 0x0000016BC3B4B380>
+
+    @pytest.mark.asyncio
+    async def test_count_cap_keeps_first_n_counts_all_announces(caplog):
+        """COUNT cap: 6 failures, cap 3 -> the FIRST 3 kept (the onset), all 6 COUNTED, announced,
+        run NOT terminated."""
+        adapter = _live_adapter()
+        adapter._max_failure_captures = 3
+    
+        # SNAPSHOT (position 1) then six bad snapshots (positions 2..7), each a real checksum failure.
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(6)], "on_drain": "heartbeat"},
+        ])
+    
+        with caplog.at_level(logging.ERROR):
+            with patch("websockets.connect", factory.connect):
+                async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+                    pass
+    
+        # COUNT is never capped.
+        assert adapter.get_checksum_failure_count() == 6, "every failure is counted"
+        # KEEP only the first N.
+        caps = adapter.get_checksum_failure_captures()
+>       assert len(caps) == 3, f"cap keeps only the first N; got {len(caps)}"
+E       AssertionError: cap keeps only the first N; got 6
+E       assert 6 == 3
+E        +  where 6 = len([{'sequence_position_in_run': 2, 'utc': '2026-07-21T05:08:35.675643+00:00', 'monotonic': 293640.3052687, 'symbol': 'BT...position_in_run': 7, 'utc': '2026-07-21T05:08:35.676407+00:00', 'monotonic': 293640.3060311, 'symbol': 'BTC/USD', ...}])
+
+tests\integration\test_failure_cap.py:64: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=snapshot expected=1, computed=3310070434
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] GAP_LEDGER_INCOMPLETE: 1 of 1 recorded gap(s) opened but never closed or terminated — the capture ended with them open. Retained as open-ended (default-deny from open onward), NOT dropped: [#0(CHECKSUM_RESYNC, opened@293640.3053mono)].
+=========================== short test summary info ===========================
+FAILED tests/integration/test_failure_cap.py::test_count_cap_keeps_first_n_counts_all_announces
+1 failed in 0.37s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.32s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+EXACT RESTORE: YES — byte-identical
+
+RESULT [failure_cap]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

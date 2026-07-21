@@ -1,0 +1,76 @@
+WO-014c-3 — BITE PROOF — ledger_persistence
+==============================================================================
+Test (real production trigger, 0.1h; observable end state on disk, 0.1i): tests/integration/test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture
+sha256 BEFORE: 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+
+── ARTIFACT 1 — PASS (fix intact) ────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.05s
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────────────
+WEAKENING: the crash-durable incremental gap-open write is disabled -> the open record is NOT on disk after the crash
+  OLD:         self._persist_gap_event(record, "open")
+  OLD:         return record
+  NEW:         pass  # WEAKENED (bite proof): no INCREMENTAL open persist (end-only)
+  NEW:         return record
+
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_incremental_persist_survives_unhandled_exception_mid_capture ______
+
+tmp_path = WindowsPath('C:/Users/mhadi/AppData/Local/Temp/pytest-of-mhadi/pytest-2/test_incremental_persist_survi0')
+
+    @pytest.mark.asyncio
+    async def test_incremental_persist_survives_unhandled_exception_mid_capture(tmp_path):
+        """CRASH SIMULATION (WO-014c-3 §0.1): a gap opens, then an unhandled exception is raised
+        mid-capture. The gap's "open" record was written+fsync'd AT OPEN, so it is ON DISK despite
+        the crash — durability does not depend on reaching a clean end."""
+        path = tmp_path / "gap_ledger.jsonl"
+        adapter = _live_adapter(path)
+        corrupted = copy.deepcopy(UPDATE_MODIFY_LEVEL)
+        corrupted["data"][0]["bids"][0]["price"] = "45283.7"   # real checksum failure -> gap opens
+        crash = RuntimeError("injected unhandled crash mid-capture")
+        # SNAPSHOT emits; corrupted opens a CHECKSUM_RESYNC gap (persisted at OPEN); then a generic
+        # exception on recv propagates out of the capture (not a ConnectionClosed the loop handles).
+        factory = ScriptedConnectionFactory([
+            {"frames": [SNAPSHOT_FRAME, corrupted, crash], "on_drain": "block"},
+        ])
+    
+        with patch("websockets.connect", factory.connect):
+            with pytest.raises(RuntimeError, match="injected unhandled crash"):
+                async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+                    pass
+    
+        # OBSERVABLE END STATE: the gap open record is readable from the file, written incrementally
+        # BEFORE the crash — not batched to a finalize that a real kill would never reach.
+        records = _read_jsonl(path)
+        opens = [r for r in records if r["event"] == "open"]
+>       assert len(opens) == 1, f"the gap open was persisted incrementally before the crash; got {records}"
+E       AssertionError: the gap open was persisted incrementally before the crash; got [{'event': 'run_start', 'run_wall_anchor': '2026-07-21T05:08:33.808693+00:00', 'run_monotonic_anchor': 293638.4383149, 'run_start_monotonic': 293638.4383149, 'venue': 'kraken_mainnet', 'mode': 'live'}, {'event': 'run_end', 'run_end_monotonic': 293638.4400101, 'frames_captured': 2, 'gaps_detected': 1, 'incomplete': 1, 'checksum_failures_total': 1, 'checksum_captures_kept': 1, 'checksum_capture_capped': False}]
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\integration\test_ledger_persistence.py:106: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=2800903109, computed=1898523278
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] CHECKSUM_RESYNC: post-update checksum mismatch. Book discarded; no MarketState until resync validates.
+ERROR    trading.data.adapters.kraken_v2_book:kraken_v2_book.py:1588 [kraken_v2_book] GAP_LEDGER_INCOMPLETE: 1 of 1 recorded gap(s) opened but never closed or terminated — the capture ended with them open. Retained as open-ended (default-deny from open onward), NOT dropped: [#0(CHECKSUM_RESYNC, opened@293638.4399mono)].
+=========================== short test summary info ===========================
+FAILED tests/integration/test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture
+1 failed in 0.12s
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+.                                                                        [100%]
+1 passed in 0.06s
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────────────
+sha256 AFTER : 195ef4d5d020e870a189538affa0ae4ca93347933788df80af0df7ec13127c43
+EXACT RESTORE: YES — byte-identical
+
+RESULT [ledger_persistence]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
