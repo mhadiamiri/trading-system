@@ -5,18 +5,34 @@ frames through the PRODUCTION loop (KrakenV2BookAdapter.process_raw_frame) at a 
 message rate while the production lag sampler runs, then reports the observed mean cycle. Load
 without a socket, so a new host can be baselined with NO venue authorization.
 
-DECLARED (rule 0.1j / 0.4 — a declaration, not a verdict):
-  - MESSAGE RATE = ~1,959 msg/min (32.65/s), ANCHORED to WO-008b-B-RERUN's received rate. The
-    baseline must be measured under load comparable to the run that will reference it — a constant
-    is only as portable as the LOAD it was measured under, not only the host. An IDLE-loop baseline
-    would be too low and would convict every real run at startup.
-  - WARMUP DURATION = 120 s (default). Derivation: at the 100 ms lag interval that is ~1,200 lag
-    samples — far above the ~100 needed for a stable mean — while keeping establishment to ~2 min.
-  - "REPRESENTATIVE" = the ACHIEVED send rate is within 10% of the ~1,959/min target; verified and
-    reported below. If the replay path cannot sustain the rate, that is REPORTED as a finding.
+DECLARED (rule 0.1j / 0.4 — a declaration, not a verdict; every scope dimension enumerated: host,
+load, source, duration — D29):
+  - MESSAGE RATE = ~1,959 msg/min (32.65/s), SCOPED: "representative of OBSERVED 60-MINUTE LOAD
+    (WO-008b-B-RERUN)". NOT a universal constant. A constant is only as portable as the LOAD it was
+    measured under, not only the host; an IDLE-loop baseline would be too low and convict every real
+    run at startup. RE-DECLARATION TRIGGERS (D29): (i) the corpus host faces a materially different
+    SUSTAINED rate; (ii) a future capture window observes a materially different rate. On either, the
+    representative rate is RE-DECLARED, DATED, and the old scope ANNOTATED — never silently replaced.
+    "MATERIALLY DIFFERENT" (numeric): a sustained rate outside ±20% of 1,959/min (i.e. <1,567 or
+    >2,351/min). Derivation: measured mean_cycle varied <0.2% across a ~28% rate span (1,531/min ->
+    108.798ms, 1,959/min -> 108.894ms), so within ±20% the baseline stays valid; beyond it, re-declare.
+  - REPLAY SOURCE (PINNED by identity, immutable, NOT recency/convention-picked — D29): the WO-009 §2
+    ground-truth fixture `tests/fixtures/kraken_v2_raw_frames.py` (SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL,
+    a self-consistent valid snapshot+update that exercises the full parse+apply+checksum path). It
+    calibrates against the LOAD of run WO-008b-B-RERUN-20260721T170944Z (its rate). The run's own
+    retained frames cannot be replayed standalone (they need the full multi-thousand-frame prior book
+    they accreted against — replaying them cold only manufactures checksum failures), so a PINNED
+    valid fixture at the pinned RATE is the comparability anchor. Both the source fixture and the load
+    run-ID are named here and written into the baseline record, so two hosts baselined a month apart
+    use identical input.
+  - WARMUP DURATION = 60 s (default). Derivation: ~600 lag samples at the 100 ms interval — far above
+    the ~100 for a stable mean — AND it is the duration actually VALIDATED (this host: 108.894ms,
+    +0.0% vs the standing figure). Declared figure == validated figure (D29 §C).
+  - "REPRESENTATIVE" = ACHIEVED send rate within 10% of the ~1,959/min target; verified and reported.
+    If the replay path cannot sustain the rate, that is REPORTED as a finding.
   - COMPATIBILITY: the standing 0.108886 s was derived under LIVE load at ~1,959 msg/min, so it is
-    compatible with this protocol (same load), not superseded by it. This tool re-measures under the
-    same load for a NEW host; on the standing host it CONFIRMS, and does not overwrite, unless --write.
+    compatible with this protocol (same load), not superseded. This tool re-measures under the same
+    load for a NEW host; on the standing host it CONFIRMS, and does not overwrite, unless --write.
 
 Usage:
   python tools/establish_mean_cycle_baseline.py [--seconds N] [--write]
@@ -36,6 +52,12 @@ from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME, UPDATE_MODIFY_LE
 
 TARGET_PER_MIN = 1959.0
 TARGET_PER_S = TARGET_PER_MIN / 60.0
+RATE_SCOPE = "representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)"
+RATE_MATERIAL_DIFF = "sustained rate outside +-20% of 1959/min (<1567 or >2351/min)"
+REPLAY_SOURCE = ("tests/fixtures/kraken_v2_raw_frames.py (WO-009 ground truth: SNAPSHOT_FRAME + "
+                 "UPDATE_MODIFY_LEVEL) — PINNED, immutable, not recency-picked")
+LOAD_RUN_ID = "WO-008b-B-RERUN-20260721T170944Z"
+DEFAULT_WARMUP_SECONDS = 60.0   # validated duration (D29 §C: declared == validated)
 
 
 async def establish(seconds: float):
@@ -77,10 +99,12 @@ async def establish(seconds: float):
 
 
 def main():
-    seconds = 120.0
+    seconds = DEFAULT_WARMUP_SECONDS
     if "--seconds" in sys.argv:
         seconds = float(sys.argv[sys.argv.index("--seconds") + 1])
     r = asyncio.run(establish(seconds))
+    print(f"REPLAY SOURCE (pinned): {REPLAY_SOURCE}")
+    print(f"LOAD scope: {RATE_SCOPE}; run-id {LOAD_RUN_ID}; material-diff trigger: {RATE_MATERIAL_DIFF}")
     standing = 0.108886
     print("=== WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===")
     print(f"host fingerprint: {host_baseline.fingerprint_key()}  {host_baseline.host_fingerprint()}")
@@ -97,9 +121,12 @@ def main():
     if "--write" in sys.argv:
         rec = host_baseline.save_baseline(
             mean_cycle_seconds=round(r["mean_cycle_s"], 6),
-            derivation=f"establishment protocol: {r['frames_sent']} recorded frames replayed at "
-                       f"{r['achieved_per_min']:.0f}/min over {r['seconds']:.0f}s, mean_cycle=span/actual",
-            date="(set-at-write)", load=f"replay ~{r['achieved_per_min']:.0f} msg/min (representative)")
+            derivation=f"establishment protocol: {r['frames_sent']} frames replayed at "
+                       f"{r['achieved_per_min']:.0f}/min over {r['seconds']:.0f}s from {REPLAY_SOURCE}; "
+                       f"mean_cycle=span/actual",
+            date="(set-at-write)",
+            load=f"replay ~{r['achieved_per_min']:.0f} msg/min ({RATE_SCOPE}); source run-id "
+                 f"{LOAD_RUN_ID}; duration {r['seconds']:.0f}s; material-diff trigger: {RATE_MATERIAL_DIFF}")
         print(f"[--write] saved this host's baseline: {rec['mean_cycle_seconds']}s")
     else:
         print("[report only] not written; pass --write to save this host's record (new host).")

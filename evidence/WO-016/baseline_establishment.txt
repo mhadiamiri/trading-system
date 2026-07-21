@@ -1,8 +1,10 @@
+REPLAY SOURCE (pinned): tests/fixtures/kraken_v2_raw_frames.py (WO-009 ground truth: SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL) — PINNED, immutable, not recency-picked
+LOAD scope: representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN); run-id WO-008b-B-RERUN-20260721T170944Z; material-diff trigger: sustained rate outside +-20% of 1959/min (<1567 or >2351/min)
 === WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===
 host fingerprint: ba47c96a36f36642  {'machine_id': 'a28a45c1cac79570', 'python_version': '3.14.6', 'os': 'Windows 11', 'cpu_arch': 'AMD64'}
-duration=60.0s  frames_sent=1959  lag_samples=551
+duration=60.0s  frames_sent=1959  lag_samples=552
 target rate=1959/min  achieved=1959/min  REPRESENTATIVE(<=10%)=True
 REPLAY CAN SUSTAIN THE RATE: True (finding, not worked around, if False)
-measured mean_cycle=108.894ms  vs standing baseline 108.886ms  delta=+0.008ms (+0.0%)
+measured mean_cycle=108.704ms  vs standing baseline 108.886ms  delta=-0.182ms (-0.2%)
 (the standing 0.108886s was derived under LIVE load at ~1,959/min -> compatible with this protocol, not superseded)
 [report only] not written; pass --write to save this host's record (new host).

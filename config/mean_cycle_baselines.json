@@ -8,7 +8,13 @@
   },
   "mean_cycle_seconds": 0.108886,
   "date": "2026-07-21",
-  "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z)",
-  "load": "LIVE, representative: ~1959 book msgs/min received (WO-008b-B-RERUN). Derived under load, so compatible with the establishment protocol's representative-load replay, not superseded by it."
+  "scope": {
+   "host": "fingerprint ba47c96a36f36642 (machine_id a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)",
+   "load": "~1959 book msgs/min received, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
+   "source_run_id": "WO-008b-B-RERUN-20260721T170944Z",
+   "duration": "live 3600.00s (60-min single-window capture)"
+  },
+  "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z), under representative observed load ~1959 msg/min",
+  "load": "LIVE, representative: ~1959 book msgs/min received (WO-008b-B-RERUN). Derived under load, so compatible with the establishment protocol's representative-load replay (which reproduced it to +0.0%), not superseded by it. Re-declaration trigger: a sustained rate differing from ~1959/min by >20% (outside 1567-2351/min) is MATERIALLY DIFFERENT and re-declares the representative rate, dated, old scope annotated."
  }
 }
