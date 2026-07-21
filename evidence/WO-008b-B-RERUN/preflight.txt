@@ -1,0 +1,60 @@
+WO-008b-B-RERUN — PREFLIGHT — HALTED AT §1.3 (STOP AND REPORT, per the WO)
+================================================================================================
+Date: 2026-07-21. Authority: .specify/memory/constitution.md. NO SOCKET WAS OPENED.
+This run's §1.3 is an explicit, non-negotiable STOP condition, and it is met. Per §1.3
+("If you cannot verify [host suspend disabled], STOP AND REPORT. Do not run a 60-minute
+capture on a machine that may suspend."), the preflight is halted BEFORE any live connection.
+
+── §1.1 REPO STATE — OK ────────────────────────────────────────────────────────────────────
+- git status --porcelain: ` M instructions.md` only — the WO-008b-B-RERUN work order text
+  itself (the previous WO-014c-3 A-F update block was superseded here). Per §1.1 a modified
+  instructions.md means the WO text changed mid-flight; it did (the lead swapped WOs).
+- git worktree list: `C:/Projects/bot/trading-system 989600b [master]` — ONLY main. OK.
+- HEAD: 989600b — "WO-014c-3 addendum A-F" — the declared baseline ("the WO-014c-3 addendum
+  commit — 177 passed both orders"). Committed and pushed (local == remote == 989600b).
+- Package path inside the repo: src/trading (preflight guards printed
+  "trading package OK: ...src/trading/__init__.py" and "import-linter evaluated 6/6 contracts").
+
+── §1.2 FULL SUITE, BOTH ORDERS — OK ───────────────────────────────────────────────────────
+- Deterministic:  pytest tests/ -p no:randomly -rX   -> 177 passed in 243.52s, 0 failed / 0
+  xfailed / 0 xpassed.
+- Randomized:      pytest tests/ --randomly-seed=20260725 -rX -> 177 passed in 243.35s, same.
+- lint-imports 6 kept / 0 broken; contract_count_check 6/6; ruff clean.
+
+── §1.3 HOST SUSPEND — CANNOT BE VERIFIED DISABLED; DIRECT EVIDENCE IT SUSPENDS -> STOP ─────
+DECISIVE. §1.3 is non-negotiable and is the exact hazard this run must avoid.
+- DIRECT EVIDENCE, THIS SESSION: the WO-014c-3 DETERMINISTIC suite recorded
+      ====================== 175 passed in 24063.39s (6:41:03) ======================
+  6h41m of wall time for a suite whose CPU time is ~4 minutes (the randomized order, run while
+  awake, completed in 243.35s). The ONLY explanation is the machine SUSPENDED mid-run. This is
+  the very number §1.3 cites as the reason the gate exists.
+- I cannot verify sleep/hibernate/display-suspend are disabled for a 60-minute window, and I
+  have PROOF the host suspends. A suspend during a live capture drops the WebSocket, injects an
+  enormous lag reading, and contaminates BOTH the throughput series and the starvation
+  discrimination — a suspend is indistinguishable from catastrophic starvation (§1.3). Running
+  anyway would manufacture an INVALID measurement, which is worse than not running (and
+  fabricated/contaminated evidence invalidates the WO — rule 0.6).
+=> STOP AND REPORT. No socket opened.
+
+── ADDITIONAL BLOCKERS (surfaced, not absorbed) ────────────────────────────────────────────
+(2) NO LIVE-CAPTURE RUNNER EXISTS. get_live_market_data is called ONLY by tests (with
+    websockets.connect patched); grep across src/ and tools/ finds no entrypoint that opens a
+    REAL socket and drives the Data->Strategy->Risk->Execution(paper) loop for 60 minutes with
+    persistence configured. §2 requires that end-to-end runner. Building it is real, careful
+    work — and the WO FORBIDS "any code change affecting throughput, counting, or instruments
+    once the run begins," so the runner must be built and reviewed BEFORE a run, not improvised
+    around one. This is itself a slice that precedes the live capture.
+(3) FIRST REAL EXTERNAL CONNECTION. The whole project has run under "NO VENUE CONNECTION,
+    simulated transport." This is the first real connection (Kraken PUBLIC v2 book, no
+    credentials, TRADING_ENV=paper, no orders — low risk, but outward-facing and 60 minutes).
+    The prior WO explicitly deferred the re-run to "a fresh session." Explicit go-ahead + a
+    confirmed always-on host is warranted before opening a live socket.
+
+── NOT DONE (correctly) ────────────────────────────────────────────────────────────────────
+§1.4 persistence-configured, §1.5 environment, §1.6 bite proofs, and §2-§9 were NOT executed:
+the preflight GATE is not passable while §1.3 fails, and the WO says "Do not connect on a
+partial preflight." No live_run.txt / throughput_series.txt exists — none is fabricated.
+
+GATE: **NOT** "PREFLIGHT COMPLETE." Halted at §1.3. Awaiting (a) a confirmed non-suspending
+host, (b) the live-capture runner as its own reviewed slice, and (c) explicit go-ahead to open
+the first real venue connection.

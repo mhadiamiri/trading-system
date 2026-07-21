@@ -1,192 +1,195 @@
-# WORK ORDER — WO-014c-3: §0 Carry-Over Probes + Stub-Lint + Widened Precondition Sweep
+# WORK ORDER — WO-008b-B-RERUN: 60-Minute Live Capture (Throughput Verdict + Discrimination)
 
-**Status:** ACTIVE. Fresh session. WO-014c-2 COMPLETE.
+**Status:** ACTIVE. Fresh session. **THE MEASUREMENT SPRINT 2 WAS BUILT TO EARN.**
+**READ FIRST:** `evidence/WO-014c-1/thresholds_and_branches.txt` — the declared thresholds,
+five branches, and full cross-product. **The report interprets against that file and
+nothing else.**
 **Authority:** `.specify/memory/constitution.md` governs. Conflict → STOP and escalate.
-**Baseline:** the WO-014c-2 report commit — state it at preflight. 167 passed both orders,
-0 failed / 0 xfailed / 0 xpassed, import-linter 6/6, contract 6/6, ruff clean.
-**NO VENUE CONNECTION.** Simulated transport only.
-**Standing rules 0.1–0.9 apply in full.** Note 0.6c is amended: `instructions.md` is
-committed with its WO, so at preflight it is either committed or genuinely unmodified —
-a modified `instructions.md` now means the WO text changed mid-flight.
+**Baseline:** the WO-014c-3 addendum commit — 177 passed both orders, 0 failed / 0 xfailed /
+0 xpassed, import-linter 6/6, contract 6/6, ruff clean.
+**Standing rules 0.1–0.9 apply in full.**
 
-## §0 — CARRY-OVER PROBES (do these FIRST; answer with pasted evidence)
+## THIS RUN HAS THREE JOBS
+1. **The throughput verdict** — does the L2 book feed sustain **≥60 MarketStates/min**?
+2. **First live confirmation of `ping_timeout=None`** — its behavior under the library's
+   real ping loop has never been observed.
+3. **First live exercise of the gap ledger and failure-targeted capture** — everything
+   about them is fixture-proven only.
 
-Three questions from the 014c-2 review. Each is cheap now and impossible-to-repair later.
-**If any requires a production change beyond a trivial fix, STOP and report rather than
-absorbing it** — that instruction surfaced two real hazards last time.
+## THE OUTCOME IS NOT PREDETERMINED
+A run reporting 23/min is a SUCCESSFUL work order. A run reporting 600/min is a
+successful work order. A VOID run is a successful work order. **Report what the feed gives.**
 
-### 0.1 — IS THE GAP LEDGER PERSISTED? (highest priority)
-`GapLedger` is described as an in-memory structure with computed properties. For a
-60-minute run and later a 24-hour capture, that is only useful if it survives to disk.
-- Is the ledger written out? When — periodically, or only at capture end?
-- **Does it survive a BREAKER TRIP?** That is the terminal event it most needs to
-  document, and a ledger flushed only on clean shutdown would be lost on exactly the
-  failure it exists to record.
-- Does it survive an unhandled exception or process kill?
-- If it is written only at the end, the ~116-reconnect scenario means a run that dies at
-  minute 58 loses every gap record it accumulated.
-State the answer plainly. If persistence is absent or end-only, report it as a finding
-with a proposed fix — **do not implement without approval.**
-Evidence → `evidence/WO-014c-3/ledger_persistence.txt`
+**FORBIDDEN:**
+- Re-running for a better number. If you run more than once for ANY reason, report EVERY
+  run with its result and why the earlier ended.
+- Adjusting measurement, window, counting, or thresholds after seeing data.
+- Any code change affecting throughput, counting, or instruments once the run begins.
+- Extrapolating a partial window into a result.
+- **Choosing the definition of "sustained" after seeing the data** — all four are reported.
 
-### 0.2 — IS FAILURE-CAPTURE RETENTION BOUNDED?
-Every checksum failure persists the failing frame plus 20 preceding frames of raw wire
-text. Correct for the observed 0.021% rate. But the rate is UNDIAGNOSED — that is why
-the capture exists.
-- Is there any cap on total failure-capture retention?
-- If failures cluster pathologically (a resync loop, a rendering regression on a symbol
-  we haven't seen), what bounds disk growth over 24 hours?
-- **A capture that fills the disk ends the run it was meant to document.**
-If unbounded, report as a finding with a proposed bound — and state how the bound
-**announces itself** when hit rather than silently truncating. A silently-truncated
-failure ledger is the same defect class as positional sampling.
-Evidence → `evidence/WO-014c-3/capture_retention.txt`
+## §1 — PREFLIGHT GATE — complete and paste ALL of it before any socket opens
 
-### 0.3 — DECLARE THE WALL/MONOTONIC DRIFT BOUND
-`wall(t) = run_wall_anchor + (t − run_monotonic_anchor)` assumes both clocks advance at
-the same rate. Over 24 hours, NTP slewing can separate them by seconds.
-- This is not a defect — one anchor was the right call, and mixed bases would be worse.
-  It is an **undeclared limit**, and this project declares limits.
-- State the expected drift bound over a 24-hour run and confirm it is acceptable for
-  locating gaps in calendar time (it almost certainly is).
-- Put it in the ledger's docstring alongside the anchor, same discipline as the
-  active-probe limit.
-Evidence → `evidence/WO-014c-3/clock_drift_limit.txt`
+### 1.1 Repo state
+`git status --porcelain` with every line classified; `git worktree list` showing ONLY main;
+package path inside the repo; both preflight guards OK; test-count baseline vs its SHA.
+Note: `instructions.md` is now committed with its WO — a modified one means the WO text
+changed mid-flight.
 
-## §1 — MAKE 0.1g MECHANICAL (stub-lint)
+### 1.2 Full suite, RANDOMIZED order
+State the seed, paste the summary line **with duration**. Required: 0 failed / 0 xfailed /
+0 xpassed. Plus `lint-imports` 6/6, `contract_count_check` 6/6, `ruff` clean.
 
-Lint check for `pass`-bodied and bare-`return`-bodied functions in production modules
-under `src/`.
-- **Allowlist legitimate cases with EXPLICIT JUSTIFICATION** — protocol stubs on ABCs,
-  etc. Per ruling: *an unexamined exception is how 0.1g gets its own 0.1d.* Every entry
-  names why.
-- If it changes the import-linter contract count, update `EXPECTED_CONTRACT_COUNT` **in
-  the same commit**.
-- **Bite proof:** introduce a `pass`-bodied production function → PASTE THE ACTUAL
-  FAILING OUTPUT → remove → PASS → `sha256` exact-restore.
-- **Run against the current tree and report EVERY hit** — §2 consumes this output.
+### 1.3 **HOST SUSPEND MUST BE DISABLED** — new, non-negotiable
+The WO-014c-3 deterministic suite recorded `24063.39s (6:41:03)` because the machine
+suspended mid-run. **A suspend during a live capture drops the WebSocket, registers an
+enormous lag reading, and contaminates both the throughput series and the starvation
+discrimination — a suspend is indistinguishable from catastrophic starvation.**
+- Confirm sleep/hibernate/display-suspend are disabled for the run's duration, and state
+  how you verified it.
+- If you cannot verify it, **STOP AND REPORT.** Do not run a 60-minute capture on a
+  machine that may suspend.
 
-Historical note for calibration: this rule was ruled after `_request_snapshot(): pass`
-zeroed 48 of 60 minutes, and `_reconnect(): pass` meant the five-failure recovery never
-worked. Both are now implemented; the lint is what stops the third instance.
-Evidence → `evidence/WO-014c-3/stub_lint.txt`
+### 1.4 Persistence is configured — the item C guard
+- Confirm `_gap_persist_path` IS set, and paste the path.
+- Confirm `_persistence_optional` is **NOT** set. A live run with it set would produce
+  exactly the unrecorded ledger the guard exists to prevent.
+- Confirm the failure-capture path is configured and writable.
 
-## §2 — WIDENED PRECONDITION SWEEP (REPORT ONLY — fix nothing)
+### 1.5 Environment
+`TRADING_ENV=paper`; `DATA_SOURCE` = the v2 book adapter on **mainnet**; `venue_name` will
+record `kraken_mainnet`; **no credentials present anywhere** — Kraken's public feed needs
+none, and if any step appears to need one, STOP IMMEDIATELY.
 
-**State the denominator first.** An audit without a denominator audits what it noticed —
-three prior instances.
+### 1.6 Bite proofs — four artifacts each, `sha256` exact-restore
+- order-capable path unreachable under `TRADING_ENV=paper` **and its preservation dual**
+  (paper execution must still fill)
+- `Settings.validate()` mainnet guard
+- staleness guard **and its dual** (a fresh MarketState must still price)
+- no-emission-while-unverified **and its dual** (emission resumes once a fresh snapshot
+  validates)
 
-Hunt BOTH shapes:
-- **SHAPE A (0.1h):** tests that SUPPLY what production is supposed to produce — the test
-  hand-feeds a precondition. *(S10: the fresh snapshot.)*
-- **SHAPE B (0.1i):** tests that STOP AT A CALL BOUNDARY the production path continues
-  through — the test asserts invocation and never verifies the effect.
-  *(`_reconnect`: escalation fires, callee was `pass`.)*
+**GATE:** state *"PREFLIGHT COMPLETE — proceeding to live connection."* If any item fails,
+STOP. Do not connect on a partial preflight.
+Evidence → `evidence/WO-008b-B-RERUN/preflight.txt`
 
-Shape B is mechanically detectable: cross-reference call-assertions (`assert_called*`, or
-any assertion whose subject is "was invoked") against §1's stub-lint output. **Run §1
-first so §2 consumes its results.**
+## §2 — THE RUN
+Kraken public WebSocket **v2**, channel **book**, symbol **BTC/USD**, depth **10**,
+`TRADING_ENV=paper`, **60 minutes continuous, single uninterrupted window**. Loop runs
+end-to-end: Data → Strategy → Risk → Execution (paper).
 
-- **REPORT ONLY. Fix nothing.**
-- State how each hit was found — semantic reading vs. pattern match.
-- If the count is a cluster, it returns to the project lead on standing pre-authorized
-  terms. Report the number; do not act on it.
-Evidence → `evidence/WO-014c-3/precondition_sweep.txt`
+### 2.1 Throughput — reported SEPARATELY
+- **raw book update messages RECEIVED** at the parse boundary: count + rate
+- **MarketStates EMITTED**: count + rate
+Raw high + emitted low means our pipeline; both low means the venue. Opposite remedies.
 
-## §3 — VERIFY, COMMIT, PUSH
-    pytest tests/ -p no:randomly -rX
-    pytest tests/ --randomly-seed=<state it> -rX
-    lint-imports
-    python tools/contract_count_check.py
-    ruff check .
-0 failed / 0 xfailed / 0 xpassed BOTH orders. Explain every delta. Per 0.2a stop before
-push if you cannot reach it. Secret scan, push, paste local vs remote HEAD.
+### 2.2 **THE PER-MINUTE SERIES IS THE DELIVERABLE**
+All 60 values for MarketStates emitted, not just the aggregate. A feed averaging 70/min via
+one burst and 55 quiet minutes is NOT "sustained ≥60."
 
-## §4 — FINAL REPORT — then STOP
-1. **§0.1 ledger persistence** — persisted? Survives a breaker trip? An exception? A kill?
-2. **§0.2 capture retention** — bounded? If not, proposed bound and how it announces itself.
-3. **§0.3 drift** — expected bound over 24h, acceptable? Docstring pasted.
-4. **Stub-lint** — bite proof, EVERY hit in the current tree, every allowlist entry with
-   its justification.
-5. **Sweep** — the denominator, the count, how each hit was found, shape A vs B. Cluster?
-   Confirm you fixed nothing.
-6. Verification: both runs with seeds and durations, deltas, linter, contract count, ruff,
-   local/remote HEAD.
-7. **Venue connection?** YES/NO. **HTTPS doc fetch?** YES/NO.
-8. **Prose standing in for output?** YES/NO.
-9. **Changed but not asked?** Every file, or "none."
-10. **What could not be completed, and why?** Named seam: after §0 (probes answered and
-    committed), before §1.
+### 2.3 Discrimination instruments
+Pong RTT distribution (per-ping, with `PINGS_ATTEMPTED` / `PINGS_SENT` / `PONGS_RECEIVED` /
+`PONGS_ABSENT`), event-loop lag samples with `expected` vs `actual` and gap timestamps,
+receive-to-process latency, message-rate record with its silent-seconds accounting — all on
+the shared `time.monotonic()` clock.
 
-STOP for review. Do NOT proceed to the re-run.
+### 2.4 Feed health
+Checksums attempted / passed / failed. Resync events with cause, duration, and **whether
+emission RESUMED**. Reconnects with cause. Staleness firings. Paper fills with one cost
+breakdown. Sample MarketStates with real bid/ask. `venue_name` as recorded.
 
+Evidence → `evidence/WO-008b-B-RERUN/live_run.txt`, `throughput_series.txt`
 
-----
+## §3 — THE VERDICT — report ALL definitions, do not pick one
+- **minimum** per-minute value across 60 minutes
+- **median**
+- **mean**
+- **percentage of minutes at or above 60**
 
-update:
+PASS/FAIL under each. If all four clear ≥60, the verdict is unambiguous. **If they
+disagree, do NOT declare a verdict** — report the disagreement and stop; which definition
+governs is the project lead's ruling, and making it after seeing data is what this
+instruction prevents.
 
+If FAIL: venue-constrained (raw low) or pipeline-constrained (raw high, emitted low)?
+**Do NOT attempt to fix a failing throughput result here.** No tuning, coalescing, or
+batching. Report and STOP.
 
-§0 RULINGS — both fixes APPROVED. Implement as ONE slice with bite proofs, then assess
-budget before §1/§2.
+## §4 — THE DISCRIMINATION — interpret against the declared branches ONLY
+Compare against the thresholds in `thresholds_and_branches.txt` — late pong > 250ms; absent
+> 5s; elevated lag > 100ms on > 5% of samples; gappy > 10% missed sends. **Do not adjust a
+threshold after seeing data.**
 
-Stopping at the seam rather than absorbing two non-trivial production changes was right,
-and §0's explicit rule required it. §0.3 accepted as a declared limit (≤43s worst case,
-fine for minute-level gap location); the docstring change is proportionate.
+Report the cell (pong state × lag state) and the branch it maps to. Reminders:
+- **Branch 5 (instruments GAPPY) OVERRIDES all others.** VOID attaches to the QUANTITATIVE
+  discrimination; **the gappiness itself is a reported finding**, and if lag gaps coincide
+  with message-rate peaks on the shared clock, that correlation is admissible evidence for
+  starvation — **a nomination, never a verdict.** *Gappy instruments can nominate a
+  hypothesis; only clean instruments can convict one.*
+- **Branch 4 requires on-time + normal + NO FAULT.** With `ping_timeout=None` there is no
+  1011; a venue-initiated close arrives via the venue-close path. **If a close occurred, it
+  is NOT Branch 4 — it is an unexplained fault to report.**
+- **`PONGS_ABSENT` is a SIGNAL (Branch 1/3), never gappiness.** Gappiness is failed SENDS only.
+- Confirm the message-rate record's completeness at any gap timestamps, so a nomination can
+  state whether its own data is trustworthy.
 
-Neither fix is a new decision. §0.1 completes a ruling already made — the lead ruled gap
-recording in because "a gap not recorded when it happens cannot be reconstructed later,"
-and a ledger that evaporates on the terminal event does not record. §0.2 follows
-established doctrine — a silently-truncated failure ledger is the same defect class as
-the positional sampling that lost the original three failures.
+Evidence → `evidence/WO-008b-B-RERUN/discrimination.txt`
 
-=== §0.1 — LEDGER PERSISTENCE: APPROVED, append-only redacted JSONL ===
-Approach approved: incremental + terminal + finalize flush.
-- **Incremental is the load-bearing part.** End-only flushing loses everything on the
-  breaker trip — the exact event the ledger most needs to document. Note the shape: this
-  is `_reconnect()` again. The mechanism that records the terminal event must survive the
-  terminal event.
-- Must survive: breaker trip, unhandled exception, AND process kill. A kill gives no
-  chance to flush, so incremental append is what makes it durable — state the write
-  cadence and justify it.
-- Append-only, redacted through the mechanical redaction module.
-- **Bite proof, four artifacts, sha256:** kill the process mid-run (or simulate an
-  unhandled exception at a gap) and show the accumulated records are ON DISK. Assert the
-  observable end state — records readable from the file — not that a flush was called
-  (0.1i).
-- Declare any new reason code in the same commit.
+## §5 — GAP LEDGER AND FAILURE CAPTURE — first live exercise
+- Paste the ledger: every gap with cause, bounds, duration, resumed/terminal, and the
+  once-per-run `(wall, monotonic)` anchor. Any `incomplete` gaps → `GAP_LEDGER_INCOMPLETE`?
+- **Compare observed reconnects against the ~116/24h expectation** — that figure came from an
+  hour with **no working keepalive** and should now drop substantially. **Do not tune toward
+  it.** If it does NOT drop, that is the starvation discrimination's moment, not a keepalive
+  failure.
+- **Every checksum failure captured** — the 3-of-14,251 rate from WO-008b-B is **undiagnosed
+  and not presumed benign**. Paste each artifact: raw wire text, both ladders, expected vs
+  computed, preceding 20 frames. Was the cap approached? Any one-line summaries?
+- **PRE-RULED:** if checksums fail repeatedly, **assume a defect on our side first.** Do NOT
+  retry, tune, or adjust validation. Stop, capture, diagnose offline.
 
-=== §0.2 — CAPTURE CAP: APPROVED, with the retention policy ruled ===
-Cap approved with a self-announcing counter and `FAILURE_CAPTURE_CAPPED`. Three
-specifics:
+## §6 — RETAIN THE FRAMES
+Capture the window's **raw wire text** verbatim, redacted mechanically. Retain as an
+additional **immutable** ground-truth fixture with its own UTC timestamp and run ID —
+**do not overwrite A2's or A3's.** Ground truth accretes.
+State the size; if retaining the full window is impractical, retain a labeled representative
+subset **plus the complete checksum ledger**, and say exactly what was kept and dropped.
+Label with evidentiary bounds (raw wire → witnesses everything downstream, including
+rendering).
 
-**(a) KEEP THE FIRST N, NOT THE LAST N.** A ring buffer keeping newest would discard the
-ONSET, which is the most diagnostic part — the first failures show what changed. Keep
-earliest; drop later ones.
+## §7 — IF THE RUN FAILS OR DISCONNECTS
+Report it. Do not silently restart and report only the clean run. Every attempt, its
+duration, and why it ended.
 
-**(b) COUNT EVERY FAILURE, CAPTURE THE FIRST N.** The count is cheap and is itself a
-finding: "3 failures" and "40,000 failures" are different worlds and both must be
-reportable. Capping capture must never cap counting.
+## §8 — VERIFY, COMMIT, PUSH
+Both suite orders, linter, contract count, ruff. Explain any delta. **Secret scan including
+every captured frame and ledger line** — confirm no credential, token, session, or
+connection identifier survives. Push, paste local vs remote HEAD.
 
-**(c) DO NOT ADD A RUN-TERMINATION PATH.** The breaker already owns termination: a
-pathological failure rate drives consecutive failures to five, triggers reconnects, and
-exhausts the ladder. The cap exists to prevent DISK EXHAUSTION from ending a run that
-would otherwise complete — not to make a second judgment about whether the venue is gone.
+## §9 — FINAL REPORT — then STOP
+1. **Preflight** — all of it, including the randomized run with seed, **suspend disabled and
+   how verified**, persistence configured and `_persistence_optional` unset, and all four
+   bite-proof pairs. Confirm the gate statement preceded the connection.
+2. **Run summary** — start/end UTC, duration, symbol, endpoint, uninterrupted?
+3. **THROUGHPUT** — raw and emitted, SEPARATELY. **Paste the full 60-value per-minute series.**
+4. **VERDICT under all four definitions.** Do they agree?
+5. **If FAIL** — venue or pipeline, with analysis.
+6. **DISCRIMINATION** — pong distribution, lag samples with expected/actual, latency. Which
+   cell, which branch? Is any instrument gappy? If VOID, state the nomination and whether the
+   message record supports it.
+7. **`ping_timeout=None`** — how did it behave live? Any close? Any 1011?
+8. **Gap ledger** — pasted. Reconnect count vs ~116/24h. Any incomplete gaps?
+9. **Failure capture** — every failure's artifact. Cap approached? **Are the failures
+   wire-level anomalies or our residual bug?**
+10. **Feed health** — checksums attempted/passed/failed, resyncs and whether emission resumed,
+    staleness firings, fills with cost breakdown.
+11. **Frames retained** — fixture header, size, kept/dropped. A2's and A3's untouched?
+12. **Did any credential, token, session, or connection ID appear ANYWHERE** — output, log,
+    evidence, ledger, or captured frame? YES/NO.
+13. **Was any order placed at any venue?** YES/NO.
+14. §8 verification with deltas and HEADs.
+15. **Prose standing in for output?** YES/NO.
+16. **Changed but not asked?** Every file, or "none."
+17. **What could not be completed, and why?**
 
-Propose the cap with reasoning — **by count AND by total bytes, whichever binds first**
-(a cluster of large frames and a cluster of small ones fail differently). Declared
-engineering judgment, same standard as `T = 600s`. Anchor: ~21 frames/capture at the
-WO-008b-B message profile.
-
-**Bite proof, four artifacts, sha256:** drive failures past the cap and show the counter
-keeps counting, `FAILURE_CAPTURE_CAPPED` is emitted, and capture stops without silent
-truncation. Assert the observable end state.
-
-=== SEQUENCING — your call, with a preference ===
-Do the two fixes as ONE slice (both live in the capture/evidence path and share the
-redaction and reason-code surface). Then assess budget: §1 (stub-lint) + §2 (sweep) are
-lighter and self-contained, and §2 consumes §1's output so they stay together.
-
-If budget allows both, proceed. If not, checkpoint after the fixes — they are the
-re-run-blocking items; §1/§2 are audit work that blocks nothing.
-
-Everything else in WO-014c-3 stands. STOP for review at the end.
+STOP for human review. The project lead reviews this regardless of outcome.
