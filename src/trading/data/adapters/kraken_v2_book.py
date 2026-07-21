@@ -944,6 +944,20 @@ class KrakenV2BookAdapter:
     #     is the drift metric's own 0.1d — "the instrument got slower and we re-baselined around
     #     it"). THE STANDING BASELINE is this run's OBSERVED mean cycle: span/actual =
     #     3600.00s / 33,062 = 0.108886 s (WO-008b-B-RERUN, run WO-008b-B-RERUN-20260721T170944Z).
+    #     ABSOLUTE TOLERANCE (D27 acceptance A — the declared sensitivity, stated like the
+    #     100ms-lag-on-100ms-interval and the HOST_SUSPEND ~43s floors): at the 108.886ms baseline,
+    #     F=0.50 means a mean cycle UP TO ~163.3ms (108.886 x 1.50) READS CLEAN — a ~50% sustained
+    #     slowdown / 50% temporal-resolution loss, tolerated by construction and chosen deliberately.
+    #       CAUGHT     : mean cycle > ~163.3ms (uniform slowdown beyond 1.5x the baseline cadence).
+    #       NOT CAUGHT : a uniform slowdown within 108.886–163.3ms.
+    #       UNCAUGHT CASE looks like: the loop servicing frames up to 1.5x slower, every cycle, with
+    #       zero gaps (<200ms) and zero elevated samples (<100ms lag) — clean under all three gates.
+    #     HOST-SPECIFIC (D27 acceptance B — a corpus precondition): 0.108886s is THIS HOST's mean
+    #     cycle, a property of the MACHINE, not the pipeline. ANY CHANGE OF HOST is a re-declaration
+    #     trigger on the SAME footing as a pipeline change touching the loop — a 0.4 event requiring
+    #     a FRESH baseline measurement BEFORE the run. The 24h corpus may run on a different no-sleep
+    #     host (dedicated/cloud); on it this figure is WRONG (a faster/slower machine registers as
+    #     drift that is not starvation, or reads clean while genuinely degraded). Measure first.
     MEAN_CYCLE_BASELINE_SECONDS = 0.108886
     MEAN_CYCLE_DRIFT_VOID_FRACTION = 0.50
     # RESIDUAL / FLOOR LIMIT (named, not papered over): the mode that still escapes all three is

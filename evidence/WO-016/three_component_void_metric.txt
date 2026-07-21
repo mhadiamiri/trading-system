@@ -41,6 +41,29 @@ slow-onset starvation ("the instrument got slower and we re-baselined around it"
 metric's own 0.1d); freezing it makes that unwritable. The baseline is OBSERVED, not idealized, so
 per-cycle overhead is already IN it and only CHANGE registers — component (3)'s structural immunity.
 
+ABSOLUTE TOLERANCE (D27 acceptance A) — the declared SENSITIVITY, stated like the 100ms-lag-on-
+100ms-interval reasoning and the HOST_SUSPEND ~43s floor (what is caught, what is not, what the
+uncaught case looks like):
+  At the 108.886ms frozen baseline, F=0.50 means a mean cycle UP TO ~163.3ms (108.886 x 1.50)
+  READS CLEAN — a ~50% SUSTAINED SLOWDOWN, i.e. 50% temporal-resolution loss, tolerated BY
+  CONSTRUCTION. Deliberate (F chosen below the doubling-point, above benign variation), not a defect.
+    CAUGHT      : mean cycle > ~163.3ms (uniform slowdown beyond 1.5x the baseline cadence).
+    NOT CAUGHT  : a uniform slowdown within 108.886-163.3ms.
+    UNCAUGHT CASE looks like: the loop servicing frames up to 1.5x slower on EVERY cycle, with zero
+    recorded gaps (<200ms) and zero elevated samples (<100ms lag) — clean under all three gates.
+  (The lower F, the tighter this tolerance; F is a declared threshold, moved only as a 0.4 event.)
+
+HOST-SPECIFIC (D27 acceptance B) — a CORPUS PRECONDITION:
+  0.108886s is THIS HOST's observed mean cycle — a property of the MACHINE, not of the pipeline.
+  ANY CHANGE OF HOST is a re-declaration trigger on the SAME FOOTING as a pipeline change touching
+  the loop: a 0.4 event requiring a FRESH baseline MEASUREMENT before the run. The 24-hour corpus
+  precondition (a host VERIFIED not to sleep) may well mean a DIFFERENT machine (dedicated box or
+  cloud); on it the frozen 0.108886s is WRONG — a faster or slower host registers as drift that is
+  not starvation, and in the wrong direction reads CLEAN while the loop is genuinely degraded. The
+  0.4 rule already prevents silent drift, but only if someone NOTICES the host changed; making it
+  explicit removes that dependency. Ops carries this into the corpus WO preconditions alongside the
+  no-sleep host and the ~5.3 GB/24h storage figure.
+
 ── PARTITION, REWRITTEN against the three components (discrete / spiky / uniform → owner) ─────
 The 8.16% naive deficit decomposed (partition_proof.txt): 0.080% recorded missed-wakes + 8.08%
 per-cycle overhead + ~0% disconnect-idle. Mapped to owners:
