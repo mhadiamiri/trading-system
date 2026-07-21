@@ -38,15 +38,52 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-21 (WO-015 COMPLETE; 60-min live re-run READY — preflight §1.3 power blocker cleared, needs a FRESH session)
-**Current Phase**: WO-008b-B-RERUN — the FIRST REAL VENUE SOCKET (a 60-minute live Kraken v2 book capture), authorized per-run. Runner + all instruments BUILT and green. Preflight was halted at §1.3 (host suspend); sleep is NOW disabled (AC=0x0, DC=0x0, verified). Only remaining gate: run it from a FRESH session (full preflight → run → report). See "▶ RESUME HERE" below.
+**Last Updated**: 2026-07-21 (WO-008b-B-RERUN EXECUTED — the first real venue socket is DONE; awaiting project-lead review)
+**Current Phase**: WO-008b-B-RERUN — **COMPLETE**. The 60-minute live Kraken v2 book capture RAN (attempt 2, uninterrupted). Throughput verdict = **PASS unanimous (all four definitions)**; discrimination = **Branch 1 (protocol/venue), starvation FALSIFIED**, clean/non-gappy instruments. Two open findings for the lead: **234 checksum failures (0.198%, ~10× baseline)** — assume-our-defect-first, diagnose OFFLINE; and 2 venue closes / no 1011 under `ping_timeout=None`. Report: `WO-008b-B-RERUN-FINAL-REPORT.md`. See "▶ RUN COMPLETE" below.
 **Status**: HEAD `b1d3ee6` on master (pushed; local == remote). **190 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL (predates WO-014b-2/014c-*/015); read the **▶ RESUME HERE** block immediately below instead.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
 ---
 
-## ▶ RESUME HERE (AUTHORITATIVE) — 2026-07-21
+## ▶ RUN COMPLETE (AUTHORITATIVE) — 2026-07-21 — WO-008b-B-RERUN EXECUTED
+
+> The first real venue socket has been opened and the 60-minute capture completed. This block is
+> now the single source of truth. Full report: `WO-008b-B-RERUN-FINAL-REPORT.md`; evidence under
+> `evidence/WO-008b-B-RERUN/`.
+
+- **Attempt 1 FAILED at ~38 min (operational, NOT venue):** the loop's verbose stdout (6.6 MB)
+  got the background task killed. Feed was healthy; no venue fault. Preserved as
+  `gap_ledger.attempt1.jsonl` / `attempt1_forensics.txt`. Not restarted silently — reported.
+- **Attempt 2 COMPLETE (hardened driver):** 2026-07-21 17:09:43Z→18:09:58Z, 3614.6 s, single
+  uninterrupted window, `uninterrupted=True`, 0 HOST_SUSPEND, 0 terminal gaps.
+- **§3 Throughput verdict = PASS, unanimous:** raw 118,043 (1,959/min), emitted 111,010
+  (1,843/min); per-minute EMITTED min 714 / median 1537 / mean 1820 / **100% of minutes ≥60**.
+- **§4 Discrimination = BRANCH 1 (protocol/venue); STARVATION FALSIFIED.** Clean instruments
+  (lag missed 8.16%, pong missed-send 2.53% — both <10%, NOT gappy → they convict). Cell
+  (LATE/ABSENT pong, NORMAL lag): pong median 150 ms / p95 381 ms / 27% late / 6 absent; lag
+  median 8.97 ms, elevated 0.04%; recv→process latency median 0.089 ms (loop not starved).
+- **§7 `ping_timeout=None`:** NO 1011; **2 venue-initiated closes** (17:11:28Z, 17:55:32Z), each
+  recovered ~4.5 s, emission resumed — first LIVE exercise of the WO-014b reconnect lifecycle.
+- **§5/§9 Checksum failures = 234 (0.198%, ~10× the 3/14,251 baseline).** 200 full captures + 34
+  summaries (cap bound; ledger complete). **PRE-RULED: assume our defect first; do NOT tune;
+  diagnose OFFLINE.** Lead: sampled failing frames show multiple bid levels at the SAME price in
+  one update (e.g. 4× 66452.7) — likely an apply-order / same-price issue in our book+checksum path.
+- **§8 verify (post-run):** 190 passed both orders, lint-imports 6/6, contract 6/6, ruff clean —
+  no delta from preflight (tree byte-unchanged; only new evidence added, no src/config/test change).
+- Fills: 0 (trivial strategy gave STRAT_NO_SIGNAL all hour → 0 orders, 0 fills, 0 staleness firings).
+  Credentials/tokens/session/conn-IDs anywhere: NO. Any order placed: NO.
+
+### ▶ NEXT (project lead decides — this WO STOPS for review)
+1. **Diagnose the checksum failures OFFLINE** (assume our defect first; do not tune the live path).
+   Start from the captured failing frames (`instruments_dump.json` → checksum_failure_captures).
+2. Then per Ops's prior sequence: WO-013 → CI capture + version ruling → 008c → the 24-hour corpus
+   (which needs HOST_SUSPEND's window-INVALIDATING role, not just diagnostic, and a host that never
+   sleeps). The corpus READER is its own separate WO.
+
+---
+
+## ▶ RESUME HERE (historical — pre-run) — 2026-07-21
 
 > Single source of truth for "where are we now." The Executive Summary and dated
 > `Current Status (Session N)` blocks below are historical reference. Read THIS to resume.

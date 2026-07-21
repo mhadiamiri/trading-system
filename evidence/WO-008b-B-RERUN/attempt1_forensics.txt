@@ -1,0 +1,46 @@
+WO-008b-B-RERUN ATTEMPT 1 — KILLED at ~38min (harness output-volume, NOT venue). Forensic extract.
+Start 2026-07-21T15:13:23Z. Last hb elapsed=2281s. No [run] END/EXCEPTION -> external kill.
+
+=== HEARTBEATS (cumulative raw/emitted/csum_fail) ===
+[hb] utc=2026-07-21T15:13:24Z elapsed=0s raw=0 emitted=0 csum_fail=0
+[hb] utc=2026-07-21T15:14:24Z elapsed=60s raw=1660 emitted=1589 csum_fail=0
+[hb] utc=2026-07-21T15:15:24Z elapsed=120s raw=3899 emitted=3756 csum_fail=0
+[hb] utc=2026-07-21T15:16:24Z elapsed=180s raw=5941 emitted=5712 csum_fail=2
+[hb] utc=2026-07-21T15:17:24Z elapsed=240s raw=7907 emitted=7567 csum_fail=3
+[hb] utc=2026-07-21T15:18:24Z elapsed=300s raw=10729 emitted=10317 csum_fail=3
+[hb] utc=2026-07-21T15:19:24Z elapsed=360s raw=12587 emitted=12086 csum_fail=5
+[hb] utc=2026-07-21T15:20:24Z elapsed=420s raw=14998 emitted=14425 csum_fail=5
+[hb] utc=2026-07-21T15:21:24Z elapsed=480s raw=17137 emitted=16520 csum_fail=5
+[hb] utc=2026-07-21T15:22:24Z elapsed=540s raw=20493 emitted=19807 csum_fail=5
+[hb] utc=2026-07-21T15:23:24Z elapsed=600s raw=22733 emitted=21853 csum_fail=10
+[hb] utc=2026-07-21T15:24:24Z elapsed=660s raw=24215 emitted=23075 csum_fail=31
+[hb] utc=2026-07-21T15:25:24Z elapsed=720s raw=25126 emitted=23906 csum_fail=38
+[hb] utc=2026-07-21T15:26:24Z elapsed=780s raw=27773 emitted=26481 csum_fail=38
+[hb] utc=2026-07-21T15:27:24Z elapsed=840s raw=29303 emitted=27796 csum_fail=46
+[hb] utc=2026-07-21T15:28:24Z elapsed=900s raw=31519 emitted=29820 csum_fail=51
+[hb] utc=2026-07-21T15:29:24Z elapsed=960s raw=33145 emitted=31263 csum_fail=55
+[hb] utc=2026-07-21T15:30:24Z elapsed=1020s raw=36037 emitted=34083 csum_fail=55
+[hb] utc=2026-07-21T15:31:24Z elapsed=1080s raw=38552 emitted=36445 csum_fail=66
+[hb] utc=2026-07-21T15:32:24Z elapsed=1140s raw=41009 emitted=38830 csum_fail=66
+[hb] utc=2026-07-21T15:33:24Z elapsed=1200s raw=43982 emitted=41713 csum_fail=67
+[hb] utc=2026-07-21T15:34:24Z elapsed=1260s raw=46364 emitted=43978 csum_fail=71
+[hb] utc=2026-07-21T15:35:24Z elapsed=1320s raw=48221 emitted=45757 csum_fail=72
+[hb] utc=2026-07-21T15:36:24Z elapsed=1380s raw=49634 emitted=47098 csum_fail=72
+[hb] utc=2026-07-21T15:37:24Z elapsed=1440s raw=52268 emitted=49660 csum_fail=72
+[hb] utc=2026-07-21T15:38:24Z elapsed=1500s raw=54942 emitted=52262 csum_fail=72
+[hb] utc=2026-07-21T15:39:24Z elapsed=1560s raw=56567 emitted=53815 csum_fail=72
+[hb] utc=2026-07-21T15:40:24Z elapsed=1620s raw=60010 emitted=57012 csum_fail=74
+[hb] utc=2026-07-21T15:41:24Z elapsed=1681s raw=62216 emitted=58884 csum_fail=86
+[hb] utc=2026-07-21T15:42:24Z elapsed=1741s raw=63997 emitted=60551 csum_fail=94
+[hb] utc=2026-07-21T15:43:24Z elapsed=1801s raw=65719 emitted=62135 csum_fail=101
+[hb] utc=2026-07-21T15:44:24Z elapsed=1861s raw=68461 emitted=64805 csum_fail=101
+[hb] utc=2026-07-21T15:45:24Z elapsed=1921s raw=70641 emitted=66913 csum_fail=101
+[hb] utc=2026-07-21T15:46:24Z elapsed=1981s raw=72499 emitted=68656 csum_fail=107
+[hb] utc=2026-07-21T15:47:24Z elapsed=2041s raw=74318 emitted=70338 csum_fail=122
+[hb] utc=2026-07-21T15:48:24Z elapsed=2101s raw=76999 emitted=72947 csum_fail=122
+[hb] utc=2026-07-21T15:49:24Z elapsed=2161s raw=79098 emitted=74974 csum_fail=122
+[hb] utc=2026-07-21T15:50:24Z elapsed=2221s raw=81678 emitted=77336 csum_fail=132
+[hb] utc=2026-07-21T15:51:24Z elapsed=2281s raw=83140 emitted=78726 csum_fail=132
+
+=== RECONNECT / HEARTBEAT_ABSENCE / ERROR lines ===
+[kraken_v2_book] Checksum validation failed: symbol=BTC/USD type=update expected=914674012, computed=2101108056

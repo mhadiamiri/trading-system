@@ -1,0 +1,55 @@
+WO-008b-B-RERUN — §4 DISCRIMINATION (against evidence/WO-014c-1/thresholds_and_branches.txt ONLY)
+================================================================================================
+Run: 2026-07-21 17:09:43Z → 18:09:58Z, 3614.6s, uninterrupted=True, venue=kraken_mainnet (public v2 book).
+Instruments extracted post-run from the adapter; full raw in instruments_dump.json. Shared clock =
+time.monotonic() for lag, pong, throughput (WO-014c-1 §A.2). Declared thresholds (NOT chosen after
+seeing data): LATE pong rtt>250ms; ABSENT pong no pong ≤5s; ELEVATED lag >100ms on >5% of samples;
+GAPPY(VOID) >10% missed samples on EITHER instrument.
+
+── PONG OBSERVER (protocol-level ws.ping RTT) ───────────────────────────────────────────────
+  pings_attempted = 3557   pings_sent = 3467   pongs_received = 3466   pongs_absent = 6
+  missed_sends = attempted-sent = 90  →  missed_send_fraction = 2.53%   (GAPPY if >10%  →  NO)
+  RTT (received pongs, n=3460): min 91.5ms  median 150.0ms  p95 380.8ms  max 1020.1ms
+  on-time (≤250ms) = 2522   LATE (>250ms) = 938 (27.1% of received)   ABSENT (no pong ≤5s) = 6
+  → PONG STATE (declared reduction: ON-TIME iff 0 late AND 0 absent; else ABSENT if any absent,
+    else LATE): ABSENT.  938 late + 6 absent ⇒ NOT clean on-time.
+
+── LAG SAMPLER (event-loop starvation — PRIMARY discriminator) ──────────────────────────────
+  samples = 33062   elevated (>100ms) = 12  →  0.04% of samples  (ELEVATED if >5%  →  NO)
+  lag(ms): median 8.97   p95 13.60   max 350.01
+  missed_fraction = 8.16%  (GAPPY if >10%  →  NO — under the VOID threshold, but noted: the
+    missed lag samples are attributable to the 97 gaps below (218.8s of disconnect/resync during
+    which the transport loop is not sampling), NOT to starvation-induced sampler death. During
+    connected time the loop sampled continuously and lag stayed NORMAL.)
+  → LAG STATE: NORMAL.
+
+── RECEIVE→PROCESS LATENCY (ThroughputRecord) ───────────────────────────────────────────────
+  per-second mean latency: median 0.089ms   p95 0.179ms   max 3.447ms
+  silent_seconds = 60 of 3601 expected (1.67%) — reported explicitly (message record is trustworthy
+  at all but 60 seconds; those coincide with gaps, not hidden starvation).
+  → The loop services frames in <0.1ms typically; it is NOT starved. This corroborates LAG=NORMAL.
+
+── GAPPINESS (Branch 5 / VOID test) ─────────────────────────────────────────────────────────
+  lag missed_fraction 8.16% < 10%  AND  pong missed_send_fraction 2.53% < 10%.
+  ⇒ NEITHER instrument is GAPPY. NOT a VOID. The instruments are CLEAN — they CONVICT, not merely
+    nominate (WO-014c-1: "gappy instruments nominate; only clean instruments convict").
+
+── CELL AND BRANCH ──────────────────────────────────────────────────────────────────────────
+  CELL (pong × lag) = (LATE/ABSENT , NORMAL).
+  → BRANCH 1: protocol/venue. The pongs are frequently late (27% >250ms; p95 380ms; max 1020ms)
+    and occasionally absent (6), BUT the event loop is healthy (lag NORMAL, latency sub-0.1ms).
+    Per the one-way causal logic (thresholds A.3): a healthy loop did NOT cause the late/absent
+    pongs, so the delay is NOT ours — it is protocol/venue. The STARVATION hypothesis is FALSIFIED;
+    the original 1011 (protocol/venue) hypothesis SURVIVES.
+
+── FAULT CHECK (why this is Branch 1 and NOT Branch 4) ──────────────────────────────────────
+  Branch 4 requires on-time + normal + NO FAULT. Two faults occurred: 2 VENUE_DISCONNECT
+  (VENUE_CONNECTION_CLOSED) gaps (see §5). With ping_timeout=None there is NO 1011; the closes
+  arrived via the venue-close path, exactly as the thresholds file anticipated. A close ⇒ NOT
+  Branch 4. The closes are consistent with the Branch-1 (protocol/venue) reading and are reported
+  as faults, not as a clean falsification.
+
+── VERDICT ──────────────────────────────────────────────────────────────────────────────────
+  Clean instruments (non-gappy) → CONVICT. Cell (LATE/ABSENT, NORMAL) → BRANCH 1: protocol/venue.
+  Starvation falsified. No branch-definition disagreement here (this is the §4 discrimination;
+  the §3 four-definition throughput verdict is separate and unanimous PASS).

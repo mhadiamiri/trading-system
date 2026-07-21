@@ -1,0 +1,312 @@
+WO-008b-B-RERUN — §1.7 BITE PROOFS (four artifacts each, sha256)
+==============================================================================
+Restore is byte-exact via `git checkout`; sha256 AFTER must equal BEFORE.
+NOTE: core.autocrlf=true. The AUTHORITATIVE restore check is `git diff` == empty
+(EOL-insensitive); sha256 is a secondary byte check taken on the EOL-stable tree.
+
+##############################################################################
+BITE PROOF: order_capable_unreachable_under_paper
+Target: src\trading\execution\paper.py
+Bite test: tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+sha256 BEFORE: 44c336f7df078aeac18ea4d7b72ef5e4f1f640618793c566a90e096fbd9a79f9
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────
+WEAKENING: the paper-only construction guard is disabled -> a client would build under mainnet
+  OLD: if not Settings.is_paper_trading():
+  NEW: if False and not Settings.is_paper_trading():  # WEAKENED
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet FAILED [100%]
+
+================================== FAILURES ===================================
+_ TestOrderCapableGuard.test_paper_client_refuses_construction_under_mainnet __
+tests\integration\test_mainnet_guard.py:80: in test_paper_client_refuses_construction_under_mainnet
+    with pytest.raises(ValueError) as exc_info:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+============================== 1 failed in 0.09s ==============================
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────
+sha256 AFTER : 44c336f7df078aeac18ea4d7b72ef5e4f1f640618793c566a90e096fbd9a79f9
+EXACT RESTORE: YES — byte-identical
+
+── DUAL — paper execution still constructs+fills under paper ──
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_constructs_under_paper_env PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+RESULT [order_capable_unreachable_under_paper]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+
+##############################################################################
+BITE PROOF: settings_validate_mainnet_guard
+Target: config\settings.py
+Bite test: tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+sha256 BEFORE: 7b5b7db2571bce461faa74f831296921bdb5111460e40cf915ba6c72014c5451
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────
+WEAKENING: the import-time mainnet block is disabled -> TRADING_ENV=mainnet would be accepted
+  OLD: if cls.TRADING_ENV == "mainnet":
+  NEW: if False and cls.TRADING_ENV == "mainnet":  # WEAKENED
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked FAILED [100%]
+
+================================== FAILURES ===================================
+____________ TestSettingsMainnetGuard.test_mainnet_env_is_blocked _____________
+tests\integration\test_mainnet_guard.py:135: in test_mainnet_env_is_blocked
+    assert exc is not None, (
+E   AssertionError: GUARD DID NOT FIRE: TRADING_ENV=mainnet was accepted. No code path may reach a real-money venue in Phase 1.
+E   assert None is not None
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+============================== 1 failed in 0.09s ==============================
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────
+sha256 AFTER : 7b5b7db2571bce461faa74f831296921bdb5111460e40cf915ba6c72014c5451
+EXACT RESTORE: YES — byte-identical
+
+── DUAL — paper env still loads cleanly ──
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_mainnet_guard.py::TestSettingsMainnetGuard::test_paper_env_is_accepted PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+RESULT [settings_validate_mainnet_guard]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+
+##############################################################################
+BITE PROOF: staleness_guard
+Target: src\trading\execution\paper.py
+Bite test: tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard
+sha256 BEFORE: 44c336f7df078aeac18ea4d7b72ef5e4f1f640618793c566a90e096fbd9a79f9
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard PASSED [100%]
+
+============================== 1 passed in 1.54s ==============================
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────
+WEAKENING: the staleness check is disabled -> a fill would proceed against stale market data
+  OLD: if state_age > self._staleness_threshold:
+  NEW: if False and state_age > self._staleness_threshold:  # WEAKENED
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard FAILED [100%]
+
+================================== FAILURES ===================================
+________________________ test_stale_market_state_guard ________________________
+tests\integration\test_staleness_guard_bite_proof.py:104: in test_stale_market_state_guard
+    with pytest.raises(ValueError) as exc_info:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard
+============================== 1 failed in 1.61s ==============================
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_staleness_guard_bite_proof.py::test_stale_market_state_guard PASSED [100%]
+
+============================== 1 passed in 1.55s ==============================
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────
+sha256 AFTER : 44c336f7df078aeac18ea4d7b72ef5e4f1f640618793c566a90e096fbd9a79f9
+EXACT RESTORE: YES — byte-identical
+
+── DUAL — fresh market state still accepted (fills) ──
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_staleness_guard_bite_proof.py::test_fresh_market_state_accepted PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+RESULT [staleness_guard]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+
+##############################################################################
+BITE PROOF: no_emission_while_unverified
+Target: src\trading\data\adapters\kraken_v2_book.py
+Bite test: tests/integration/test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes
+sha256 BEFORE: e194cf741d45e31f0e85b66edd0bd39eec695dd043815b63b3d7daded4120d04
+
+── ARTIFACT 1 — PASS (guard intact) ──────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes PASSED [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+── ARTIFACT 2 — ACTUAL FAIL (weakened) ───────────────────────────
+WEAKENING: the post-update checksum guard is disabled -> an unverified book would emit a MarketState
+  OLD: if computed_checksum != quote_update.checksum:
+  NEW: if False and computed_checksum != quote_update.checksum:  # WEAKENED
+    assert await adapter.process_raw_frame(corrupted) == []
+E   AssertionError: assert [MarketState(...l('45283.7'))] == []
+E     
+E     Left contains one more item: MarketState(timestamp=datetime.datetime(2026, 7, 21, 15, 4, 26, 742564, tzinfo=datetime.timezone.utc), symbol='BTC/USD...ce=Decimal('45284.45'), spread=Decimal('1.5'), trade_count=0, total_volume=Decimal('0'), last_price=Decimal('45283.7'))
+E     
+E     Full diff:
+E     - []
+E     + [
+E     +     MarketState(...
+E     
+E     ...Full output truncated (13 lines hidden), use '-vv' to show
+=========================== short test summary info ===========================
+FAILED tests/integration/test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes
+============================== 1 failed in 0.10s ==============================
+
+── ARTIFACT 3 — PASS (restored) ──────────────────────────────────
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes PASSED [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+── ARTIFACT 4 — sha256 EXACT-RESTORE ─────────────────────────────
+sha256 AFTER : e194cf741d45e31f0e85b66edd0bd39eec695dd043815b63b3d7daded4120d04
+EXACT RESTORE: YES — byte-identical
+
+RESULT [no_emission_while_unverified]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=None  => OK
+
+==============================================================================
+SUMMARY
+RESULT [order_capable_unreachable_under_paper]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+RESULT [settings_validate_mainnet_guard]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+RESULT [staleness_guard]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=True  => OK
+RESULT [no_emission_while_unverified]: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  DUAL=None  => OK

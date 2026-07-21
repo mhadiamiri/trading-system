@@ -1,54 +1,114 @@
-WO-008b-B-RERUN — PREFLIGHT — HALTED AT §1.3 (host suspend NOT verified) — NO SOCKET OPENED
+WO-008b-B-RERUN — PREFLIGHT — COMPLETE (all of §1.1–§1.7 passed) — NO SOCKET OPENED YET
 ================================================================================================
-Date: 2026-07-21. Authority: constitution.md. §1 rule: "If any item fails, STOP. Do not connect
-on a partial preflight." §1.3 fails, so the preflight is halted BEFORE any live connection.
+Fresh session, 2026-07-21. Authority: .specify/memory/constitution.md. Interpretation reference
+for the run: evidence/WO-014c-1/thresholds_and_branches.txt (and nothing else).
+This file supersedes the earlier HALTED-AT-§1.3 preflight of the same name (the §1.3 power
+blocker is now cleared; see §1.3 below). No live_run.txt / throughput_series.txt exists yet —
+none is fabricated. The GATE statement at the bottom is issued; the socket is opened only after
+the operator's explicit go (first real venue socket).
 
-── §1.1 REPO STATE — OK ────────────────────────────────────────────────────────────────────
-HEAD 6f9a036 (the declared baseline — 190 passed both orders). git worktree = main only.
-Only instructions.md modified (the WO-008b-B-RERUN text itself). Package path src/trading.
+── §1.1 REPO STATE — OK ─────────────────────────────────────────────────────────────────────
+ git status --porcelain: CLEAN (after reverting a working-tree edit to instructions.md that
+   folded the committed §1.3 correction into the §1 body verbatim — substance-preserving; the
+   operator chose "revert to clean tree", so the committed WO — which carries the §1.3
+   correction as its authoritative appended block — is what governs).
+ HEAD: 5911eb0 on master (local == remote 5911eb0). Two commits past progress.md's b1d3ee6;
+   both (bab4a73, 5911eb0) are docs(progress) updates — code tree identical to b1d3ee6.
+ Baseline 6f9a036 (WO header): confirmed ANCESTOR of HEAD (git merge-base --is-ancestor OK).
+ git worktree list: main only (C:/Projects/bot/trading-system  5911eb0 [master]).
+ Package path INSIDE repo: tools/preflight_path_check.py ->
+   "PASS: trading package resolves inside the repo tree
+    C:\Projects\bot\trading-system\src\trading\__init__.py".
+ BOTH conftest session guards OK (printed at every pytest session this preflight):
+   "[preflight] trading package OK: ...\src\trading\__init__.py"
+   "[preflight] import-linter evaluated 6/6 contracts".
+ instructions.md is committed with its WO; it is NOT modified now (reverted) — the WO text did
+   not change mid-flight.
 
-── §1.3 HOST SUSPEND — CANNOT BE CONFIRMED AS STATED -> STOP ────────────────────────────────
-The WO states "sleep is set to 24h." The ACTUAL settings on this host do NOT match:
-  powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE:
-    Current AC Power Setting Index: 0x00001c20 = 7200 s = 2 HOURS   (not 24h)
-    Current DC Power Setting Index: 0x00000258 =  600 s = 10 MINUTES
-  Sleep states available: Standby (S3), Hibernate, Fast Startup — i.e. sleep is ENABLED.
-Findings:
-  - On BATTERY (DC) the host sleeps after 10 minutes of idle — catastrophic for a 60-minute
-    single-uninterrupted-window capture.
-  - On AC it is 2h idle-standby, not the 24h the WO asserts and not "disabled."
-  - DIRECT EVIDENCE this session: the WO-014c-3 deterministic suite recorded 24063.39s
-    (6:41:03) for ~4 min of CPU — the host DID suspend mid-run. So the machine's staying-awake
-    behavior is not reliable in practice, independent of the idle-timeout numbers.
-§1.3 is NON-NEGOTIABLE and requires CONFIRMING suspend is disabled. It is not: sleep is enabled,
-the timeouts are 2h AC / 10min DC (not 24h), and a suspend has already been observed this session.
-A suspend mid-capture is indistinguishable from catastrophic starvation and would contaminate both
-the throughput series and the discrimination; running anyway would fabricate an invalid result
-(rule 0.6). => STOP. No socket opened.
+── §1.2 FULL SUITE, BOTH ORDERS + LINTERS — OK ──────────────────────────────────────────────
+ Deterministic order  (pytest tests/ -p no:randomly -rX):
+   "======================= 190 passed in 246.21s (0:04:06) ======================="
+ Randomized order     (pytest tests/ --randomly-seed=20260725 -rX):     seed = 20260725
+   "======================= 190 passed in 246.60s (0:04:06) ======================="
+ => 190 passed BOTH orders; 0 failed / 0 xfailed / 0 xpassed (the summary line carries only
+    "190 passed"; -rX would have surfaced any xpass).
+ lint-imports:  "Contracts: 6 kept, 0 broken."  (incl. "No test doubles in production code KEPT")
+ tools/contract_count_check.py:  "PASS: import-linter evaluated 6 contracts (expected 6)"  (6/6)
+ ruff check .:  "All checks passed!"
+ Full evidence: suite_deterministic.txt, suite_randomized.txt, lint_imports.txt, ruff.txt.
 
-REQUIRED BEFORE A RE-ATTEMPT (Ops/Hadi):
-  - Actually disable sleep for BOTH power states, e.g.
-        powercfg /change standby-timeout-ac 0
-        powercfg /change standby-timeout-dc 0
-        powercfg /change hibernate-timeout-ac 0
-        powercfg /change hibernate-timeout-dc 0
-    and keep the host on AC power. Then re-confirm via powercfg /query ... STANDBYIDLE == 0.
+── §1.3 HOST SUSPEND DISABLED — OK (the earlier blocker is CLEARED) ──────────────────────────
+ powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE (Balanced = SCHEME_CURRENT):
+   Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)
+     Current AC Power Setting Index: 0x00000000
+     Current DC Power Setting Index: 0x00000000
+ powercfg /query SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE:
+     Current AC Power Setting Index: 0x00000000
+     Current DC Power Setting Index: 0x00000000
+ => standby AND hibernate = 0 (never) on BOTH AC and DC. §1.3 requires DISABLED, not deferred:
+    satisfied (0x0, not merely a large timeout).
+ AC power: [System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus = Online.
+   (Win32_Battery BatteryStatus=2 @ 100%.) Host is on AC.
 
-── SECOND, INDEPENDENT REASON — FRESH SESSION (per the WO header) ───────────────────────────
-The WO header says "Fresh session," and this order is a 60-minute single-uninterrupted-window
-live capture plus a 17-item §9 report (full 60-value per-minute series, discrimination against the
-five branches, every gap record, every checksum-failure artifact, retained raw frames). This
-session is at ~80% context with automatic compaction imminent; a compaction mid-run or mid-report
-would risk corrupting the single-window measurement and the report — the exact partial/contaminated
-outcome the WO forbids ("do not extrapolate a partial window"). The first real venue socket, held
-for an hour, should be opened from a genuinely fresh context so the run and its interpretation are
-held coherently. Recommend running this WO in a fresh session once §1.3 is genuinely satisfied.
+── §1.4 PERSISTENCE — OK ────────────────────────────────────────────────────────────────────
+ _gap_persist_path (to be set by the runner via persist_path):
+   evidence/WO-008b-B-RERUN/gap_ledger.jsonl   (dir confirmed WRITABLE this session)
+ Append-only redacted JSONL, incremental fsync at gap-open (kill-durable). The SAME persist
+   stream also carries failure-capture summaries (_persist_write "failure_summary" events) and
+   the once-per-run (wall, monotonic) anchor — so "failure-capture path configured & writable"
+   is the same file, confirmed writable.
+ _persistence_optional: NOT set (stays False on the production path — runner._resolve_feed and
+   factory.create_live_capture_feed both leave it False; verified by no-socket probe).
+ The runner REFUSES an unset persist path before any connection (GAP_PERSIST_UNCONFIGURED) —
+   verified live in the no-socket probe.
 
-── NOT DONE (correctly) ────────────────────────────────────────────────────────────────────
-§1.2 (both-order suite), §1.4-§1.7 (persistence, DATA_SOURCE, env, bite proofs), and §2-§9 were
-NOT executed: the GATE is not passable while §1.3 fails, and the WO says do not connect on a
-partial preflight. No live_run.txt / throughput_series.txt exists — none is fabricated. Was any
-order placed at any venue? NO. Did any socket open? NO.
+── §1.5 DATA_SOURCE — OK ────────────────────────────────────────────────────────────────────
+ Run will set DATA_SOURCE=kraken_v2 in the process env (python-dotenv override=False, so the OS
+   env var wins over .env's "simulated"). The runner leaves data_source=None so CONFIG selects.
+ Registry (import trading.data.adapters triggers self-registration):
+   registered_names() = ['kraken_public', 'kraken_v2', 'simulated']
+   is_live_capable('kraken_v2')     = True   <- the live-capable v2 book adapter
+   is_live_capable('kraken_public') = False
+   is_live_capable('simulated')     = False
+ factory.create_live_capture_feed refuses a non-live-capable source BEFORE any socket:
+   "LIVE_CAPTURE_UNSUPPORTED: adapter 'simulated' does not support live capture..." (verified).
+ => kraken_v2 resolves to the intended live venue (Kraken public v2 book), refusing anything else.
 
-GATE: NOT "PREFLIGHT COMPLETE." Halted at §1.3. Awaiting sleep genuinely disabled (AC+DC) on a
-host held on AC power, and a fresh session for the run.
+── §1.6 ENVIRONMENT — OK ────────────────────────────────────────────────────────────────────
+ TRADING_ENV=paper (default; .env sets paper). Settings.validate() under paper: OK.
+   is_paper_trading() = True.
+ venue_name will record "kraken_mainnet" (adapter VENUE_LIVE) — public feed of the mainnet venue.
+ NO CREDENTIALS anywhere: .env contains DATA_SOURCE + TRADING_ENV only; a name-scan for
+   KEY/SECRET/TOKEN/PASS/CRED found NONE. The order-capable path is bite-proved unreachable under
+   paper (§1.7). If any step appears to need a credential, STOP.
+
+── §1.7 BITE PROOFS — four artifacts each, sha256 — ALL OK ───────────────────────────────────
+ Full 4-artifact detail (PASS / real-FAIL-when-weakened / PASS-restored / sha256 byte-identical,
+ plus dual) in bite_proofs.txt. Restore is byte-exact via `git checkout`; core.autocrlf=true, so
+ the AUTHORITATIVE restore check is `git diff` == empty (confirmed for all three touched files),
+ with sha256 as a secondary byte check on the EOL-stable tree.
+
+ 1) order-capable path unreachable under paper  (+ dual: paper execution still constructs+fills)
+    target src\trading\execution\paper.py  guard "if not Settings.is_paper_trading():"
+    test  test_mainnet_guard.py::TestOrderCapableGuard::test_paper_client_refuses_construction_under_mainnet
+    A1 PASS  A2 REAL-FAIL ("DID NOT RAISE ValueError")  A3 PASS  A4 sha256-exact=True  DUAL PASS  => OK
+ 2) Settings.validate() mainnet guard
+    target config\settings.py  guard 'if cls.TRADING_ENV == "mainnet":'
+    test  test_mainnet_guard.py::TestSettingsMainnetGuard::test_mainnet_env_is_blocked
+    A1 PASS  A2 REAL-FAIL ("GUARD DID NOT FIRE ... assert None is not None")  A3 PASS  A4 exact=True  DUAL PASS  => OK
+ 3) staleness guard  (+ dual: fresh market state accepted / fills)
+    target src\trading\execution\paper.py  guard "if state_age > self._staleness_threshold:"
+    test  test_staleness_guard_bite_proof.py::test_stale_market_state_guard
+    A1 PASS  A2 REAL-FAIL ("DID NOT RAISE ValueError")  A3 PASS  A4 exact=True  DUAL PASS  => OK
+ 4) no-emission-while-unverified  (+ dual: emission resumes once a fresh snapshot validates)
+    target src\trading\data\adapters\kraken_v2_book.py  guard "if computed_checksum != quote_update.checksum:"
+    test  test_snapshot_recovery.py::test_checksum_failure_requests_resubscribe_and_emission_resumes
+    A1 PASS  A2 REAL-FAIL (unverified book emitted a MarketState -> "[MarketState(...)] == []")  A3 PASS  A4 exact=True  => OK
+ Post-run tree: git status CLEAN; git diff on all three targets EMPTY (guards restored).
+
+── GATE ─────────────────────────────────────────────────────────────────────────────────────
+ Every §1 item passed. Per the WO's per-run authorization this reads:
+   "PREFLIGHT COMPLETE — proceeding to live connection."
+ Operational note (not a WO gate): this is the FIRST REAL VENUE SOCKET; the operator's explicit
+ go is being sought before the socket opens. Host must remain on AC and awake for the full 60 min.
+ Was any order placed at any venue? NO. Did any socket open during preflight? NO.

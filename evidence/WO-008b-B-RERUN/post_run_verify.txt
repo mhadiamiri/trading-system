@@ -1,0 +1,12 @@
+### §8 POST-RUN VERIFY — DETERMINISTIC ###
+======================= 190 passed in 246.13s (0:04:06) =======================
+### RANDOMIZED (seed 20260725) ###
+======================= 190 passed in 246.65s (0:04:06) =======================
+### LINT-IMPORTS ###
+
+Contracts: 6 kept, 0 broken.
+### CONTRACT COUNT ###
+PASS: import-linter evaluated 6 contracts (expected 6)
+### RUFF ###
+All checks passed!
+### §8 VERIFY DONE ###

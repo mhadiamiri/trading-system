@@ -1,0 +1,38 @@
+==============================================================================
+WO-008b-B-RERUN — ANALYSIS (verdict §3 / discrimination §4 / ledger §5)
+==============================================================================
+run: start=2026-07-21T17:09:43Z end=2026-07-21T18:09:58Z elapsed=3614.631156682968s uninterrupted=True
+venue=kraken_mainnet  error=None
+
+── §3 THROUGHPUT VERDICT (>=60 MarketStates/min) ──
+  minutes: 61   full series: [995, 2397, 1237, 1173, 861, 1025, 1103, 1270, 1453, 2338, 1484, 1327, 1864, 811, 1537, 903, 2161, 1952, 1114, 714, 980, 824, 1111, 1303, 926, 1260, 1982, 2015, 859, 1284, 1494, 1487, 1494, 2355, 1220, 1531, 1546, 4538, 3185, 1194, 2111, 3001, 3737, 2351, 2232, 2258, 2452, 1457, 1904, 1647, 3188, 3059, 2597, 3138, 2881, 3050, 2673, 2396, 2707, 1799, 65]
+  minimum      = 65      PASS=True
+  median       = 1537      PASS=True
+  mean         = 1819.8  PASS=True
+  %min >=60    = 100.0%   PASS=True  (all-minutes rule; report raw % too)
+  => four-definition agreement (min,median,mean,%>=60 all clear): True
+  RAW book msgs per-minute (from ThroughputRecord): [1093, 2527, 1223, 1267, 1023, 1111, 1193, 1505, 1621, 2389, 1718, 1456, 1924, 1162, 1667, 979, 2222, 2141, 1276, 802, 1070, 939, 1209, 1392, 942, 1354, 2101, 2146, 1316, 1347, 1735, 1406, 1590, 2524, 1349, 1821, 1623, 4756, 3202, 1282, 2295, 2976, 3854, 2401, 2269, 2407, 2551, 1720, 2000, 1789, 3461, 3017, 2671, 3214, 2946, 3256, 2778, 2431, 2679, 1925]
+  aggregate: {"raw_messages_received": 118043, "market_states_emitted": 111010, "elapsed_seconds": 3614.6327097415924, "raw_rate_per_minute": 1959.4189973747925, "emitted_rate_per_minute": 1842.6768457136443, "rate_reported": true}
+
+── §4 DISCRIMINATION (against thresholds_and_branches.txt) ──
+  PONG: attempted=3557 sent=3467 received=3466 absent=6
+        rtt(ms): n=3460 min=91.5 median=150.0 p95=380.8 max=1020.1
+        on-time(<=250ms)=2522 late(>250ms)=938 absent(None-in-samples)=6
+        missed_send_fraction=0.025302220972729828 (gappy if >0.10)
+        => PONG STATE (declared reduction: ON-TIME iff 0 late AND 0 absent): ABSENT
+  LAG: samples=33062 elevated(>100ms)=12 frac=0.04% (ELEVATED if >5%)  gaps=12 missed_fraction=0.08158559959998889 (gappy if >0.10)
+       lag(ms): median=8.97 p95=13.60 max=350.01
+       => LAG STATE: NORMAL
+  RECV->PROCESS latency (per-sec mean, ms): median=0.089 p95=0.179 max=3.447
+  silent_seconds count=60 of expected=3601
+
+  CELL (pong x lag) = ('ABSENT', 'NORMAL')  =>  Branch 1: protocol/venue (absent = limiting case of late)
+
+── §5 GAP LEDGER / RECONNECTS / CHECKSUMS / STALENESS ──
+  checksum_failure_count = 234
+  checksum captures kept = 200
+  reconnect_ladder = []
+  loop_result = {"processed_count": 111010, "trades_count": 0, "final_pnl": 0.0, "elapsed_minutes": 60.24383, "events_by_reason": {"DATA_RECEIVED": 111010, "STRAT_NO_SIGNAL": 111010}, "feed_events": {"connected": 0, "disconnected": 0, "errors": 0}, "persistence_info": {"path": "data\\market_events_20260721.parquet", "exists": true, "size_bytes": 220303464, "event_count": 111010, "rows_written": 111010}, "venue": 
+  terminated (breaker tail) = None
+
+(gap counts/causes/terminal/HOST_SUSPEND: computed separately from gap_ledger.attempt2.jsonl)

@@ -1,0 +1,53 @@
+WO-008b-B-RERUN — §2 THE RUN (live evidence)
+================================================================================================
+Endpoint : Kraken public WebSocket v2, channel=book, symbol=BTC/USD, depth=10
+Env      : TRADING_ENV=paper, DATA_SOURCE=kraken_v2, venue_name=kraken_mainnet
+Window   : 2026-07-21 17:09:43Z → 18:09:58Z  (elapsed 3614.6s ≈ 60.24 min), SINGLE UNINTERRUPTED,
+           uninterrupted=True, terminated(breaker)=None, HOST_SUSPEND=0, GAP_LEDGER_INCOMPLETE=0.
+Driver   : LiveCaptureRunner → factory.create_live_capture_feed('kraken_v2') →
+           KrakenV2BookAdapter.get_live_market_data, full loop Data→Strategy→Risk→Execution(paper).
+Run anchor (once/run): wall 2026-07-21T17:09:44.971957Z, monotonic 336912.6055432.
+
+── THROUGHPUT (reported SEPARATELY; full per-minute series in throughput_series.txt) ─────────
+  RAW book messages RECEIVED (parse boundary) : 118,043 total  →  1,959.4 / min aggregate
+  MarketStates EMITTED (yield boundary)        : 111,010 total  →  1,842.7 / min aggregate
+  Raw HIGH and emitted HIGH (both ≫ 60) ⇒ the venue supplies data and our pipeline emits it. The
+  raw−emitted gap (≈7,000) is the frames NOT emitted during the 97 gaps (resync/disconnect) — the
+  book is unverified there and correctly emits nothing (FR-018a(d)), not a pipeline throughput loss.
+  Per-minute EMITTED series: 61 buckets (minute 60 = a 14.6s partial tail bucket = 65). All 60
+  complete minutes ≥ 714. See §3.
+
+── SAMPLE MarketStates (real BTC/USD bid/ask, from validated books) ─────────────────────────
+  17:11:28.37Z  bid 66428.5  ask 66431.5   (checksum 4024445319)
+  17:13:05.81Z  bid 66452.7  ask 66452.8   (checksum 1715279735)
+  17:13:40.76Z  bid 66455.5  ask 66455.6   (checksum 3610507059)
+  (price ranged ~66,400–66,700 over the hour; spreads ~0.1–3.0.)
+
+── PONG RTT (four counters) ─────────────────────────────────────────────────────────────────
+  attempted 3557 / sent 3467 / received 3466 / absent 6.  RTT: median 150ms, p95 381ms, max 1020ms.
+  late(>250ms)=938, on-time=2522, absent=6.  (Full analysis: discrimination.txt.)
+
+── LAG / LATENCY ────────────────────────────────────────────────────────────────────────────
+  lag: 33,062 samples, median 8.97ms, p95 13.6ms, elevated(>100ms)=12 (0.04%). NORMAL.
+  recv→process latency: median 0.089ms, p95 0.179ms, max 3.45ms. silent seconds 60/3601.
+
+── GAPS / RESYNCS / RECONNECTS (full ledger: gap_ledger.attempt2.jsonl) ──────────────────────
+  97 gaps, ALL resolved & resumed, 0 terminal. Causes: 95 CHECKSUM_RESYNC + 2 VENUE_DISCONNECT.
+  Resync durations: n=95, min 0.179s, median 0.625s, max 17.398s (one 17.4s resync — emission
+    paused then RESUMED). Total gap time 218.8s (~3.6 min of 60).
+  VENUE_DISCONNECT ×2 ("venue closed the connection unexpectedly — no close frame"):
+    - 17:11:28.26Z → recovered 4.67s, emission RESUMED.
+    - 17:55:32.41Z → recovered 4.49s, emission RESUMED.
+  Reconnect ladder empty ⇒ each reconnect succeeded first attempt (no backoff retries). This is the
+  first LIVE exercise of the WO-014b connection lifecycle (reconnect→resubscribe→fresh snapshot).
+
+── CHECKSUMS ────────────────────────────────────────────────────────────────────────────────
+  attempted (every update) — passed = raw−failed; FAILED = 234 (0.198% of raw). Captures kept 200
+  (cap bound at 200), +34 one-line summaries (WO-014c-3 §0.2). See §5 / failure_capture in report.
+
+── PAPER FILLS ──────────────────────────────────────────────────────────────────────────────
+  loop_result: processed 111,010; trades 0; final_pnl 0.0; every decision STRAT_NO_SIGNAL.
+  The trivial-momentum-v1.0.0 strategy produced NO buy/sell signal in this window ⇒ ZERO orders,
+  ZERO fills. Therefore no cost breakdown and no staleness-guard firings (no order was attempted).
+  This is a truthful null result, not an omission. Market-event log persisted to
+  data/market_events_20260721.parquet (111,010 rows, 220 MB — gitignored data path).

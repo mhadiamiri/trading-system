@@ -1,0 +1,31 @@
+WO-008b-B-RERUN — §6 RETAINED FRAMES (immutable ground-truth subset)
+================================================================================================
+Run ID     : WO-008b-B-RERUN-20260721T170944Z  (run anchor wall 2026-07-21T17:09:44.971957Z)
+Venue      : kraken_mainnet, public v2 book, BTC/USD, depth 10.
+Redaction  : all persisted text passes the adapter's redact() (WO-014c-2). Secret scan of the
+             dump: 0 credential/token/session/connection-ID hits (see report §12).
+
+WHAT WAS KEPT (labeled subset + complete checksum ledger):
+  • 200 checksum-FAILURE captures — each with: failing_frame_raw_text (verbatim wire JSON),
+    20 preceding_frames_raw_text, expected vs computed checksum, local_book bids/asks, UTC +
+    monotonic + sequence_position_in_run. Location: instruments_dump.json → checksum_failure_captures.
+  • 34 one-line failure SUMMARIES for the failures beyond the 200-capture cap (WO-014c-3 §0.2):
+    instruments_dump.json → checksum_failure_summaries (also as failure_summary events in
+    gap_ledger.attempt2.jsonl). ⇒ the checksum ledger is COMPLETE: all 234 failures accounted
+    for (200 full + 34 summarized), count never truncated.
+  • The COMPLETE gap ledger (gap_ledger.attempt2.jsonl, 230 records) with the once-per-run anchor.
+  • The full instrument records (lag/pong/throughput per-sample) in instruments_dump.json (7.57 MB).
+
+WHAT WAS DROPPED (and why):
+  • The full-window raw frame stream (~118,043 frames) was NOT retained. The instruments do not
+    buffer every frame; adding a full-stream sink would be an instrument change (forbidden once the
+    run began) and a build (this WO builds nothing). Per §6, a labeled subset + the complete
+    checksum ledger is retained instead. The subset is the evidentiarily-interesting frames (every
+    checksum failure + its 20 preceding frames), which is exactly what the offline diagnosis needs.
+
+EVIDENTIARY BOUNDS: the retained failure frames span the run window 17:09:44Z–18:09:58Z. They are
+a FAILURE-TARGETED sample (every checksum failure up to the 200 cap), not a uniform time sample.
+
+A2 / A3 GROUND TRUTH: NOT overwritten. tests/fixtures/kraken_v2_captured_frames.py and
+kraken_v2_captured_frames_a3.py are untouched (git clean). This run's frames accrete as a NEW,
+separate artifact (instruments_dump.json), per "ground truth accretes."
