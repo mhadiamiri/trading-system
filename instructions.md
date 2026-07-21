@@ -153,3 +153,17 @@ every captured frame and ledger line.** Push, paste local vs remote HEAD.
 17. **What could not be completed, and why?**
 
 STOP for human review. The project lead reviews this regardless of outcome.
+
+
+----
+
+
+§1.3 correction — replace the existing line:
+
+3. **HOST SUSPEND DISABLED.** Standby and hibernate timeouts have been set to 0 (never) on
+   BOTH AC and DC. Verify with `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` and
+   PASTE THE OUTPUT — both AC and DC power setting indexes must read 0x00000000. Do not
+   accept a nonzero timeout on the grounds that it exceeds the run duration; §1.3 requires
+   suspend DISABLED, not merely deferred. Confirm the host is on AC power.
+   Non-negotiable: a suspend mid-capture is indistinguishable from catastrophic starvation,
+   and the runner's HOST_SUSPEND detection only catches divergences beyond ~43s.

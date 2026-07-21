@@ -38,8 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-21 (WO-015 COMPLETE; the 60-min live re-run HALTED at its preflight — host suspend not disabled)
-**Current Phase**: WO-008b-B-RERUN — the FIRST REAL VENUE SOCKET (a 60-minute live Kraken v2 book capture), authorized per-run. The runner and all instruments are BUILT and green; the run is BLOCKED at preflight §1.3 (host suspend). See "▶ RESUME HERE" below.
+**Last Updated**: 2026-07-21 (WO-015 COMPLETE; 60-min live re-run READY — preflight §1.3 power blocker cleared, needs a FRESH session)
+**Current Phase**: WO-008b-B-RERUN — the FIRST REAL VENUE SOCKET (a 60-minute live Kraken v2 book capture), authorized per-run. Runner + all instruments BUILT and green. Preflight was halted at §1.3 (host suspend); sleep is NOW disabled (AC=0x0, DC=0x0, verified). Only remaining gate: run it from a FRESH session (full preflight → run → report). See "▶ RESUME HERE" below.
 **Status**: HEAD `b1d3ee6` on master (pushed; local == remote). **190 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL (predates WO-014b-2/014c-*/015); read the **▶ RESUME HERE** block immediately below instead.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
@@ -93,15 +93,21 @@
 
 ### ▶ NEXT SESSION — run the live re-run (WO-008b-B-RERUN) as a genuinely FRESH context
 The 60-minute live capture is **authorized per-run** (first real venue socket; public v2 book,
-`TRADING_ENV=paper`, no orders, no credentials). It is currently **HALTED AT PREFLIGHT §1.3**
-(evidence/WO-008b-B-RERUN/preflight.txt). TWO things must be true before opening the socket:
-1. **HOST SUSPEND DISABLED (§1.3, non-negotiable).** Actual settings are AC=2h (`0x1c20`=7200s),
-   DC=10min (`0x258`=600s), sleep enabled — NOT the 24h the WO claims; and the host DEMONSTRABLY
-   suspended this session (WO-014c-3 det. suite ran 6h41m for ~4min CPU). Hadi must run
-   `powercfg /change standby-timeout-ac 0` + `standby-timeout-dc 0` (+ hibernate-timeout 0),
-   keep the host on AC, and re-confirm `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` == 0.
-2. **A FRESH SESSION.** The WO header says "Fresh session"; the run is a single uninterrupted
-   60-min window + a 17-item report — do it from a clean context (this session halted at ~80%).
+`TRADING_ENV=paper`, no orders, no credentials). Preflight was started this session and **halted at
+§1.3** (evidence/WO-008b-B-RERUN/preflight.txt); the lead then posted a §1.3 correction and Hadi
+disabled sleep. Status of the two gate items:
+1. **HOST SUSPEND — NOW DISABLED (§1.3 power requirement CLEARED).** Verified this session:
+   `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` reads **AC = 0x00000000 and
+   DC = 0x00000000** (standby-idle never), on both power states. (Earlier this session it was
+   AC=2h/DC=10min and the host DID suspend — the WO-014c-3 det. suite ran 6h41m for ~4min CPU;
+   that is now fixed.) AT PREFLIGHT: re-run the powercfg query, PASTE the output (both must read
+   0x00000000 — §1.3 requires DISABLED, not merely deferred), and confirm the host is on AC power.
+2. **A FRESH SESSION — STILL REQUIRED.** The WO header says "Fresh session"; the run is a single
+   uninterrupted 60-min window + a 17-item §9 report — do it from a clean context (this session
+   halted at ~80% with compaction imminent). This is the ONLY remaining blocker.
+Preflight §1.1/§1.2 (both-order suite), §1.4–§1.7 (persistence, DATA_SOURCE, env, the four
+bite-proof pairs) and §2–§9 were NOT run yet — the fresh session executes the full preflight → run
+→ report from the top.
 The order OPERATES already-built things (BUILDS NOTHING): runner `src/trading/loop/live_capture.py`,
 instruments WO-014c-1, ledger/capture WO-014c-2/3, lifecycle WO-014b. Full preflight/run/report
 spec is in `instructions.md` (the WO-008b-B-RERUN text). Interpret discrimination against
