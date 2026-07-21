@@ -1,0 +1,50 @@
+WO-016 §1.2 — REPEATED-PRICE SEMANTICS + CHECKSUM FORMAT, BY CITATION (rule 0.1e)
+================================================================================================
+SOURCE (fetched via HTTPS — permitted; NOT venue contact): Kraken "Spot Websockets (v2) Book
+Checksum" guide, https://docs.kraken.com/api/docs/guides/spot-ws-book-v2/
+(the primary v2 book page docs.kraken.com/api/docs/websocket-v2/book returned HTTP 500 to the
+fetcher; the checksum GUIDE above is the same publisher and is the authoritative checksum spec.)
+Rule 0.1e: docs are THE CLAIM for what the protocol MEANS; the captured artifacts are sovereign
+for what Kraken SENT. Neither substitutes for the other.
+
+── VERBATIM QUOTES ──────────────────────────────────────────────────────────────────────────
+On precision (THE governing rule for this defect):
+  "Parse `price` and `qty` fields using a decimal or string decoder to preserve full precision
+   through deserialisation."
+
+On checksum string formation:
+  "Remove `.` from `price`"
+  "Remove leading zeros"
+  "Remove `.` from `qty`"
+  "Remove leading zeros"
+  "Append `price + qty` to the asks string"
+  "Concatenate asks + bids strings, then pass the result to a CRC32 function. Cast the result to
+   an unsigned 32-bit integer."
+  "the checksum is always calculated over the top 10 price levels."
+
+On multiple updates / repeated prices within one message:
+  "Process all price level updates in a message before calculating the checksum."
+  "An update with `qty: 0` means that price level should be removed."
+  "After each update, truncate your book to the subscribed depth."
+
+── WHAT IS DOCUMENTED vs SILENT ─────────────────────────────────────────────────────────────
+DOCUMENTED: precision must be preserved via a decimal/string decoder; remove '.' and leading
+  zeros from BOTH price and qty; asks+bids; CRC32→uint32; top 10.
+DOCUMENTED SILENCE (weaker than documented absence): (a) the explicit term "last-wins" for a
+  price that appears more than once in ONE update — but "process all price level updates in a
+  message before calculating the checksum" entails SEQUENTIAL application, i.e. a later same-price
+  entry supersedes the earlier; (b) trailing zeros and exact per-pair decimal-place counts.
+
+── RESOLUTION (citation + labelled behavioral inference) ─────────────────────────────────────
+1. REPEATED-PRICE SEMANTICS: sequential application (last-wins for a repeated price), by the
+   "process all updates before checksum" rule. BEHAVIORAL CONFIRMATION (labelled inference,
+   sovereign for what happened): our production last-wins apply produced a book whose fixed-point
+   checksum equals Kraken's EXPECTED for all repeated-price captures → our apply matches Kraken's
+   resulting book. Our repeated-price handling is CORRECT; it is not the defect.
+2. THE DEFECT is precision/formatting: Kraken's cited rule is to PRESERVE FULL PRECISION with a
+   decimal/string decoder and then remove '.' + leading zeros. Our _current_ladder_strings emits
+   `str(Decimal)`, which for small quantities yields SCIENTIFIC notation ('1.0E-7') — not a plain
+   decimal — so "remove '.'" leaves an 'E-7' fragment ('10E-7') and the CRC diverges. The doc is
+   silent on scientific notation specifically, but "preserve full precision" + "remove . from qty"
+   presuppose a plain fixed-decimal string; scientific notation is non-conformant. Fixed-point
+   formatting (format(Decimal,'f')) reproduces Kraken's expected checksum 200/200 (see diagnosis.txt).

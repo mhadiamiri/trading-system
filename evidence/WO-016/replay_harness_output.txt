@@ -1,0 +1,11 @@
+=== WO-016 REPLAY HARNESS — 200 full captures (+34 summaries) ===
+PRODUCTION path reproduces captured computed_checksum : 200/200
+FIX CANDIDATE (fixed-point size) yields expected      : 200/200
+PROVES: the production apply+format path deterministically reproduces every captured
+failure, and precision-preserving (fixed-point) size formatting recovers Kraken's
+expected checksum for every one. Root cause = scientific-notation size formatting.
+capture[0] seq=5121 utc=2026-07-21T17:13:05.810195+00:00
+  expected=841650901 computed=3719506859
+  production _current_ladder_strings bids: [('66452.7', '1.0E-7'), ('66450.5', '0.00010325'), ('66447.2', '0.00005100'), ('66444.0', '0.03009238'), ('66443.9', '0.00005100'), ('66442.3', '0.03565831'), ('66442.2', '0.11945833'), ('66441.6', '0.22464879'), ('66441.5', '0.75254126'), ('66440.5', '0.00005100')]
+  production replay checksum = 3719506859  (==computed? True)
+  fix-candidate checksum     = 841650901  (==expected? True)

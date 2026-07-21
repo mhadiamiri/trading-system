@@ -1,0 +1,6 @@
+denominator: 200 full captures (+34 summaries) = 234 total failures
+repeated-price-in-one-update: 55/200 = 27.5%  (bids-side 52, asks-side 3)
+repeat-count distribution: {2: 30, 3: 12, 4: 5, 5: 4, 6: 2, 8: 1, 9: 1}
+SCIENTIFIC-NOTATION size in checksummed ladder: 200/200 = 100.0%
+time: first=2026-07-21T17:13:05.810195+00:00 last=2026-07-21T18:07:15.650046+00:00 span=3250s
+inter-failure gap (s): min=0.2 median=0.7 max=416.6 mean=13.9

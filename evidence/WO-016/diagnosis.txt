@@ -1,0 +1,87 @@
+WO-016 §1 — CHECKSUM-FAILURE DIAGNOSIS (offline; NO VENUE CONNECTION) — STOP AT SEAM
+================================================================================================
+Baseline: HEAD 6e977c2 (WO-008b-B-RERUN review). Artifacts: evidence/WO-008b-B-RERUN/
+instruments_dump.json → checksum_failure_captures (200 full) + checksum_failure_summaries (34).
+Harness: tools/replay_checksum_capture.py (drives the PRODUCTION path; rule 0.1h). Raw outputs:
+characterization.txt, replay_harness_output.txt. §1.2 citation: repeated_price_semantics.txt.
+
+DIAGNOSIS (one line): OURS and SPECIFIC. The checksum failures are caused by SCIENTIFIC-NOTATION
+formatting of small quantities in the checksum string — NOT by repeated prices. The fix candidate
+recovers Kraken's expected checksum for ALL 200 captures.
+
+── §1.1 CHARACTERIZE THE FAILURE SET (denominator stated) ────────────────────────────────────
+Denominator: 234 checksum failures total this run = 200 full captures + 34 one-line summaries;
+234 / 118,043 raw book messages = 0.198%. Figures below derived over the 200 FULL captures
+(the summaries carry only utc + expected/computed, used for time clustering).
+
+- REPEATED PRICES in one update: 55/200 = 27.5% (bids-side 52, asks-side 3). Repeat-count
+  distribution (occurrences of a price repeated k times in one update): {2:30, 3:12, 4:5, 5:4,
+  6:2, 8:1, 9:1}. ⇒ repeated prices are a MINORITY and cannot be the common cause.
+- SCIENTIFIC-NOTATION size in the checksummed top-10 ladder: 200/200 = 100.0%. ⇒ the ONE factor
+  present in every failure. (Derivation: a size string containing 'e'/'E', e.g. '1.0E-7'.)
+- SIDE concentration: repeated-price cases are bids-heavy (52 vs 3), consistent with small
+  residual bid quantities; the scientific-notation factor is present on whichever side holds a
+  sub-1e-6 level.
+- TIME: first 17:13:05Z, last 18:07:15Z, span 3250s (most of the run). Inter-failure gap median
+  0.7s, mean 13.9s, max 416.6s ⇒ arrives in BURSTS (clusters) separated by quiet stretches, not
+  uniformly and not in one block — consistent with "fires whenever a level is reduced to a tiny
+  residual qty," which happens intermittently.
+
+── §1.2 REPEATED-PRICE SEMANTICS, BY CITATION (0.1e) — see repeated_price_semantics.txt ───────
+Kraken v2 book checksum guide (docs.kraken.com/api/docs/guides/spot-ws-book-v2), verbatim:
+  "Process all price level updates in a message before calculating the checksum."
+  "Parse price and qty fields using a decimal or string decoder to preserve full precision
+   through deserialisation."
+  "Remove . from price" / "Remove leading zeros" / "Remove . from qty" / "Remove leading zeros".
+DOCUMENTED SILENCE on the explicit term "last-wins" for a price repeated within one update; but
+"process all updates before the checksum" means SEQUENTIAL application (later entry for the same
+price supersedes the earlier). BEHAVIORAL EVIDENCE (sovereign for what happened): our last-wins
+apply produced a book whose fixed-point checksum matches Kraken's EXPECTED for all 55 repeated-
+price captures (part of the 200/200 below) ⇒ our repeated-price apply is CORRECT. Inference
+labelled: repeated prices are a correlated SYMPTOM (a level reduced to a tiny residual qty), not
+the cause.
+
+── §1.3 HYPOTHESIS TEST AGAINST THE ARTIFACTS ────────────────────────────────────────────────
+Driving the PRODUCTION path (apply_snapshot → _current_ladder_strings → compute_checksum) over
+each capture's recorded top-10 ladder:
+  PRODUCTION reproduces the captured computed_checksum      : 200/200
+  FIX CANDIDATE (fixed-point size formatting) yields expected: 200/200
+One formatting rule reproduces Kraken's EXPECTED checksum for every capture ⇒ per §1.3 "the
+diagnosis is ours and specific." NO venue-side residue; NO escalation required.
+
+Worked example (capture[0], seq 5121): production _current_ladder_strings emits bid top
+('66452.7', '1.0E-7'); compute_checksum → 3719506859 = computed (WRONG). Formatting that same
+qty fixed-point ('0.00000010' → remove '.' → lstrip zeros → '10') → 841650901 = expected (RIGHT).
+
+── ROOT CAUSE (specific line) ────────────────────────────────────────────────────────────────
+src/trading/data/adapters/kraken_v2_book.py, _current_ladder_strings (≈ line 1216-1217):
+    bid_levels = [(str(p), str(q)) for p, q in self._local_book.bids[:10]]
+    ask_levels = [(str(p), str(q)) for p, q in self._local_book.asks[:10]]
+`str()` on a Decimal such as Decimal('1.0E-7') returns the SCIENTIFIC string '1.0E-7'. compute_
+checksum then does str.replace('.', '').lstrip('0') → '10E-7' instead of Kraken's '10'. A single
+malformed level corrupts the whole CRC. This violates Kraken's cited rule to "preserve full
+precision" with a decimal/string decoder — str() does not yield a plain decimal for small values.
+(The ground-truth vector passed because validate_kraken_ground_truth feeds decimal STRINGS
+directly, never exercising the Decimal→str scientific path — a real gap the live feed first hit.)
+
+── §1.4 REPLAY HARNESS (this WO's deliverable) ───────────────────────────────────────────────
+tools/replay_checksum_capture.py. It IMPORTS and calls the production KrakenV2BookAdapter
+(apply_snapshot, _current_ladder_strings, compute_checksum) — NOT a reimplementation (0.1h). It
+seeds a production LocalBookData with a capture's recorded top-10 ladder and drives the exact
+formatter that failed. Honest limit (0.1f): the 20 preceding frames cannot rebuild a
+thousands-of-frames book; the captured post-update ladder IS the production ground truth the CRC
+ran over, so seeding from it replays the failing computation faithfully.
+
+── PROPOSED FIX (STATED — NOT IMPLEMENTED; §2 is gated behind approval, rule 0.9 seam) ────────
+Format Decimal price/qty in FIXED-POINT (precision-preserving) notation at the single Decimal→
+string site, e.g. in _current_ladder_strings use `format(q, 'f')` (and `format(p, 'f')`) instead
+of `str(q)`. `format(Decimal, 'f')` never emits scientific notation and preserves the value.
+Verified: yields Kraken's expected checksum 200/200.
+  Interfaces touched: `_current_ladder_strings` — a PRIVATE method of KrakenV2BookAdapter. NO
+  public signature change; no `object.__setattr__`/type:ignore/monkeypatch (rule 0.1a NOT
+  triggered). `compute_checksum` (operates on strings) can stay unchanged; optionally it could
+  defensively reject a size string containing 'E' as a regression sentinel (0.1d, labelled).
+  §2 requirement (post-approval): replay all 200 captures to 200/200 as a permanent regression
+  fixture; bite proof (revert → replay FAILS with real output → restore → 200/200), sha256.
+
+STOP AT THE §1 SEAM — awaiting approval before implementing the fix (§2).

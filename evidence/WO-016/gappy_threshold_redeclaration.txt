@@ -1,0 +1,76 @@
+WO-016 §3 — GAPPY-THRESHOLD RE-DECLARATION (REPORT ONLY — nothing implemented; rules 0.4 / 3.1)
+================================================================================================
+The lead's PRINCIPLE stands: two questions (is the instrument STARVED? is the loop LAGGY?), two
+metrics, neither laundered through the other. The COMPOSITION of the VOID (starvation) metric is
+the lead's to rule. Below: the four figures with arithmetic, the case for recorded-gaps and its
+limits, the three components per rule 0.1j, and metric (b).
+
+Inputs (from evidence/WO-008b-B-RERUN/instruments_dump.json _lag_record + gap_ledger.attempt2.jsonl):
+  lag interval        = 0.1 s
+  lag record span     = 3600.00 s      (started→ended monotonic)
+  actual lag samples  = 33,062
+  run wall elapsed    = 3614.63 s
+  VENUE_DISCONNECT    = 2 gaps, 4.673 + 4.486 = 9.159 s  (connection genuinely DOWN)
+  ALL gaps            = 97 gaps, 218.83 s (95 CHECKSUM_RESYNC[conn UP] + 2 VENUE_DISCONNECT)
+  lag-record recorded gaps (missed wakes ≥ LAG_GAP_FACTOR): 12 gaps, 2.88 s total
+  EVIDENCE the sampler ran THROUGH gaps: samples inside VENUE_DISCONNECT gaps = 44/~47 and
+    41/~45; inside resync gaps ≈ dur/0.1. Mean interval per ACTUAL sample = 108.89 ms (vs 100 ms).
+
+── §3.2 THE FOUR FIGURES, WITH DERIVATIONS ──────────────────────────────────────────────────
+(i)   NAIVE  (span/interval − actual)/expected:
+        expected = 3600.00/0.1 = 35,999 ;  missed = 35,999 − 33,062 = 2,937
+        = 2,937 / 35,999 = 8.16 %.
+      What it actually measures: per-cycle OVERHEAD (108.89 vs 100 ms ⇒ ~8.9 % fewer samples than
+      an idealized instantaneous cycle) on a HEALTHY, continuously-sampling instrument. Not health.
+
+(ii)  CONNECTED-TIME-CORRECTED (exclude the 9.159 s of true disconnect from expected):
+        expected_conn = (3600.00 − 9.159)/0.1 = 35,908 ;  missed = 35,908 − 33,062 = 2,846
+        = 2,846 / 35,908 = 7.93 %.
+      Barely moves (8.16→7.93): the deficit is NOT disconnect-idle. Necessary-but-insufficient.
+      (Excluding ALL 218.83 s would give 2.22 %, but that is INVALID — the sampler took samples
+      during those gaps, so subtracting the time while keeping the samples double-corrects.)
+
+(iii) RECORDED-GAPS / WINDOW (proposal): recorded missed-wake time / window
+        = 2.88 s / 3600.00 s = 0.08 %.
+      Measures REAL missed wakes only; immune to per-cycle overhead and to connection-down idle.
+
+(iv)  CONNECTED TIME / WALL TIME (the lead's metric (b) — a corpus-quality figure, unaffected by
+      the correction):
+        connected (socket up) = 3614.63 − 9.159 = 3605.47 s ;  3605.47 / 3614.63 = 99.75 %.
+      Companion, more conservative: VALIDATED-EMISSION uptime = (3614.63 − 218.83)/3614.63
+        = 3395.80 / 3614.63 = 93.95 % (fraction of wall spent emitting validated states; resync
+        windows count as non-emitting even though the socket is up).
+
+── §3.3 THE CASE FOR RECORDED-GAPS, AND ITS LIMITS (honestly) ───────────────────────────────
+CASE: it measures the thing Branch 5 exists to detect — the sampler being STARVED off its wake —
+  and nothing else. It does not fire on per-cycle overhead (which is not starvation) nor on
+  connection-down idle (which is not starvation), and — the property that motivated the whole
+  re-ruling — it does NOT DRIFT toward spurious VOID as the capture lengthens: a 24 h capture at
+  this health accrues recorded-gap time proportional to real stalls, not proportional to overhead
+  or to accumulated resync time. 0.08 % ≪ 10 % here means the loop was genuinely not starved.
+LIMIT (what it CANNOT see): a missed wake only registers when an inter-wake interval overruns by
+  ≥ LAG_GAP_FACTOR. If the sampler were starved UNIFORMLY just UNDER that factor (every wake late
+  by, say, 1.5× interval when the factor is 2×), recorded-gaps would read ~0 while the loop was
+  pervasively mildly starved. So a figure three orders below its threshold is "excellent" ONLY if
+  the complementary signal agrees; it could otherwise be INSENSITIVE. THE COMPLEMENT: the lag
+  DISTRIBUTION (median 8.97 ms, p95 13.60 ms, elevated>100ms = 0.04 %) is sensitive to exactly
+  that sub-factor pervasive lag and here confirms health. ⇒ RECOMMEND: VOID uses recorded-gaps;
+  the SEPARATE "laggy?" question keeps the elevated-lag-distribution metric. Two questions, two
+  metrics — neither laundered through the other, and together they cover both failure modes.
+
+── §3.4 THREE COMPONENTS PER RULE 0.1j (for the proposed recorded-gaps VOID metric) ──────────
+  PER-SAMPLE BOUND : a wake is MISSED when its inter-wake interval overruns by ≥ LAG_GAP_FACTOR ×
+                     interval (the existing LagSampleRecord.gaps definition; LAG_GAP_FACTOR is a
+                     declared constant — state its value at implementation).
+  AGGREGATION WINDOW: the measurement window (this run: the 3600 s capture; at corpus scale, per
+                     analysis window — declare the window length in the corpus WO).
+  VERDICT FRACTION : VOID if Σ(recorded-gap durations) / window > F. PROPOSED F = 10 % (same
+                     magnitude as today, now over the correct quantity). F is a DECLARED THRESHOLD
+                     → the lead rules it (0.4 / 3.1); this states the form, not a ratified number.
+  (Rule 0.1j is satisfied only when all three are stated; this proposal states all three.)
+
+── §3.5 METRIC (b) THIS RUN ─────────────────────────────────────────────────────────────────
+  connected time / wall time = 99.75 %  (companion validated-emission uptime = 93.95 %).
+  Stands unchanged by the correction; report it as a separately named corpus-quality figure.
+
+NOTHING in the threshold path was changed (rule 0.4). This is a proposal for the lead's ruling.
