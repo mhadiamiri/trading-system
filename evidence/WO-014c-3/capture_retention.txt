@@ -1,0 +1,61 @@
+WO-014c-3 §0.2 — IS FAILURE-CAPTURE RETENTION BOUNDED?  (FINDING — do not implement w/o approval)
+================================================================================================
+Baseline: f065ff6. Authority: constitution.md. NO VENUE CONNECTION.
+Line numbers src/trading/data/adapters/kraken_v2_book.py @ f065ff6.
+
+ANSWER, PLAINLY: NO. Failure-capture retention is UNBOUNDED. There is no cap on the number of
+captures, nor on total bytes.
+
+EVIDENCE
+--------
+1. The store is an unbounded list, appended once per checksum failure, never trimmed:
+     - __init__:                self._checksum_failure_captures = []          (line 919)
+     - mismatch branch:         self._capture_checksum_failure(...)           (called on EVERY failure)
+     - _capture_checksum_failure: self._checksum_failure_captures.append(artifact)  (line 1232)
+   No cap, no eviction, no size accounting anywhere. get_checksum_failure_captures() returns the
+   whole list.
+2. PER-ARTIFACT SIZE is itself ~21 frames of raw wire text: the failing frame + up to
+   CHECKSUM_CAPTURE_PRECEDING_FRAMES (=20) preceding frames, each a full redacted book frame
+   (the SNAPSHOT fixture frame is ~900 bytes of JSON; a depth-10 book frame is comparable). So a
+   single capture is on the order of ~15-20 KB, and the count is unbounded.
+3. RELATED (pre-existing, same run, flagged for completeness): self.captured_raw_text
+   (lines 1877 init, 2087 append) retains the raw text of EVERY frame for the whole run and is
+   also unbounded — at the WO-008b-B anchor ~26 msg/s that is ~1.5M frames over 24h. The failure
+   capture SLICES from it. Both grow without bound; §0.2 asks specifically about failure capture,
+   but the two share the hazard and a bound should consider both.
+
+THE HAZARD (the WO's framing, confirmed)
+----------------------------------------
+The 0.021% observed failure rate makes unbounded failure retention look harmless. But the rate is
+UNDIAGNOSED — that is WHY the capture exists (WO-014c-2 §3). If failures CLUSTER pathologically —
+a resync loop that never validates, a rendering regression on a symbol whose digits we render
+wrong so EVERY frame fails its checksum — the capture appends on every failed frame with no
+ceiling. At ~26 msg/s all failing, that is ~26 captures/s x ~15 KB ~= ~0.4 MB/s ~= ~34 GB/day of
+failure captures alone, plus the unbounded captured_raw_text. A capture that fills the disk ENDS
+the run it was meant to document — and a run truncated by its own instrumentation is the failure
+this whole line of work exists to prevent.
+
+PROPOSED BOUND (NOT IMPLEMENTED — awaiting approval, per §0)
+-----------------------------------------------------------
+- CAP the retained failure captures at a declared ceiling — proposed MAX_FAILURE_CAPTURES (e.g.
+  200) OR a total-byte budget, whichever is cleaner; declared engineering judgment,
+  instance-overridable. 200 captures comfortably spans the observed 3-in-14,251 regime with
+  orders of magnitude of margin, while bounding worst-case retention to a few MB.
+- THE BOUND MUST ANNOUNCE ITSELF WHEN HIT — never silently truncate (a silently-truncated failure
+  ledger is the SAME defect class as the positional sampling §3 exists to kill). On reaching the
+  cap: (i) stop appending full artifacts, (ii) keep a COUNTER of dropped-after-cap failures so the
+  total failure count stays truthful, and (iii) emit a declared reason code ONCE — proposed
+  FAILURE_CAPTURE_CAPPED (prefix-free vs the vocabulary) — stating "cap N reached; further
+  failures counted but not fully captured." The corpus reader then knows the failure ledger is
+  capped, not complete, exactly as the gap ledger's GAP_LEDGER_INCOMPLETE announces its deficit.
+- PAIR WITH PERSISTENCE (§0.1): if captures are flushed to disk append-only and evicted from
+  memory after flush, the in-memory bound protects RAM while disk holds the full (bounded-by-a-
+  separate-disk-budget) record. The disk budget must ALSO announce itself when hit.
+- Consider resetting _checksum_failure_captures at capture start in get_live_market_data (today it
+  is reset only in __init__, so multiple captures on one adapter accumulate) — a minor correctness
+  point folded into the same change.
+RISK/SIZE: a cap + counter + reason code is a modest production change, but it introduces a new
+declared reason code and a truncation policy that must be bite-proven (drive > cap failures; show
+the counter and the announced code). Per §0 it is REPORTED, not absorbed.
+
+DISPOSITION: FINDING. Retention is UNBOUNDED. Not implemented. Awaiting approval.

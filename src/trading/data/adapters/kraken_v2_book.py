@@ -266,6 +266,19 @@ class GapLedger:
     putting two clock bases inside a gap record. Also carries the completeness accounting the
     default-deny corpus reader needs: a "no gap here" answer is only trustworthy against a
     ledger known to hold EVERY gap of the run, so a detected-but-uncompleted gap is STATED.
+
+    WALL/MONOTONIC DRIFT LIMIT (WO-014c-3 §0.3; declared, not a defect). The mapping above is
+    exact at the anchor instant; over a run the true wall clock diverges from it by the net NTP
+    correction, because time.monotonic() is not NTP-adjusted
+    (https://docs.python.org/3/library/time.html#time.monotonic) while the wall clock is slewed.
+    Expected error over a 24h run: < ~5 s typical (oscillator ~10-50 ppm, slewed out by NTP);
+    worst case bounded by the standard 500 ppm NTP slew ceiling at <= ~43 s/24h (pathological
+    continuous slew only). ACCEPTABLE: relative timing (every gap bound, inter-gap interval, and
+    cross-record correlation) is on monotonic and is UNAFFECTED — only the single absolute
+    calendar anchor drifts, and locating a gap to the right minute (to line it up with venue
+    maintenance / network events) tolerates seconds of error. A per-record wall timestamp would
+    instead import NTP steps into the sub-second correlation §A.2 protects; the single anchor is
+    strictly better and the drift is its declared cost.
     """
 
     run_wall_anchor: str                     # ISO-8601 UTC, captured ONCE at capture start

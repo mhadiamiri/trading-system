@@ -1,0 +1,55 @@
+WO-014c-3 §0.3 — WALL / MONOTONIC DRIFT BOUND  (DECLARED LIMIT — docstring updated)
+================================================================================================
+Baseline: f065ff6. Authority: constitution.md. This is NOT a defect — one anchor was the right
+call, and mixing clock bases per-record would be worse (it reintroduces the NTP-step corruption
+of sub-second correlation that WO-014c-1 §A.2 chose monotonic to avoid). It is an UNDECLARED
+LIMIT, and this project declares its limits. Declared here and pasted into the GapLedger docstring.
+
+THE MAPPING AND WHAT DRIFTS
+---------------------------
+    wall(t) = run_wall_anchor + (t - run_monotonic_anchor)
+is EXACT at the anchor instant. As a run proceeds, the TRUE wall clock diverges from this mapping
+because the two clocks do not advance at identical rates:
+  - time.monotonic() is NOT adjusted by NTP and never steps
+    (https://docs.python.org/3/library/time.html#time.monotonic) — it advances at the local
+    hardware oscillator's rate.
+  - the wall clock (datetime.now(UTC) / time.time()) IS disciplined by NTP, which SLEWS it toward
+    true time. So over a run the divergence between the mapping and true calendar time equals the
+    net NTP correction applied since the anchor.
+
+EXPECTED BOUND OVER A 24-HOUR RUN
+---------------------------------
+Two contributions, both bounded:
+  (1) Oscillator frequency error. A consumer TCXO/crystal is typically within ~±10-50 ppm of
+      nominal. Integrated over 86,400 s that is ~0.9-4.3 s. On an NTP-synced host the wall clock
+      is slewed to cancel exactly this, so the mapping-vs-true divergence over 24h is on this
+      order in steady state: ~1-4 s typical.
+  (2) NTP slew ceiling. The standard NTP/adjtime slew rate is capped at 500 ppm (RFC 5905's
+      discipline loop / ntpd). At the ceiling that is 500e-6 x 86,400 = 43.2 s over 24h — but the
+      ceiling is only reached while correcting a LARGE standing offset (e.g. a clock that started
+      tens of seconds off). A host that is already synced when the run starts sits far below it.
+  NTP STEP corrections (offset > ~128 ms) would jump the wall clock discontinuously; a host that
+  is synced at run start should not step during the run. If one occurs it is a discrete event, not
+  gradual drift, and would show as a one-time calendar offset from that point.
+
+  DECLARED BOUND: typical mapping-vs-calendar error over a 24h run < ~5 s; worst case bounded by
+  the 500 ppm NTP slew ceiling at <= ~43 s over 24h (pathological continuous slew only). Declared
+  engineering judgment grounded in the NTP slew discipline; the monotonic property is cited above.
+
+IS THIS ACCEPTABLE? — YES.
+--------------------------
+- RELATIVE timing is EXACT. Every gap bound, every inter-gap interval, and every correlation with
+  the lag/pong/throughput records is on time.monotonic() (WO-014c-1 §A.2) and is UNAFFECTED by the
+  drift. The drift touches ONLY the single absolute calendar anchor.
+- The calendar anchor exists to LOCATE a gap in wall time so it can be lined up with external
+  events (venue maintenance windows, network incidents), which are known at seconds-to-minutes
+  granularity. A few seconds of error over 24h (typical), or tens of seconds worst case, does not
+  impair that. A gap remains locatable to the right minute, which is what calendar location is for.
+- The alternative — a wall timestamp per record — would import NTP steps and slews INTO the
+  sub-second correlation that the monotonic clock was chosen to protect. The single-anchor design
+  is strictly better; the drift is its declared, acceptable cost.
+
+DOCSTRING: added to GapLedger (src/trading/data/adapters/kraken_v2_book.py), same discipline as
+the pong observer's active-probe limit. See the "WALL/MONOTONIC DRIFT LIMIT" paragraph.
+
+DISPOSITION: DECLARED LIMIT. Docstring updated (trivial change, instructed by §0.3). Acceptable.

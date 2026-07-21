@@ -1,0 +1,73 @@
+WO-014c-3 §0.1 — IS THE GAP LEDGER PERSISTED?  (FINDING — do not implement without approval)
+================================================================================================
+Baseline: f065ff6 (WO-014c-2 report commit). Authority: constitution.md. NO VENUE CONNECTION.
+All line numbers src/trading/data/adapters/kraken_v2_book.py @ f065ff6.
+
+ANSWER, PLAINLY: NO. The gap ledger is NOT persisted. It is in-memory instance state only, and
+it is never written to disk — not periodically, not at capture end, not on a breaker trip.
+
+EVIDENCE
+--------
+1. The ledger is a plain in-memory object created per capture and mutated in place:
+     - __init__: self._gap_ledger = None                         (line 913)
+     - get_live_market_data: self._gap_ledger = GapLedger(...)    (created at capture start)
+     - get_gap_ledger(): returns self._gap_ledger                 (accessor only)
+2. Grep for ANY disk write of the ledger / captures / capture_terminated / captured_raw_text
+   across src/ and tools/:
+     $ grep -rnE "get_gap_ledger|_gap_ledger|capture_terminated|captured_raw_text|
+                  get_checksum_failure_captures|_checksum_failure_captures" src/ tools/
+                  --include=*.py | grep -v kraken_v2_book.py
+     => (nothing — consumed NOWHERE outside the adapter)
+   The only json.dumps in the adapter are WebSocket SENDS (subscribe / unsubscribe / ping),
+   not persistence (lines 1522-1523, 1899-1900, 1983). There is no capture-to-disk runner.
+3. So the ONLY way a run's ledger reaches durable storage today is if an external caller holds
+   the adapter, catches whatever the capture raised, calls get_gap_ledger(), and writes it —
+   and no such caller exists in the tree.
+
+SURVIVAL ANALYSIS (the questions the WO asks)
+---------------------------------------------
+- BREAKER TRIP: survives IN MEMORY only. _trip_circuit_breaker marks the open gap(s) terminal
+  and sets capture_terminated (lines ~1560-1573 region), the exception propagates through
+  get_live_market_data, and its `finally` runs (sets run_end_monotonic, frames_captured, checks
+  incomplete, closes the socket) — but writes NOTHING to disk. The terminal record exists on the
+  object; retrievable via get_gap_ledger() ONLY IF the caller catches CircuitBreakerTripped and
+  reads it. This is the terminal event the ledger most needs to document, and today it is
+  documented only in RAM. A ledger "flushed only on clean shutdown" would be lost here — and in
+  fact it is not flushed even on clean shutdown.
+- UNHANDLED EXCEPTION: the `finally` still runs (finalizes the in-memory ledger), but nothing is
+  written; the object is then unreferenced and lost. No durable record.
+- PROCESS KILL (SIGKILL / OOM / power loss): the `finally` does NOT run; the entire in-memory
+  ledger is lost with the process.
+- END-ONLY? It is worse than end-only: there is no write at the end either.
+
+WHY THIS MATTERS (the WO's own framing, confirmed)
+--------------------------------------------------
+A 60-minute run — and later a 24-hour capture — accumulates gap records across ~116
+reconnects/24h. With no persistence, a run that dies at minute 58 loses EVERY gap record it
+accumulated. The gap ledger exists so that "a gap not recorded when it happens cannot be
+reconstructed later" — but an unpersisted ledger is only "recorded" until the process ends,
+which is the same failure one altitude up.
+
+PROPOSED FIX (NOT IMPLEMENTED — awaiting approval, per §0)
+---------------------------------------------------------
+Append-only, crash-resilient, redacted persistence — three write points so the durable record
+matches the in-memory one at every failure mode:
+  (a) INCREMENTAL append: write each GapRecord to an append-only JSONL as it OPENS, and write a
+      close/terminal update as it resolves (or write-on-close with an open-marker). This is what
+      survives a PROCESS KILL mid-run — the minute-58 scenario. Append-only + fsync-per-record
+      (or per-N) bounds loss to the last unflushed record.
+  (b) TERMINAL flush: on a breaker trip, flush the full ledger + capture_terminated forensic tail
+      BEFORE the exception leaves _trip_circuit_breaker (or in the `finally`). The trip is the
+      event it most needs to survive.
+  (c) FINALIZE flush in the `finally`: run_end_monotonic, frames_captured, the incomplete list,
+      and the run anchor — always written on any non-SIGKILL exit.
+  Redact every written line via the mechanical redaction module (redact/scan), same as §3
+  failure capture. Format: append-only JSONL (Principle VIII: append-only raw path), one object
+  per record + one run-summary object. Location: a run-scoped capture directory (declared, not
+  guessed). This pairs with §0.2's retention bound so persistence cannot itself fill the disk.
+RISK/SIZE: this is a NON-TRIVIAL production change (new I/O path, fsync policy, redaction on the
+write path, a run-scoped output location, and tests/bite proof). Per §0 it is REPORTED, not
+absorbed. Recommend it be its own slice with a bite proof (kill the process mid-run; show the
+JSONL holds the gaps accumulated before the kill).
+
+DISPOSITION: FINDING. Persistence is ABSENT. Not implemented. Awaiting approval.
