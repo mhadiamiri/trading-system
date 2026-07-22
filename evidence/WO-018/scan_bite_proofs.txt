@@ -1,0 +1,119 @@
+WO-018 §5 BITE PROOFS — the completeness SCAN bites (four artifacts each, sha256)
+
+==============================================================================
+PROOF: emitted-but-undeclared EVENT_TYPE -> scan fails naming it
+  test: tests/test_reason_code_vocabulary.py::TestRaisedImpliesDeclared::test_every_emitted_event_type_is_declared
+  target: src\trading\loop\live.py
+  sha256 BEFORE: 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+
+-- ARTIFACT 1 — PASS (clean vocabulary)  [rc=0] --
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (defect injected)  [rc=1] --
+INJECTED: 'event_type="MARKET_DATA_RECEIVED",  # BITEPROOF event_type="BITEPROOF_'
+failure NAMES 'BITEPROOF_EVENT_XYZZY': True
+E   AssertionError: event_types EMITTED in production but NOT DECLARED in VALID_EVENT_TYPES: ['BITEPROOF_EVENT_XYZZY']. The event_type namespace is governed now (WO-018 §3).
+E   assert ['BITEPROOF_EVENT_XYZZY'] == []
+E     Left contains one more item: 'BITEPROOF_EVENT_XYZZY'
+
+-- ARTIFACT 3 — PASS (injection removed)  [rc=0] --
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+EXACT RESTORE: YES — byte-identical
+RESULT: A1 PASS=True  A2 REAL-FAIL=True (named=True)  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF: emitted-but-undeclared REASON_CODE (non-colon keyword) -> scan fails naming it
+  test: tests/test_reason_code_vocabulary.py::TestRaisedImpliesDeclared::test_every_emitted_reason_code_is_declared
+  target: src\trading\loop\live.py
+  sha256 BEFORE: 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+
+-- ARTIFACT 1 — PASS (clean vocabulary)  [rc=0] --
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (defect injected)  [rc=1] --
+INJECTED: 'reason_code="DATA_RECEIVED",  # BITEPROOF reason_code="BITEPROOF_RC_XY'
+failure NAMES 'BITEPROOF_RC_XYZZY': True
+E   AssertionError: reason codes EMITTED in production (colon or keyword form) but NOT DECLARED: ['BITEPROOF_RC_XYZZY']. The reason_code= escape hatch (WO-018 §2) must stay closed.
+E   assert ['BITEPROOF_RC_XYZZY'] == []
+E     Left contains one more item: 'BITEPROOF_RC_XYZZY'
+
+-- ARTIFACT 3 — PASS (injection removed)  [rc=0] --
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+EXACT RESTORE: YES — byte-identical
+RESULT: A1 PASS=True  A2 REAL-FAIL=True (named=True)  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF: declared-but-unproducible reason_code -> scan fails naming it
+  test: tests/test_reason_code_vocabulary.py::TestDeclaredImpliesProducible::test_every_declared_reason_code_is_producible
+  target: src\trading\logkit\decision.py
+  sha256 BEFORE: a90881d750f4f44feea0afbb489b3a4134d34f3ba365b897c8926302e448f672
+
+-- ARTIFACT 1 — PASS (clean vocabulary)  [rc=0] --
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (defect injected)  [rc=1] --
+INJECTED: '"SHORT_SIGNAL", "BITEPROOF_UNPRODUCIBLE_XYZZY",  # Short position sign'
+failure NAMES 'BITEPROOF_UNPRODUCIBLE_XYZZY': True
+E   AssertionError: declared reason codes that NO code path can produce: ['BITEPROOF_UNPRODUCIBLE_XYZZY'] (rule 0.1d in vocabulary form). Fully enforced — no exemptions (WO-013 §2).
+E     Left contains one more item: 'BITEPROOF_UNPRODUCIBLE_XYZZY'
+
+-- ARTIFACT 3 — PASS (injection removed)  [rc=0] --
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : a90881d750f4f44feea0afbb489b3a4134d34f3ba365b897c8926302e448f672
+EXACT RESTORE: YES — byte-identical
+RESULT: A1 PASS=True  A2 REAL-FAIL=True (named=True)  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF: cross-namespace PREFIX COLLISION -> scan fails naming both
+  test: tests/test_reason_code_vocabulary.py::TestPrefixFreedomAcrossUnion::test_declared_union_is_prefix_free
+  target: src\trading\logkit\decision.py
+  sha256 BEFORE: a90881d750f4f44feea0afbb489b3a4134d34f3ba365b897c8926302e448f672
+
+-- ARTIFACT 1 — PASS (clean vocabulary)  [rc=0] --
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.01s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (defect injected)  [rc=1] --
+INJECTED: '"payload_error", "CHECKSUM",  # BITEPROOF cross-namespace collision'
+failure NAMES 'CHECKSUM': True
+E   AssertionError: PREFIX COLLISION in the UNION of reason_code + event_type vocabularies: [('CHECKSUM', 'CHECKSUM_INPUT_SYNTHESIZED_NOTATION'), ('CHECKSUM', 'CHECKSUM_RESYNC'), ('CHECKSUM', 'CHECKSUM_WIRE_STRING_MISSING')]. A cross-namespace prefix is how a canonical literal borrows credibility (WO-013 §0).
+E   assert [('CHECKSUM',...ING_MISSING')] == []
+E     Left contains 3 more items, first e
+
+-- ARTIFACT 3 — PASS (injection removed)  [rc=0] --
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.01s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : a90881d750f4f44feea0afbb489b3a4134d34f3ba365b897c8926302e448f672
+EXACT RESTORE: YES — byte-identical
+RESULT: A1 PASS=True  A2 REAL-FAIL=True (named=True)  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+ALL FOUR PROOFS: OK

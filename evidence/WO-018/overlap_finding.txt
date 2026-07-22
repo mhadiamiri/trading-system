@@ -1,0 +1,63 @@
+WO-018 §6 — THE OVERLAP FINDING (REPORT ONLY). The lead rules the taxonomy. I ACTED ON NOTHING:
+the 12 emitted reason codes and the event_type vocabulary were DECLARED AS EMITTED — no merge, no
+rename, no restructure (SCOPE DISCIPLINE). This is evidence for a ruling, not a change.
+
+================================================================================================
+Q1 — VALUES APPEARING IN BOTH NAMESPACES (from the §1 enumeration):
+
+  NO_SIGNAL          event_type="NO_SIGNAL" (live.py:209) AND reason_code="NO_SIGNAL" (live.py:210)
+                     — the SAME STRING emitted in BOTH fields of the SAME log line.
+  PASS / CLAMP / VETO  declared reason_code AND emitted event_type (RiskDecision.value, live.py:247).
+                     The reason_code emitted for a risk decision is the specific RISK_* code, NOT the
+                     bare PASS/CLAMP/VETO — so PASS/CLAMP/VETO are declared-as-reason-codes but emitted
+                     ONLY as event_types. (This is the residue of WO-013 §0: they read "producible" as
+                     reason codes solely via the enum/event_type literal.)
+  ORDER_FILLED       declared reason_code AND emitted event_type="ORDER_FILLED" (live.py:281). The
+                     reason_code emitted for the fill is EXEC_ORDER_FILLED — a near-duplicate.
+  ORDER_REJECTED     declared reason_code AND emitted event_type="ORDER_REJECTED" (live.py:306). The
+                     reason_code in that path is the specific cause (KILL_SWITCH_ENGAGED / RISK_VETO_*).
+
+================================================================================================
+Q2 — IS THERE A RULE FOR WHICH NAMESPACE A FACT BELONGS IN?
+INFERABLE (not stated anywhere):
+  event_type  = the KIND of decision-log line — WHAT happened (NO_SIGNAL, SIGNAL_GENERATED,
+                MARKET_DATA_RECEIVED, ORDER_FILLED, ORDER_REJECTED, FEED_PAUSED, and the risk decision
+                class PASS/CLAMP/VETO).
+  reason_code = the specific controlled-vocabulary CAUSE — WHY (LONG_SIGNAL vs SHORT_SIGNAL,
+                RISK_VETO_KILL_SWITCH vs RISK_VETO_DAILY_LOSS, EXEC_ORDER_FILLED, KILL_SWITCH_ENGAGED).
+The rule HOLDS where the two carry DIFFERENT information (event_type=ORDER_REJECTED + reason_code=
+RISK_VETO_KILL_SWITCH: the line kind + the distinct cause — good separation, Principle VI). It BLURS
+where they carry the same or near-same string.
+
+================================================================================================
+Q3 — THE BLURRED CASES, NAMED:
+  (a) NO_SIGNAL — event_type AND reason_code are the IDENTICAL string on the same line. The reason_code
+      adds nothing the event_type does not already say. Pure redundancy; the clearest blur.
+  (b) ORDER_FILLED (event_type) vs EXEC_ORDER_FILLED (reason_code) — differ only by the EXEC_ prefix;
+      the same fact named twice, once per namespace convention. The fill event — Principle VIII's atom.
+  (c) PASS / CLAMP / VETO (event_type, from the enum) vs RISK_PASS / RISK_CLAMP_MAX_POSITION / RISK_VETO_*
+      (reason_code) — RELATED (decision class vs specific cause) but the bare PASS/CLAMP/VETO are ALSO
+      declared as reason codes while never emitted as such; that declared-but-emitted-as-event_type-only
+      status is the "borrow credibility" residue, now visible because both namespaces are governed.
+  (d) CASING SPLIT (separate but taxonomy-adjacent): feed-layer event_types are lowercase
+      (feed_connected, feed_disconnected, feed_error, payload_error) while loop-layer are UPPERCASE
+      (FEED_PAUSED, MARKET_DATA_RECEIVED, ...). Two conventions in one namespace. Declared as emitted;
+      normalising is a rename the lead rules, not this WO.
+
+================================================================================================
+POSSIBLE TAXONOMY DIRECTIONS (for the lead — NOT acted on, listed only so the ruling has options):
+  - Keep both namespaces, define the event_type=KIND / reason_code=CAUSE rule explicitly, and retire
+    the redundant duplicates (NO_SIGNAL reason_code; fold ORDER_FILLED/EXEC_ORDER_FILLED; drop bare
+    PASS/CLAMP/VETO as reason codes). This would be a follow-up WO with emission-code changes (hot path).
+  - Or rule that event_type is free-text descriptive and reason_code is the sole controlled vocabulary,
+    and STOP emitting event_type as a code-shaped literal (removing the borrow-credibility surface).
+  - Normalise event_type casing.
+Each is a RENAME/RESTRUCTURE — out of scope here. Reported; nothing done.
+
+DEAD CONSTANT (from §1, restated): risk/engine.py REASON_VETO_INSUFFICIENT_BALANCE is defined but
+never returned/emitted. Left as-is (removing risk logic is out of a governance WO's scope; it may be
+intended future work). NOT declared (declaring a never-emitted code recreates the old declared-but-
+unproducible-shape, even though its literal makes it technically producible). Flagged for the lead.
+
+CONFIRMATION: I acted on NONE of the above. The only changes this WO made were DECLARATIONS (of already-
+emitted values) and the test-side scan. No namespace was merged, renamed, or restructured.

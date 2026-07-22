@@ -38,6 +38,16 @@ class Layer(Enum):
 # Valid reason codes per layer (documented for reference)
 VALID_REASON_CODES = {
     "DATA": [
+        # WO-018 §2: feed-lifecycle + per-frame reason codes the loop/feed emit as reason_code=
+        # keyword literals — invisible to the colon-form scan (the escape hatch). DECLARED (real
+        # emitted audit vocabulary, Principle VIII). DATA_RECEIVED is emitted per MarketState with
+        # event_type="MARKET_DATA_RECEIVED" (the same-fact overlap is a §6 finding, not a retire).
+        "DATA_RECEIVED",  # a market-data frame was received and processed (live.py)
+        "FEED_CONNECTED",  # feed transport connected (kraken_public)
+        "FEED_MALFORMED_PAYLOAD",  # a received payload failed to parse
+        "FEED_UNEXPECTED_PAYLOAD",  # a received payload was well-formed but unexpected
+        "FEED_CONNECTION_CLOSED",  # feed transport closed
+        "FEED_CONNECTION_ERROR",  # feed transport errored
         "CHECKSUM_RESYNC",  # T018: Reconnecting after 5 consecutive checksum failures
         # WO-016 §A (D27): REGRESSION SENTINEL (rule 0.1d — its trigger CANNOT occur while the
         # fixed-point render holds; legitimate, but labelled, not dressed as a data-path guard).
@@ -162,6 +172,19 @@ VALID_REASON_CODES = {
         "CLAMP",  # Position size reduced toward zero
         "VETO",  # Trade rejected by risk limits
         "KILL_SWITCH_ENGAGED",  # Kill switch activated
+        # WO-018 §2: the DISTINCT reason codes the risk engine actually EMITS (engine.py REASON_*,
+        # returned by check() and logged via reason_code=). They were emitted via VARIABLE
+        # indirection (reason_code=<var>) and so lived outside the colon-form scan (the reason_code=
+        # escape hatch). DECLARED, not retired: these ARE the canonical risk reason codes in use, and
+        # Principle VI requires each clamp/veto to emit a DISTINCT code separable from a clean pass —
+        # RISK_VETO_KILL_SWITCH vs RISK_VETO_DAILY_LOSS are different causes. (The bare PASS/CLAMP/VETO
+        # above are emitted as EVENT_TYPES via RiskDecision.value; that overlap is a reported taxonomy
+        # finding, WO-018 §6 — NOT license to retire these emitted reason codes here.)
+        "RISK_PASS",  # clean pass (engine REASON_PASS)
+        "RISK_CLAMP_MAX_POSITION",  # size clamped by the max-position limit
+        "RISK_VETO_KILL_SWITCH",  # vetoed: kill switch engaged
+        "RISK_VETO_DAILY_LOSS",  # vetoed: daily-loss limit
+        "RISK_VETO_INVALID_INPUT",  # vetoed: invalid desired-position input
     ],
     "STRATEGY": [
         "NO_SIGNAL",  # No trading signal
@@ -171,12 +194,58 @@ VALID_REASON_CODES = {
     "EXECUTION": [
         "ORDER_FILLED",  # Order successfully filled
         "ORDER_REJECTED",  # Order rejected by exchange
+        # WO-018 §2: THE FILL EVENT the loop actually emits (live.py reason_code="EXEC_ORDER_FILLED",
+        # event_type="ORDER_FILLED"). It was a reason_code= keyword literal invisible to the colon-form
+        # scan — the decisive weight of this WO (the atom of every post-trade audit, Principle VIII).
+        # DECLARED, not retired: EXEC_ is the execution-namespace convention (EXEC_NO_MARKET_STATE etc.).
+        # Whether the emitted EXEC_ORDER_FILLED and the declared-but-event_type-only ORDER_FILLED should
+        # be one code is a TAXONOMY finding for a ruling (WO-018 §6), not a rename to make in-WO.
+        "EXEC_ORDER_FILLED",
         # Paper-venue staleness guards (WO-008a-R6). Declared in WO-011 §5: they
         # were raised in production (paper.py) but never declared — the exact
         # raised-but-undeclared gap the vocabulary-completeness check now closes.
         "EXEC_NO_MARKET_STATE",  # place_order before set_market_state
         "EXEC_MARKET_STATE_TIMESTAMP_MISSING",  # staleness-guard invariant violation
         "EXEC_STALE_MARKET_STATE",  # MarketState older than the staleness threshold
+    ],
+}
+
+
+# WO-018 §3: the event_type namespace, now GOVERNED. Previously entirely ungoverned — no declared
+# vocabulary, no scan — which is precisely what masked WO-013's §0 defect (canonical codes read
+# "producible" via their event_type literals while the emitted reason_code said something else). An
+# ungoverned namespace adjacent to a governed one lets canonical-looking literals borrow the governed
+# namespace's credibility. Structured exactly as VALID_REASON_CODES; the completeness scan reads it
+# for the same four properties (raised=>declared, declared=>producible, prefix-freedom across the
+# UNION with reason codes, scan reads EMITTED strings).
+VALID_EVENT_TYPES = {
+    # kraken_public feed events (log_feed_event) — emitted LOWERCASE. FINDING (§6): the feed layer
+    # uses lowercase event_types while the loop layer uses UPPERCASE. Declared AS EMITTED (governance,
+    # not a rename); normalising the casing is a taxonomy question for a ruling, not this WO.
+    "FEED": [
+        "feed_connected",
+        "feed_disconnected",
+        "feed_error",
+        "payload_error",
+    ],
+    # live.py loop events (log_decision) — emitted UPPERCASE.
+    "LOOP": [
+        "FEED_PAUSED",           # feed paused on book unavailability
+        "MARKET_DATA_RECEIVED",  # a market-data frame reached the loop
+        "NO_SIGNAL",             # strategy produced no signal (also a reason_code — §6 overlap)
+        "SIGNAL_GENERATED",      # strategy produced a long/short signal
+        "ORDER_FILLED",          # an order filled (also a declared reason_code — §6 overlap)
+        "ORDER_REJECTED",        # an order was rejected/blocked (also a declared reason_code — §6 overlap)
+    ],
+    # Risk-decision event_types are emitted as RiskDecision.value (live.py event_type=decision.value).
+    # These MUST equal the RiskDecision enum values; a hand-restated enum is a second source of truth
+    # waiting to diverge (§3). decision.py (logkit) must not import trading.risk (layering / cycle), so
+    # the sync is enforced MECHANICALLY by test_event_type_risk_values_match_enum in the vocabulary
+    # tests (which may import both) — drift fails there, not silently.
+    "RISK": [
+        "PASS",
+        "CLAMP",
+        "VETO",
     ],
 }
 

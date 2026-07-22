@@ -1,0 +1,16 @@
+### WO-018 §9 VERIFY — DETERMINISTIC ###
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 215 passed in 245.80s (0:04:05) =======================
+### RANDOMIZED (--randomly-seed=20260730) ###
+tests\integration\test_double_count_bite_proof.py .                      [100%]
+
+======================= 215 passed in 245.62s (0:04:05) =======================
+### LINT-IMPORTS ###
+
+Contracts: 6 kept, 0 broken.
+### CONTRACT ###
+PASS: import-linter evaluated 6 contracts (expected 6)
+### RUFF ###
+All checks passed!
+### DONE ###

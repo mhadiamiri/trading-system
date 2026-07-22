@@ -1,17 +1,25 @@
 """
-Reason-code vocabulary safety (WO-008b-A3, addendum B).
+Vocabulary safety + completeness across BOTH governed namespaces (reason_code AND event_type).
 
-RULED: **NO REASON CODE MAY BE A PREFIX OF ANOTHER REASON CODE.**
+RULED (WO-008b-A3 addendum B): NO CODE MAY BE A PREFIX OF ANOTHER — a latent trap for every grep,
+log query and dashboard filter. Extended by WO-018 to the UNION of reason_code and event_type,
+because a cross-namespace prefix/identity is exactly how a canonical literal borrows the governed
+namespace's credibility (WO-013 §0: NO_SIGNAL read "producible" via its event_type literal).
 
-Why this outlives the bug that prompted it: even with every assertion converted
-to exact matching, prefix-overlapping codes remain a latent trap for every future
-grep, log query and dashboard filter. The VOCABULARY must be safe, not merely
-today's assertions against it.
+THE FOUR PROPERTIES, now across BOTH namespaces (WO-018 §4):
+  1. raised/emitted => declared     — both namespaces, both LITERAL forms (colon "CODE:" AND
+                                       keyword reason_code=/event_type=). Closes the reason_code=
+                                       escape hatch (WO-018 §2).
+  2. declared => producible         — both namespaces, scan EXCLUDING the declaration site.
+  3. prefix-freedom across the UNION of both vocabularies.
+  4. the scan reads EMITTED strings, never the declared lists.
 
-The bug that prompted it: `test_no_market_state_guard` passed with its own guard
-disabled, because `EXEC_NO_MARKET_STATE` is a prefix of the
-`EXEC_NO_MARKET_STATE_TIMESTAMP` raised by the adjacent guard — so a substring
-assertion could not tell the two mechanisms apart (rule 0.1d).
+Detection-method note (WO-018 §1): the scan matches the LITERAL forms. Values emitted via VARIABLE
+indirection (reason_code=<var>: the risk REASON_* constants, signal_reason, e.reason_code; and
+event_type=decision.value) are NOT statically resolved here — they are covered by (a) declaring their
+resolved values, verified in the §1 denominator, and (b) for the RiskDecision enum event_types, the
+mechanical drift guard test_event_type_risk_values_match_enum below. A check is bounded by the form it
+matches and the namespace it reads (WO-018 §8); those bounds are stated, not hidden.
 """
 
 import itertools
@@ -20,190 +28,152 @@ from pathlib import Path
 
 import pytest
 
-from trading.logkit.decision import VALID_REASON_CODES
+from trading.logkit.decision import VALID_REASON_CODES, VALID_EVENT_TYPES
 
 SRC = Path(__file__).resolve().parents[1] / "src"
+_DECLARATION_SITE = "decision.py"  # where VALID_REASON_CODES and VALID_EVENT_TYPES live
 
-# Codes raised in production but not (yet) declared in VALID_REASON_CODES.
-# Discovered by WO-008b-A3's sweep: the staleness codes were never added to the
-# vocabulary, so a check over the declared list alone would have passed while the
-# real collision sat in raise strings. Both sets are checked.
-_RAISED_CODE_RE = re.compile(r'"([A-Z][A-Z0-9_]{3,}):')
+# ── Literal-form scanners (WO-018 §2/§4: both forms, both namespaces) ────────────────────────────
+_RC_COLON = re.compile(r'"([A-Z][A-Z0-9_]{3,}):')                       # form (1): raise "CODE:"
+_RC_KWARG = re.compile(r'reason_code(?:\s*:\s*\w+)?\s*=\s*"([A-Z_][A-Z0-9_]{3,})"')  # form (2)
+_ET_KWARG = re.compile(r'event_type\s*=\s*"([A-Za-z_][A-Za-z0-9_]{2,})"')            # form (3), any case
 
 
-def _declared_codes():
+def _src_files():
+    return sorted(SRC.rglob("*.py"))
+
+
+def _declared_reason_codes():
     return sorted(set(itertools.chain.from_iterable(VALID_REASON_CODES.values())))
 
 
-def _raised_codes():
-    """Scrape reason codes from raise/message strings across production code."""
+def _declared_event_types():
+    return sorted(set(itertools.chain.from_iterable(VALID_EVENT_TYPES.values())))
+
+
+def _emitted_reason_codes():
+    """Every reason_code EMITTED in production, by literal form (colon + keyword). Reads strings, not
+    the declared list."""
     found = set()
-    for path in SRC.rglob("*.py"):
-        for match in _RAISED_CODE_RE.finditer(path.read_text(encoding="utf-8")):
-            found.add(match.group(1))
+    for path in _src_files():
+        text = path.read_text(encoding="utf-8")
+        found.update(_RC_COLON.findall(text))
+        found.update(_RC_KWARG.findall(text))
     return sorted(found)
+
+
+def _emitted_event_types():
+    """Every event_type EMITTED in production (keyword form) PLUS the RiskDecision enum values, which
+    are emitted via event_type=decision.value (variable form)."""
+    found = set()
+    for path in _src_files():
+        found.update(_ET_KWARG.findall(path.read_text(encoding="utf-8")))
+    from trading.risk.interface import RiskDecision
+    found.update(d.value for d in RiskDecision)
+    return sorted(found)
+
+
+def _production_source_text():
+    """Production source concatenated, EXCLUDING the declaration site (decision.py). A declaration is
+    not a code path emitting the value (WO-011 §5 / rule 0.1d) — producibility means EMITTED elsewhere."""
+    return "\n".join(p.read_text(encoding="utf-8") for p in _src_files()
+                     if p.name != _DECLARATION_SITE)
+
+
+def _is_producible(code, source_text):
+    return (f'"{code}"' in source_text or f"'{code}'" in source_text
+            or f'"{code}:' in source_text or f"'{code}:" in source_text)
 
 
 def _prefix_collisions(codes):
     return [(a, b) for a, b in itertools.permutations(codes, 2) if b.startswith(a)]
 
 
-_DECLARATION_SITE = "decision.py"  # where VALID_REASON_CODES lives
-
-
-def _production_source_text():
-    """
-    Production source concatenated, EXCLUDING the vocabulary declaration site.
-
-    A code's DECLARATION in VALID_REASON_CODES is not a code path emitting it. If
-    the declaration counted as production, property 2 could never fail (it would be
-    a 0.1d false guarantee — declaring a code would 'prove' it producible). So the
-    declaration module is excluded, and producibility means EMITTED elsewhere.
-    """
-    return "\n".join(
-        p.read_text(encoding="utf-8")
-        for p in SRC.rglob("*.py")
-        if p.name != _DECLARATION_SITE
-    )
-
-
-# WO-013 §2: the known-set exemption is REMOVED. It formerly held KILL_SWITCH_ENGAGED, LONG_SIGNAL,
-# and SHORT_SIGNAL — declared codes that no code path emitted. WO-013 wired all three to the
-# PRODUCTION decision-log emission path (interface.py KillSwitchEngagedError default;
-# live.py signal reason_codes), each certified by a behavioral proof
-# (tests/integration/test_reason_code_emission.py). `declared => producible` now holds with NO
-# exceptions; the empty set below is retained only so the enforcement bite proof has a symbol to
-# assert against, and to make the closure explicit rather than deleting the concept silently.
-_KNOWN_UNPRODUCIBLE = {}
-
-
-def _is_producible(code, source_text):
-    """
-    A declared code is producible if it appears as a STRING LITERAL in production.
-
-    Broader than _raised_codes() (which only sees colon-form raise strings): risk
-    and strategy codes like PASS/VETO/NO_SIGNAL are produced as reason_code values
-    and enum members, never raised with a colon. A declared code that appears
-    nowhere in production as a literal is one no code path can produce (rule 0.1d
-    in vocabulary form).
-    """
-    return (
-        f'"{code}"' in source_text
-        or f"'{code}'" in source_text
-        or f'"{code}:' in source_text
-        or f"'{code}:" in source_text
-    )
-
-
-class TestReasonCodePrefixFreedom:
-    """The ruled naming constraint, enforced mechanically."""
-
-    def test_declared_vocabulary_is_prefix_free(self):
-        codes = _declared_codes()
-        assert codes, "reason-code vocabulary is empty"
-        collisions = _prefix_collisions(codes)
-        assert collisions == [], (
-            f"REASON CODE PREFIX COLLISION in the declared vocabulary: {collisions}. "
-            f"No reason code may be a prefix of another (WO-008b-A3 addendum B)."
+# ── Property 1: raised/emitted => declared, BOTH namespaces, BOTH forms ──────────────────────────
+class TestRaisedImpliesDeclared:
+    def test_every_emitted_reason_code_is_declared(self):
+        declared = set(_declared_reason_codes())
+        emitted = _emitted_reason_codes()
+        assert emitted, "no reason codes found emitted in production"
+        undeclared = sorted(set(emitted) - declared)
+        assert undeclared == [], (
+            f"reason codes EMITTED in production (colon or keyword form) but NOT DECLARED: "
+            f"{undeclared}. The reason_code= escape hatch (WO-018 §2) must stay closed."
         )
 
-    def test_codes_raised_in_production_are_prefix_free(self):
-        """
-        The check that would actually have caught the original bug.
-
-        The declared vocabulary was already prefix-free — because the staleness
-        codes were never declared. The collision lived entirely in raise strings,
-        so scanning only the declared list proves nothing about production.
-        """
-        codes = _raised_codes()
-        assert codes, "no reason codes found in production sources"
-        collisions = _prefix_collisions(codes)
-        assert collisions == [], (
-            f"REASON CODE PREFIX COLLISION among codes raised in production: "
-            f"{collisions}. No reason code may be a prefix of another."
+    def test_every_emitted_event_type_is_declared(self):
+        declared = set(_declared_event_types())
+        emitted = _emitted_event_types()
+        assert emitted, "no event types found emitted in production"
+        undeclared = sorted(set(emitted) - declared)
+        assert undeclared == [], (
+            f"event_types EMITTED in production but NOT DECLARED in VALID_EVENT_TYPES: {undeclared}. "
+            f"The event_type namespace is governed now (WO-018 §3)."
         )
 
-    def test_declared_and_raised_codes_are_jointly_prefix_free(self):
-        """A declared code must not be a prefix of an undeclared raised one."""
-        codes = sorted(set(_declared_codes()) | set(_raised_codes()))
-        collisions = _prefix_collisions(codes)
-        assert collisions == [], (
-            f"REASON CODE PREFIX COLLISION across declared+raised codes: {collisions}."
+
+# ── Property 2: declared => producible, BOTH namespaces (excluding the declaration site) ─────────
+class TestDeclaredImpliesProducible:
+    def test_every_declared_reason_code_is_producible(self):
+        source = _production_source_text()
+        unproducible = sorted(c for c in _declared_reason_codes() if not _is_producible(c, source))
+        assert unproducible == [], (
+            f"declared reason codes that NO code path can produce: {unproducible} (rule 0.1d in "
+            f"vocabulary form). Fully enforced — no exemptions (WO-013 §2)."
         )
 
-    def test_the_check_can_actually_detect_a_collision(self):
-        """
-        Rule 0.1d: prove the mechanism works rather than trusting an empty result.
+    def test_every_declared_event_type_is_producible(self):
+        source = _production_source_text()
+        unproducible = sorted(c for c in _declared_event_types() if not _is_producible(c, source))
+        assert unproducible == [], (
+            f"declared event_types that NO code path can produce: {unproducible}."
+        )
 
-        Three green assertions above are only meaningful if the detector fires on
-        a real collision.
-        """
+
+# ── Property 3: prefix-freedom across the UNION of both vocabularies ─────────────────────────────
+class TestPrefixFreedomAcrossUnion:
+    def test_declared_union_is_prefix_free(self):
+        union = sorted(set(_declared_reason_codes()) | set(_declared_event_types()))
+        collisions = _prefix_collisions(union)
+        assert collisions == [], (
+            f"PREFIX COLLISION in the UNION of reason_code + event_type vocabularies: {collisions}. "
+            f"A cross-namespace prefix is how a canonical literal borrows credibility (WO-013 §0)."
+        )
+
+    def test_emitted_union_is_prefix_free(self):
+        union = sorted(set(_emitted_reason_codes()) | set(_emitted_event_types()))
+        collisions = _prefix_collisions(union)
+        assert collisions == [], (
+            f"PREFIX COLLISION among EMITTED codes across both namespaces: {collisions}."
+        )
+
+    def test_the_detector_actually_fires(self):
+        # rule 0.1d: prove the mechanism, don't trust an empty result.
         assert _prefix_collisions(["EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP"]) == [
-            ("EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP")
-        ]
+            ("EXEC_NO_MARKET_STATE", "EXEC_NO_MARKET_STATE_TIMESTAMP")]
         assert _prefix_collisions(["ALPHA", "BETA"]) == []
 
 
-class TestReasonCodeCompleteness:
-    """
-    WO-011 §5: the vocabulary in use and the vocabulary on file must agree.
+# ── Enum drift guard (WO-018 §3): the RISK event_types MUST equal RiskDecision.value ─────────────
+def test_event_type_risk_values_match_enum():
+    """A hand-restated enum is a second source of truth waiting to diverge. decision.py (logkit) must
+    not import trading.risk (layering / cycle), so the sync is enforced HERE (tests may import both):
+    the RISK group of VALID_EVENT_TYPES must equal the RiskDecision values, exactly."""
+    from trading.risk.interface import RiskDecision
+    assert set(VALID_EVENT_TYPES["RISK"]) == {d.value for d in RiskDecision}
 
-    Three properties (property 3, prefix-freedom across the union, is enforced by
-    TestReasonCodePrefixFreedom above):
-      1. Every code RAISED in production is DECLARED.
-      2. Every DECLARED code is producible by some code path.
-    """
 
-    def test_every_raised_code_is_declared(self):
-        """Property 1: no code is raised in production without being declared."""
-        declared = set(_declared_codes())
-        raised = _raised_codes()
-        assert raised, "no reason codes found in production sources"
-        undeclared = sorted(set(raised) - declared)
-        assert undeclared == [], (
-            f"codes RAISED in production but NOT DECLARED in VALID_REASON_CODES: "
-            f"{undeclared}. The audit trail would speak words the dictionary lacks "
-            f"(WO-011 §5 property 1)."
-        )
+# ── Property-mechanism self-tests (0.1d) ────────────────────────────────────────────────────────
+class TestScansActuallyDetect:
+    def test_reason_code_kwarg_form_is_seen(self):
+        # the escape hatch: a non-colon keyword reason_code= literal must be visible to the scan.
+        assert _RC_KWARG.findall('reason_code="BOGUS_UNDECLARED_CODE"') == ["BOGUS_UNDECLARED_CODE"]
+        assert _RC_KWARG.findall('reason_code: str = "DEFAULT_CODE"') == ["DEFAULT_CODE"]
 
-    def test_every_declared_code_is_producible(self):
-        """
-        Property 2: EVERY declared code is producible by a code path — FULLY ENFORCED, no
-        exceptions (WO-013 §2 removed the known-set exemption). Bites on ANY declared code that
-        no code path can produce (rule 0.1d in vocabulary form). The _KNOWN_UNPRODUCIBLE set is
-        now empty, so `new_unproducible` == `unproducible` and the assertion is unconditional.
-        """
-        source = _production_source_text()
-        declared = set(_declared_codes())
-        assert declared, "reason-code vocabulary is empty"
-        unproducible = {c for c in declared if not _is_producible(c, source)}
+    def test_event_type_kwarg_form_is_seen_any_case(self):
+        assert _ET_KWARG.findall('event_type="UPPER_CASE"') == ["UPPER_CASE"]
+        assert _ET_KWARG.findall('event_type="lower_case"') == ["lower_case"]
 
-        # Keep the known set honest: every entry must still be declared AND still
-        # unproducible — no stale suppression hiding a now-producible or removed code.
-        stale = {
-            c for c in _KNOWN_UNPRODUCIBLE
-            if c not in declared or c not in unproducible
-        }
-        assert not stale, (
-            f"stale _KNOWN_UNPRODUCIBLE entries (now producible or undeclared): {sorted(stale)}"
-        )
-
-        new_unproducible = unproducible - set(_KNOWN_UNPRODUCIBLE)
-        assert new_unproducible == set(), (
-            f"NEW declared codes that no code path can produce: {sorted(new_unproducible)}. "
-            f"Rule 0.1d in vocabulary form (WO-011 §5 property 2). Report; do not delete "
-            f"without asking. Known/reported set: {sorted(_KNOWN_UNPRODUCIBLE)}."
-        )
-
-    def test_property1_check_actually_detects_an_undeclared_raised_code(self):
-        """Rule 0.1d: prove property 1's mechanism fires on a real gap."""
-        declared = {"ALPHA"}
-        raised = ["ALPHA", "BETA_UNDECLARED"]
-        assert sorted(set(raised) - declared) == ["BETA_UNDECLARED"]
-        assert sorted({"ALPHA"} - {"ALPHA"}) == []
-
-    def test_property2_check_actually_detects_an_unproducible_code(self):
-        """Rule 0.1d: prove property 2's mechanism fires on a real gap."""
-        source = 'reason_code = "ALPHA_USED"\n'
-        assert _is_producible("ALPHA_USED", source)
-        assert not _is_producible("GAMMA_NEVER_EMITTED", source)
+    def test_producibility_detector_fires(self):
+        assert _is_producible("ALPHA_USED", 'reason_code = "ALPHA_USED"\n')
+        assert not _is_producible("GAMMA_NEVER_EMITTED", 'reason_code = "ALPHA_USED"\n')
