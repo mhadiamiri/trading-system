@@ -1,6 +1,6 @@
 # Standing Rules — Canonical Boilerplate for Work Orders
 
-**Last amended**: 2026-07-19 (WO-009b addendum added **0.1e**)
+**Last amended**: 2026-07-22 (WO-018 follow-up added **0.1k**)
 
 ## Why this file exists
 
@@ -30,6 +30,12 @@ work-order boilerplate. This file records what that boilerplate should contain.
   documentation at the point of claim. Uncited protocol claims may not flow into
   requirements. `/speckit-analyze` should treat an uncited protocol claim in a spec as a
   blocking finding, same class as a principle violation.
+- **0.1k A BEHAVIORAL PROOF IS SOVEREIGN OVER A STATIC SCAN.** *(NEW — 2026-07-22, WO-018 follow-up)*
+  If the tightened scan flags a code with a passing behavioral proof, THE SCAN IS WRONG, NOT THE CODE.
+  This makes the EVIDENCE-COMPETENCE HIERARCHY explicit — the same ranking already established for
+  instruments (fitness by measurement, not proximity) and for protocol claims (docs sovereign for what
+  the protocol IS, captures for what it DOES):
+  **BEHAVIORAL DEMONSTRATION > STATIC REACHABILITY > DEFINITION > PROSE.**
 - **0.2** Blockers escalate, never work around.
 - **0.4** Never weaken a guard, invariant, assertion, or threshold.
 - **0.5** Never print `.env` or any credential.

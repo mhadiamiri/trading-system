@@ -1,0 +1,106 @@
+WO-018 FOLLOW-UP — THE THREE-PART SPLIT (report only)
+=====================================================
+Task (lead's update block): for each of the 13 reason_codes + 3 enum event_types that
+item A found NOT reachable-as-emitted by a literal, determine per code —
+  (1) REFERENCE:  is the constant/enum/variable REFERENCED at a real emission path
+                  (returned / raised / passed as arg), as opposed to merely defined?
+                  A reference is invisible to a literal scan but IS production.
+  (2) BEHAVIORAL PROOF: is there a PASSING test that drives the production path and
+                  asserts the code (per 0.1i/0.1k — sovereign over any static scan)?
+  (3) SPLIT:      GENUINELY DEAD (no reference, no proof) vs LIVE-BUT-INVISIBLE
+                  (reference or proof exists; the scan simply cannot see it).
+
+Applied NAMESPACE-SCOPED per the lead's ruling (a token's production counts only within
+the namespace of its declaration). Every row cites file:line — prose annotates, evidence
+constitutes (rule 0.6a / the new prose-as-use doctrine).
+
+KEY EMISSION FACTS (verified):
+  - Risk decision is logged at src/trading/loop/live.py:245-255 as
+        event_type = decision.value        (PASS / CLAMP / VETO)
+        reason_code = reason_code           (the RISK_* string from engine.check)
+    => PASS/CLAMP/VETO appear ONLY as event_types, NEVER as reason_codes.
+  - grep confirms NO `reason_code=decision.value` / `reason_code=<RiskDecision>` anywhere.
+  - Fill logged at live.py:279-295: event_type="ORDER_FILLED", reason_code="EXEC_ORDER_FILLED".
+    Reject logged at live.py:304-312: event_type="ORDER_REJECTED", reason_code=e.reason_code.
+    => ORDER_FILLED / ORDER_REJECTED appear ONLY as event_types, NEVER as reason_codes.
+
+================================================================================
+PARTITION 1 — GENUINELY DEAD IN THEIR DECLARED (reason_code) NAMESPACE  (5)
+================================================================================
+These have NO reason_code reference and NO reason_code behavioral proof. The IDENTICAL
+STRING is a LIVE event_type — so retiring the reason_code DECLARATION is safe (the string
+survives in the event_type namespace). This is exactly the movement the namespace-scoped
+tightening was ruled to cause.
+
+  CODE (as reason_code)   why dead as a reason_code                         string lives as event_type
+  ---------------------   ----------------------------------------------   ---------------------------
+  PASS                    emitted only via event_type=decision.value        VALID_EVENT_TYPES["RISK"], live.py:247
+  CLAMP                   (live.py:247); reason_code position carries        VALID_EVENT_TYPES["RISK"], live.py:247
+  VETO                    RISK_* instead                                     VALID_EVENT_TYPES["RISK"], live.py:247
+  ORDER_FILLED            fill emits reason_code="EXEC_ORDER_FILLED"         VALID_EVENT_TYPES["LOOP"], live.py:281 (visible)
+  ORDER_REJECTED          reject emits reason_code=e.reason_code             VALID_EVENT_TYPES["LOOP"], live.py:306 (visible)
+
+  Wire-or-retire fork (successor WO, GENUINELY-DEAD partition only): RETIRE the reason_code
+  declaration for all five — each string is already a declared, emitted event_type, so no
+  audit vocabulary is lost. Matches the ruled taxonomy migration (PASS/CLAMP/VETO reason_code
+  declarations retire in favour of the specific-cause RISK_* codes; ORDER_FILLED/EXEC_ORDER_FILLED
+  collapse to one canonical form). No wiring candidate here.
+
+================================================================================
+PARTITION 2 — LIVE-BUT-INVISIBLE  (11)  — reference AND a passing behavioral proof
+================================================================================
+Each is a REAL emission path the LITERAL scan cannot see (constant / enum / variable /
+f-string indirection), AND each has a passing behavioral proof. This set is the scan's
+RESIDUAL ERROR, measured for free.
+
+ #  code                                     ns  REFERENCE (real emission path)                        BEHAVIORAL PROOF (passing)
+ -  --------------------------------------   --  ---------------------------------------------------   -----------------------------------------
+ 1  RISK_PASS                                rc  engine.py:113 (arg) & :116 (return)                   test_risk.py:59 (reason_code=="RISK_PASS")
+ 2  RISK_CLAMP_MAX_POSITION                  rc  engine.py:101 (arg) & :104 (return)                   test_risk.py:86
+ 3  RISK_VETO_KILL_SWITCH                    rc  engine.py:80 (return)                                 test_risk.py:162
+ 4  RISK_VETO_DAILY_LOSS                     rc  engine.py:88 (return)                                 test_risk.py:136 (+emitted, emission test)
+ 5  RISK_VETO_INVALID_INPUT                  rc  engine.py:84 (return)                                 test_risk.py:180
+ 6  LONG_SIGNAL                              rc  live.py:223 signal_reason=... -> :248 reason_code=var test_reason_code_emission.py:137 (in log)
+ 7  SHORT_SIGNAL                             rc  live.py:223 signal_reason=... -> :248 reason_code=var test_reason_code_emission.py:151 (in log)
+ 8  MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH  rc  host_baseline.py:74 f"{INSTRUMENT_MISMATCH_CODE}: ..." test_mean_cycle_baseline_gate.py +
+                                                 (colon raise built from the constant)                 evidence/WO-013/instrument_mismatch_bite_proof.txt
+ 9  PASS                                     et  engine.py:116 return RiskDecision.PASS -> .value      test_risk.py:56 (decision.value=="PASS")
+                                                 emitted event_type=decision.value (live.py:247)
+10  CLAMP                                    et  engine.py:104 return RiskDecision.CLAMP -> .value     test_risk.py:82
+11  VETO                                     et  engine.py:80/84/88 return RiskDecision.VETO -> .value test_risk.py:134 / :160 / :178
+
+  Every member is invisible for the SAME structural reason: it is emitted through
+  indirection (a constant returned, an enum .value, a variable, an f-string), so no string
+  LITERAL sits at the emit site. A namespace-scoped *literal-reachability* tightening does
+  NOT recover any of them.
+
+================================================================================
+SIZE VERDICT — and what it says about the instrument
+================================================================================
+LIVE-BUT-INVISIBLE = 11 of 16 (69%). GENUINELY DEAD = 5 of 16.
+
+Raw size is LARGE. But the verdict is NOT "the scan needs a third iteration." It is
+"ANNOTATE, do not iterate," and here is why:
+
+  - Every one of the 11 has a PASSING BEHAVIORAL PROOF (column above), which under the new
+    rule 0.1k is SOVEREIGN over any static scan. Liveness is already settled by the superior
+    evidence class.
+  - A third static iteration would have to chase constant-return, enum-.value, variable, and
+    f-string indirection to make the LITERAL/reachability scan "see" these. That is the exact
+    arms race the lead named — each audit finds the instrument committing a subtler version of
+    the crime it polices. Building it would SUBORDINATE the sovereign evidence class
+    (behavioral) to the inferior one (static reachability), INVERTING 0.1k.
+  - Therefore the correct, bounded, one-time action for the successor WO: give each of the 11
+    an INLINE ANNOTATION beside its declaration citing its behavioral proof (the file:line in
+    the table above), so the next audit does not re-litigate a code a test already proves live.
+
+So: LARGE in count, but the annotation workload is SMALL and closed-form (11 known proofs,
+listed), and NO third scan iteration is warranted. The scan's blindness to indirection is a
+DECLARED LIMIT (WO-018 follow-up B, now in the scan docstring), not a defect to be chased —
+it is retired by behavioral sovereignty, not by more grepping.
+
+================================================================================
+CONFIRMATION: report only. Nothing was wired, retired, renamed, or migrated. The wire-or-
+retire fork and the inline annotations are the successor WO's work, recorded here to scope it.
+The genuinely-dead partition (5) is the retire candidate; the live-but-invisible partition
+(11) is TOUCHED ONLY BY ANNOTATION, per the authority boundary.

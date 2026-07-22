@@ -60,3 +60,25 @@ looks like:
   values and DECLARED them; the enum-drift guard `test_event_type_risk_values_match_enum` pins ONLY the
   RiskDecision event_types emitted as `event_type=decision.value`. NEITHER covers a NEW indirection
   introduced after this pass — that is the standing residual, load-bearing until the tightened scan lands.
+
+---
+
+**DOCTRINE LINE — prose-as-use, ruled independent (WO-018 follow-up, 2026-07-22).** Verbatim:
+
+> "PROSE MAY ANNOTATE EVIDENCE, NEVER CONSTITUTE IT. Written for evidence files as rule 0.6a, it now
+> applies to static scans and eventually to anything that greps. The vocabulary scan accepted a
+> DEFINITION as production, and beneath that accepted a COMMENT as production: delete the definition,
+> keep the comment, three codes still pass. That is a step below the self-asserting string-literal test
+> of WO-008b-A1, which at least lived in a test file — this is DOCUMENTATION LOAD-BEARING INSIDE A
+> MECHANICAL PROPERTY."
+
+**NEW STANDING RULE 0.1k (recorded in `docs/standing-rules.md`).** A BEHAVIORAL PROOF IS SOVEREIGN OVER A
+STATIC SCAN — if the tightened scan flags a code with a passing behavioral proof, the scan is wrong, not
+the code. Evidence-competence hierarchy: **BEHAVIORAL DEMONSTRATION > STATIC REACHABILITY > DEFINITION >
+PROSE.** This is why the dead/live split (`evidence/WO-018/dead_live_split.txt`) resolves the 11
+live-but-invisible codes by INLINE ANNOTATION citing their behavioral proofs rather than by building a
+third static-scan iteration to chase constant/enum/variable indirection: a third iteration would
+subordinate the sovereign evidence class (behavioral) to the inferior one (static reachability), inverting
+0.1k. The pattern the lead named — *each audit of the instrument finds it committing a subtler version of
+the crime it polices* — ends when liveness is settled by demonstration, not by making the scan ever
+cleverer at reading source.
