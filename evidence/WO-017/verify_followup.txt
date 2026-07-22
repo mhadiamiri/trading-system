@@ -1,0 +1,16 @@
+### WO-017 FOLLOW-UP (A+B) VERIFY — DETERMINISTIC ###
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 207 passed in 245.58s (0:04:05) =======================
+### RANDOMIZED (--randomly-seed=20260725) ###
+tests\integration\test_checksum_capture_replay.py ..                     [100%]
+
+======================= 207 passed in 246.54s (0:04:06) =======================
+### LINT-IMPORTS ###
+
+Contracts: 6 kept, 0 broken.
+### CONTRACT ###
+PASS: import-linter evaluated 6 contracts (expected 6)
+### RUFF ###
+All checks passed!
+### DONE ###

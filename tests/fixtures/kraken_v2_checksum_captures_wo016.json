@@ -8,7 +8,9 @@
    "utc_last": "2026-07-21T17:46:51.695423+00:00",
    "n_captures": 200,
    "total_failures_in_run": 234,
-   "note": "these are the 200 FULL captures (cap bound); 34 further failures summarized in the run gap ledger"
+   "note": "these are the 200 FULL captures (cap bound); 34 further failures summarized in the run gap ledger",
+   "certifies": "CHECKSUM MATH \u2014 the remove-'.'-lstrip-zeros CRC over the recorded top-10 ladder. This is a REGRESSION GUARD ON THE CHECKSUM MATH.",
+   "does_not_witness": "WIRE RETENTION. The wire text was DISCARDED at capture time (retention did not exist until WO-017), so local_book_bids/asks store str(Decimal) and the replay RECONSTRUCTS the wire form via WireDecimal(format(x,'f')). The production wire path (WireDecimal.wire) is certified ELSEWHERE: tests/integration/test_wire_string_retention.py bite proofs (a) and (c), which exercise it against real frames including the scientific-notation case. Fixture-coverage doctrine (3rd instance): a fixture is sovereign for what it CONTAINS and cannot certify a path its data does not reach \u2014 future captures carry local_book_*_wire (WO-017 follow-up A) so the wire path CAN be witnessed end-to-end."
   },
   "convention": "A2 verifies book/checksum logic; A3 verifies rendering; this witnesses small-quantity rendering + repeated-price application. Immutable ground-truth (accretion doctrine) \u2014 do not overwrite A2/A3.",
   "purpose": "permanent regression: each capture, replayed through the PRODUCTION checksum path, must validate to its expected_checksum (200/200). WO-016 \u00a72."

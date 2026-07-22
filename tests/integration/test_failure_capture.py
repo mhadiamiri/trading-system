@@ -71,6 +71,15 @@ async def test_checksum_failure_capture_has_every_ruled_field():
     assert len(art["local_book_bids"]) == KrakenV2BookAdapter.BOOK_DEPTH
     assert len(art["local_book_asks"]) == KrakenV2BookAdapter.BOOK_DEPTH
     assert art["local_book_bids"][0][0], "book levels carry (price, size) strings"
+    # WO-017 follow-up A: the TRANSMITTED wire text is persisted per level, so a FUTURE capture can
+    # witness the wire-retention path end-to-end (these frames carry string values -> WireDecimal ->
+    # .wire present). None would flag a level that lost its wire string; here every level has it.
+    assert len(art["local_book_bids_wire"]) == KrakenV2BookAdapter.BOOK_DEPTH
+    assert len(art["local_book_asks_wire"]) == KrakenV2BookAdapter.BOOK_DEPTH
+    assert all(pw is not None and qw is not None for pw, qw in art["local_book_bids_wire"]), \
+        "each captured level must persist its transmitted wire string (not None)"
+    # and it is the TRANSMITTED text, not str()'s render: the top bid matches the frame verbatim.
+    assert art["local_book_bids_wire"][0] == ("45283.5", "0.10000000")
     # EXPECTED (Kraken's) and COMPUTED checksums — and they differ (that's the failure).
     assert art["expected_checksum"] == 1
     assert art["computed_checksum"] != art["expected_checksum"]

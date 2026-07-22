@@ -991,6 +991,13 @@ class KrakenV2BookAdapter:
     #     a FRESH baseline measurement BEFORE the run. The 24h corpus may run on a different no-sleep
     #     host (dedicated/cloud); on it this figure is WRONG (a faster/slower machine registers as
     #     drift that is not starvation, or reads clean while genuinely degraded). Measure first.
+    # WO-017 follow-up B (no orphan figures): this is the TEST/DEFAULT SEED only. The LIVE gate is
+    # HOST-SCOPED and reads the per-host store (config/mean_cycle_baselines.json), which is the
+    # AUTHORITATIVE live figure (D28); the runner overrides self._mean_cycle_baseline_s from it at
+    # preflight. SUPERSEDED as a live figure on 2026-07-21 by WO-017's re-baseline (0.107923s,
+    # -0.9%, attributed to wire-string retention) — see the store's `rebaseline`/`superseded` ledger.
+    # Left as the seed (not deleted) so tests/adapter defaults have a value without reading the store;
+    # do NOT read this as the live baseline.
     MEAN_CYCLE_BASELINE_SECONDS = 0.108886
     MEAN_CYCLE_DRIFT_VOID_FRACTION = 0.50
     # RESIDUAL / FLOOR LIMIT (named, not papered over): the mode that still escapes all three is
@@ -1569,8 +1576,21 @@ class KrakenV2BookAdapter:
         failing_raw = raw_texts[-1] if raw_texts else ""
         n = self._checksum_capture_preceding
         preceding = raw_texts[-(n + 1):-1] if len(raw_texts) > 1 else []
+        # The RENDERED (str) view of each ladder level. Kept because it is the checksum-MATH form
+        # the 200-capture regression fixture (WO-016 §2) replays. It is str(Decimal), so it renders
+        # small quantities in SCIENTIFIC notation and CANNOT witness the wire-retention path — that
+        # is why the wire fields below exist (WO-017 follow-up A).
         bids = [(str(p), str(q)) for p, q in self._local_book.bids[:self.BOOK_DEPTH]]
         asks = [(str(p), str(q)) for p, q in self._local_book.asks[:self.BOOK_DEPTH]]
+        # WO-017 follow-up A: persist the venue's TRANSMITTED text per level (WireDecimal.wire) so a
+        # FUTURE capture can witness the wire path END-TO-END — a replay seeds WireDecimal(wire) and
+        # validates through production with NO reconstruction. A level that lacks a wire string is
+        # recorded as None (honest — the blindness is VISIBLE), never re-rendered: a silent render
+        # here would recreate the exact defect class WO-017 closed.
+        bids_wire = [(getattr(p, "wire", None), getattr(q, "wire", None))
+                     for p, q in self._local_book.bids[:self.BOOK_DEPTH]]
+        asks_wire = [(getattr(p, "wire", None), getattr(q, "wire", None))
+                     for p, q in self._local_book.asks[:self.BOOK_DEPTH]]
         artifact = {
             "sequence_position_in_run": getattr(self, "_raw_received", None),
             "utc": datetime.now(UTC).isoformat(),
@@ -1582,8 +1602,10 @@ class KrakenV2BookAdapter:
             "failing_frame_raw_text": redact(failing_raw),
             "preceding_frames_n": n,
             "preceding_frames_raw_text": [redact(t) for t in preceding],
-            "local_book_bids": bids,                       # both ladders at subscribed depth
+            "local_book_bids": bids,                       # RENDERED view (checksum math) at depth
             "local_book_asks": asks,
+            "local_book_bids_wire": bids_wire,             # WO-017 A: TRANSMITTED text per level (or None)
+            "local_book_asks_wire": asks_wire,
         }
         # BYTE cap — binds independently of the count cap (whichever comes first). A cluster of
         # large frames exhausts bytes before count; a cluster of small ones exhausts count first.

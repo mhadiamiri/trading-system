@@ -13,6 +13,13 @@ checksum's remove-'.'-lstrip-zeros rule produced '10E-7' not '10'. WO-017 closed
 step at all. This fixture WITNESSES small-quantity rendering and repeated-price application (its
 stated evidentiary bounds).
 
+COVERAGE BOUNDARY (WO-017 follow-up A): this fixture is a REGRESSION GUARD ON THE CHECKSUM MATH;
+it does NOT witness the production wire-retention path, because its artifacts contain no wire text
+to retain (the wire text was discarded at capture time). The wire path is certified ELSEWHERE, by
+tests/integration/test_wire_string_retention.py bite proofs (a) and (c), against real frames
+including the scientific-notation case. Fixture-coverage doctrine: a fixture is sovereign for what
+it CONTAINS and cannot certify a path its data does not reach. See _meta.evidentiary_bounds.
+
 FIXTURE RECONSTRUCTION SUBTLETY (WO-017 §2): the capture predates wire retention and stores each
 local_book level as `str(Decimal)` — e.g. qty '1.0E-7' (SCIENTIFIC), NOT the transmitted text
 '0.00000010'. Seeding WireDecimal('1.0E-7') would set .wire='1.0E-7' -> the OLD FAILING value. So
@@ -70,6 +77,11 @@ def test_fixture_present_and_labelled():
         "witnesses SMALL-QUANTITY RENDERING and REPEATED-PRICE APPLICATION"
     assert data["_meta"]["evidentiary_bounds"]["n_captures"] == 200
     assert len(data["captures"]) == 200
+    # WO-017 follow-up A: the evidentiary bounds state what this fixture DOES and does NOT certify.
+    eb = data["_meta"]["evidentiary_bounds"]
+    assert "CHECKSUM MATH" in eb["certifies"]
+    assert "WIRE RETENTION" in eb["does_not_witness"]
+    assert "test_wire_string_retention.py" in eb["does_not_witness"]  # where the wire path IS certified
 
 
 def test_all_200_captures_validate_through_production_checksum():
