@@ -82,3 +82,58 @@ subordinate the sovereign evidence class (behavioral) to the inferior one (stati
 0.1k. The pattern the lead named — *each audit of the instrument finds it committing a subtler version of
 the crime it polices* — ends when liveness is settled by demonstration, not by making the scan ever
 cleverer at reading source.
+
+---
+
+## Follow-up recordings (2026-07-22) — measure-then-fork + the tracing boundary
+
+The lead adjudicated the inversion argument on its own terms and ruled **measure-then-fork with the
+boundary written in.** Two recordings.
+
+**1. PROCESS FINDING — measure-then-fork.** The dead/live SIZE verdict was evaluated against **11**, the
+PRE-tightening live-but-invisible count; the lead's LARGE/SMALL conditional was written about the
+**POST-tightening residual** (what stays invisible *after* competent tracing). Right rule, wrong
+measurement fed to it — the same family of error as differencing a measurement **across instruments**
+([[instrument-competence]]): a number compared to a conditional written about a *different* number.
+MEASURE-THEN-FORK is that conditional executed against the number it was written about — run the
+tightening first, then fork on the residual it leaves, not on the pre-tightening 11.
+
+Ops's projection that the post-tightening residual lands **near 2** (the arms-race-side codes
+`LONG_SIGNAL` / `SHORT_SIGNAL`, which competent tracing cannot see) is recorded **AS A PREDICTION, not a
+measurement.** If the successor WO's measured residual comes in materially above 2, **that discrepancy is
+itself a finding** about what the scan cannot see — surface it, do not absorb it.
+
+**2. TRACING BOUNDARY — ruled, no discretion in the successor WO.** Verbatim:
+
+> "STATIC EVIDENCE MAY BE STRENGTHENED UNTIL IT STOPS BEING STATIC. The scan MAY FOLLOW A NAME TO ITS USE
+> SITE; it MAY NOT SIMULATE EXECUTION.
+>
+> COMPETENT TRACING (required of the instrument): direct constant references at emit sites
+> (`return CONST`, `raise X(CONST)`); f-string interpolation of a declared constant at an emit site
+> (`f"{CONST}: ..."`); the ruled enum-value whitelist (`decision.value`). Syntactic, local, decidable.
+>
+> ARMS-RACE TRACING (refused explicitly): variable-assignment dataflow, values flowing through branches,
+> collections, or call boundaries — anything requiring the scan to REASON ABOUT EXECUTION rather than READ
+> REFERENCES. The moment the scan simulates dataflow it is a bad interpreter competing with the behavioral
+> proofs, and 0.1k already settled who wins that competition.
+>
+> ON THE INVERSION ARGUMENT: it is right about the UNBOUNDED version and wrong about the bounded one, and
+> the distinction is the purpose of the two evidence tiers. SOVEREIGN means the scan can never OVERRULE a
+> passing behavioral proof — nothing here asks it to. It does not mean the scan should stay weak so that
+> sovereignty is exercised often. The instrument's job is to SHRINK THE SET OF CODES THAT NEED SOVEREIGN
+> PROTECTION down to those that genuinely cannot be seen statically — a small, honest, annotated residual —
+> not to abdicate seeing in deference to a rule about who wins conflicts. An arms race is the scan chasing
+> the behavioral evidence; competent tracing is the scan doing its own reading."
+
+`LONG_SIGNAL` / `SHORT_SIGNAL` live on the arms-race side (variable-assignment dataflow) and **STAY
+ANNOTATED** — the boundary working, not a gap. Corrected reading of the split for the successor WO: of the
+11 live-but-invisible, competent tracing recovers 9 (the 5 `RISK_*` via `return self.CONST`;
+`MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH` via the f-string-of-constant raise; `PASS`/`CLAMP`/`VETO`
+event_types via the `decision.value` whitelist); only the 2 signal codes remain the annotated residual —
+consistent with Ops's prediction, to be *measured* (not assumed) when the tightening is built.
+
+**Fork terms, completed (successor WO, not now):** the genuinely-dead 5 retire as reported (each a live
+declared event_type — no vocabulary lost; the ruled taxonomy migration executing). The post-tightening
+residual gets inline annotations citing behavioral proof at file:line. "Never re-litigated" is a
+**PERMANENT EASEMENT, NOT A TEMPORARY WAIVER**: a future audit MAY re-verify the cited proof still passes;
+it MAY NOT re-flag the code for static invisibility.
