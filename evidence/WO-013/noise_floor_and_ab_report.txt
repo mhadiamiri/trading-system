@@ -1,0 +1,76 @@
+WO-013 FOLLOW-UP A — NOISE FLOOR DECLARATION + A.4 INTERLEAVED A/B REPORT
+Baseline 0e5fbb8. NO VENUE CONNECTION. Host ba47c96a36f36642. Instrument: establishment replay
+(adapter process_raw_frame cycle) — the CURRENT instrument; B widens it and re-establishes this.
+
+"A measurement without a declared noise floor is an estimate with better costumes." — the fifth
+scope dimension is RESOLUTION: host / load / source / duration / RESOLUTION.
+
+================================================================================================
+A.1 — THE NOISE FLOOR, AS A FIGURE WITH ITS DERIVATION
+Source (per the lead): within-session spread across establishment runs, on CODE THAT DID NOT CHANGE
+the measured (adapter) path.
+
+RAW RUNS (mean_cycle, ms), all same host, pinned WO-009 source, ~1959/min, 60 s:
+  WO-017 session (6 runs, adapter unchanged within the session):
+     107.732, 107.733, 107.923, 107.923, 107.933, 108.520
+     mean 107.961 ; within-session 1 sigma = 0.290 ms ; peak-to-peak = 0.788 ms
+  WO-013 session (3 runs, adapter BYTE-IDENTICAL to WO-017):
+     108.721, 108.910, 109.305
+     mean 108.979 ; within-session 1 sigma = 0.298 ms ; peak-to-peak = 0.584 ms
+
+CROSS-SESSION shift on UNCHANGED adapter code: 108.979 - 107.961 = +1.018 ms.
+
+DECLARED NOISE FLOOR (current adapter instrument, this host):
+  - WITHIN-SESSION resolution   : ~0.3 ms (1 sigma) ; ~0.6-0.8 ms peak-to-peak.
+  - CROSS-SESSION resolution    : ~1.0 ms (demonstrated on unchanged code).
+  - OPERATIONAL FLOOR for a single-session-vs-stored delta = 1.0 ms. A delta measured against the
+    STORED baseline in a DIFFERENT session must clear ~1.0 ms before its SIGN is established.
+  Derivation: the cross-session figure is the measured mean shift between two sessions whose adapter
+  code was identical (1.018 ms); the within-session figures are the run-to-run spreads within each
+  session. Rounded to 1.0 ms (cross-session) as the operational floor because the standing protocol
+  compares a fresh session's establishment against the stored figure.
+
+================================================================================================
+A.2 — STANDING REPORT FORM (every future delta): SIGNAL | NOISE FLOOR | RATIO
+  SIGNAL     = |new_mean_cycle - baseline_mean_cycle|
+  NOISE      = the declared floor (operational: 1.0 ms cross-session on the current instrument)
+  RATIO      = SIGNAL / NOISE
+  RULE: RATIO < 1  =>  delta is INSIDE the noise floor: record it WITH SIGN EXPLICITLY UNESTABLISHED,
+        and KEEP the ledger entry ("changed X, could not detect a cost" BOUNDS the effect — which is
+        what the feasibility clause needed). RATIO >= ~2-3 => sign established; report signal+floor+ratio.
+
+  Worked example — WO-017's headline delta re-read under this form:
+     SIGNAL = 0.963 ms ; NOISE = 1.0 ms ; RATIO = 0.96  =>  INSIDE THE FLOOR, SIGN UNESTABLISHED.
+
+================================================================================================
+A.4 — INTERLEAVED WITHIN-SESSION A/B (REPORTED, NOT IMPLEMENTED; pre-approved for adoption)
+MECHANICS: replay the pinned WO-009 window through the OLD and NEW code paths ALTERNATELY, in the
+SAME process where possible, ORDER RANDOMIZED per existing doctrine (paired trials, A/B/B/A... with a
+seeded shuffle). Each trial: seed book, replay N frames at the pinned rate, record mean_cycle for that
+arm. Difference the paired arms; the cross-session offset (the ~1.0 ms systematic term) CANCELS because
+both arms run in the same session/process with shared warmup and background load.
+
+DOES INTERLEAVING BUY THE RESOLUTION WE NEED? — from the data above:
+  - Cross-session offset (the term interleaving cancels) = ~1.0 ms.
+  - Within-session spread (the floor interleaving is LIMITED BY) = ~0.3 ms (1 sigma), ~0.6-0.8 ms p2p.
+  Because within-session spread (~0.3 ms) is materially SMALLER than the cross-session offset (~1.0 ms),
+  interleaving WOULD improve resolution: the floor drops from ~1.0 ms (cross-session) to ~0.3-0.6 ms
+  (within-session). WO-017's 0.963 ms delta sits ABOVE a ~0.3-0.6 ms within-session floor, so an
+  interleaved A/B could plausibly ESTABLISH its sign where the cross-session comparison cannot.
+  Same-process interleaving may tighten this further (shared warmup/JIT/page-cache state), so ~0.3 ms
+  is an upper bound on the achievable floor.
+
+COST: retain BOTH code paths simultaneously for the arms (a git-worktree/checkout A/B harness, or a
+runtime switch preserving the old path), plus paired-trial orchestration and a seeded shuffle. Modest
+one-time tooling; each A/B run costs ~2x a single establishment (both arms). No venue connection.
+
+CONCLUSION (either outcome is fine; unquantified resolution is not): the numbers SUPPORT adoption for
+deltas >= ~0.5-0.6 ms — interleaving removes the ~1.0 ms cross-session term and lowers the floor to the
+within-session spread. For SUB-0.5 ms deltas on this host, even interleaving is at/below floor: declare
+them below the instrument's resolution rather than reporting a sign. Recommended adoption: use
+interleaved A/B whenever a pipeline change's expected per-frame delta is in the 0.5-1.0 ms band; skip it
+(declare below-floor) for sub-0.5 ms expected effects. Pre-approved — NOT implemented here.
+
+NOTE (interacts with B): B widens the instrument to the full loop, changing what is measured. The
+noise floor above is for the CURRENT adapter instrument; it MUST be re-established on the WIDENED
+instrument (done in B), and the stored 107.923 ms scope annotated as adapter-only.

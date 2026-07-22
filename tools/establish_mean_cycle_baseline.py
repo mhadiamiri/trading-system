@@ -67,6 +67,17 @@ LOAD_WORK = ("per-frame PROCESSING COST characterized by the pinned WO-009 fixtu
              "Empirical justification: live-vs-replay agreement at +0.008 ms, representative as "
              "measured. INVALIDATION: deeper ladders, heavier per-level validation, or additional "
              "per-level storage require re-validation (WO-017 §6 — its own change was the first trigger).")
+# WO-013 follow-up A: the FIFTH scope dimension — RESOLUTION (noise floor). A measurement without a
+# declared noise floor is an estimate with better costumes. Derived from within-session vs cross-
+# session spread on unchanged code (evidence/WO-013/noise_floor_and_ab_report.txt). OPERATIONAL floor
+# for a single-session establishment vs the STORED figure = 1.0 ms (cross-session, current adapter
+# instrument). Every delta reports SIGNAL / NOISE / RATIO; RATIO<1 => sign unestablished, ledger kept.
+NOISE_FLOOR_MS = 1.0
+NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim): within-session ~0.3 ms (1 sigma), ~0.6-0.8 ms p2p; "
+                    "CROSS-SESSION ~1.0 ms on unchanged code (WO-017 107.961 vs WO-013 108.979 ms). "
+                    "OPERATIONAL FLOOR = 1.0 ms. Report every delta as SIGNAL/NOISE/RATIO; RATIO<1 => "
+                    "SIGN UNESTABLISHED, keep the entry (it BOUNDS the effect). CURRENT adapter "
+                    "instrument; re-established on the WIDENED (full-loop) instrument in WO-013 follow-up B.")
 
 
 async def establish(seconds: float):
@@ -115,7 +126,11 @@ def main():
     print(f"REPLAY SOURCE (pinned): {REPLAY_SOURCE}")
     print(f"LOAD scope: {RATE_SCOPE}; run-id {LOAD_RUN_ID}; material-diff trigger: {RATE_MATERIAL_DIFF}")
     print(f"LOAD-WORK scope (WO-017 §6): {LOAD_WORK}")
-    standing = 0.108886
+    print(f"RESOLUTION scope (WO-013 A): {NOISE_FLOOR_DECL}")
+    # WO-013 follow-up C: read the STANDING figure from the store (was a stale hardcoded 0.108886 —
+    # an orphan figure since the WO-017 re-baseline). Falls back to the class default only if unset.
+    _rec = host_baseline.load_baseline()
+    standing = _rec["mean_cycle_seconds"] if _rec else 0.107923
     print("=== WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===")
     print(f"host fingerprint: {host_baseline.fingerprint_key()}  {host_baseline.host_fingerprint()}")
     print(f"duration={r['seconds']:.1f}s  frames_sent={r['frames_sent']}  lag_samples={r['lag_samples']}")
@@ -123,11 +138,13 @@ def main():
           f"REPRESENTATIVE(<=10%)={r['representative_within_10pct']}")
     print(f"REPLAY CAN SUSTAIN THE RATE: {r['representative_within_10pct']} "
           f"(finding, not worked around, if False)")
-    print(f"measured mean_cycle={r['mean_cycle_s']*1000:.3f}ms  vs standing baseline "
+    signal_ms = abs(r["mean_cycle_s"] - standing) * 1000.0
+    ratio = signal_ms / NOISE_FLOOR_MS
+    print(f"measured mean_cycle={r['mean_cycle_s']*1000:.3f}ms  vs STORED baseline "
           f"{standing*1000:.3f}ms  delta={(r['mean_cycle_s']-standing)*1000:+.3f}ms "
           f"({(r['mean_cycle_s']/standing-1)*100:+.1f}%)")
-    print("(the standing 0.108886s was derived under LIVE load at ~1,959/min -> compatible with "
-          "this protocol, not superseded)")
+    print(f"SIGNAL={signal_ms:.3f}ms  NOISE FLOOR={NOISE_FLOOR_MS:.3f}ms  RATIO={ratio:.2f}  "
+          f"=> {'SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)' if ratio < 1 else 'sign established (report signal/noise/ratio)'}")
     if "--write" in sys.argv:
         import datetime
         today = datetime.date.today().isoformat()
@@ -145,6 +162,7 @@ def main():
                 "source_run_id": LOAD_RUN_ID,
                 "duration": f"replay {r['seconds']:.1f}s establishment (pinned WO-009 source)",
                 "load_work": LOAD_WORK,   # WO-017 §6: the third scope dimension
+                "resolution": NOISE_FLOOR_DECL,   # WO-013 A: the fifth scope dimension (noise floor)
             })
         # save_baseline carries any DIFFERING prior figure into rec['superseded'] (never overwritten).
         print(f"[--write] saved this host's baseline: {rec['mean_cycle_seconds']}s "
