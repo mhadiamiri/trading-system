@@ -86,6 +86,12 @@ the alternative is erosion). Sequence: wire-string → WO-013 → CI capture + v
 → 008c → corpus. Corpus preconditions now: fingerprinted load-representative baseline + no-sleep host
 + ~5.3 GB/24h + (checksum class closed).
 
+**Hot-path judgment (first NON-application of the standing rule, 2026-07-22, WO-017 follow-up A):** the
+wire-capture fields (`local_book_bids_wire`/`local_book_asks_wire`) execute only on CHECKSUM FAILURE,
+not per applied frame; not hot path; no re-baseline required. Recorded so the rule's first exception is
+stated precedent — "when in doubt, re-baseline" stays a default that must be argued OUT of, not a silent
+"when in doubt, assume not."
+
 ---
 
 ## ▶ RUN COMPLETE (AUTHORITATIVE) — 2026-07-21 — WO-008b-B-RERUN EXECUTED
