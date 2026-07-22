@@ -1,0 +1,16 @@
+### WO-013 items 1-3 VERIFY — DETERMINISTIC ###
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 212 passed in 245.73s (0:04:05) =======================
+### RANDOMIZED (--randomly-seed=20260728) ###
+tests\integration\test_cost_reconciliation.py ....                       [100%]
+
+======================= 212 passed in 246.18s (0:04:06) =======================
+### LINT-IMPORTS ###
+
+Contracts: 6 kept, 0 broken.
+### CONTRACT ###
+PASS: import-linter evaluated 6 contracts (expected 6)
+### RUFF ###
+All checks passed!
+### DONE ###

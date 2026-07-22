@@ -88,13 +88,16 @@ LOAD_WORK = ("per-frame PROCESSING COST characterized by the pinned WO-009 fixtu
 # session spread on unchanged code (evidence/WO-013/noise_floor_and_ab_report.txt). OPERATIONAL floor
 # for a single-session establishment vs the STORED figure = 1.0 ms (cross-session, current adapter
 # instrument). Every delta reports SIGNAL / NOISE / RATIO; RATIO<1 => sign unestablished, ledger kept.
-NOISE_FLOOR_MS = 1.5   # WIDENED (default) instrument operational floor (WO-013 B; provisional, n=4)
-NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim). WIDENED full-loop instrument (default, WO-013 B): "
-                    "within-session core ~0.2 ms (1 sigma), heavier tails (an observed +1.6 ms outlier "
-                    "in 4 runs) -> OPERATIONAL FLOOR ~1.5 ms (provisional, n=4). ADAPTER-ONLY legacy: "
-                    "within-session ~0.3 ms, CROSS-SESSION ~1.0 ms (WO-017 107.961 vs WO-013 108.979 ms "
-                    "on byte-identical adapter code). Report every delta as SIGNAL/NOISE/RATIO; RATIO<1 "
-                    "=> SIGN UNESTABLISHED, keep the entry (it BOUNDS the effect).")
+NOISE_FLOOR_MS = 2.0   # WIDENED instrument CYCLE operational floor (WO-013 item 3); CONSERVATIVE — set
+#                        ABOVE the largest observed noise excursion (1.586 ms at n=9) so noise != signal.
+NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim) on the WIDENED full-loop instrument (WO-013 item 1/2/3). "
+                    "9 runs, median 108.717 ms; core ~0.15-0.2 ms (1 sigma), one +1.586 ms outlier. CYCLE "
+                    "FLOOR = 2.0 ms (conservative, above the largest excursion; provisional n=9). PER-FRAME "
+                    "LIMIT (measured, NOT naive): mean_cycle is a SLEEP-WAKE LAG metric, not a per-frame CPU "
+                    "meter; below the ~30.6 ms/frame budget it ATTENUATES ~5x (10 ms/frame -> +1.97 ms, below "
+                    "floor). EFFECTIVE per-frame detection floor ~10 ms/FRAME; sub-ms/frame changes are "
+                    "INVISIBLE (report clean); a per-frame cost is only caught near SATURATION (~30 ms/frame, "
+                    "where the rate also drops). Report every delta SIGNAL/NOISE/RATIO; RATIO<1 => unestablished.")
 
 
 async def establish(seconds: float):
@@ -197,8 +200,10 @@ def main():
     # WIDENED full-loop iteration (adapter + loop) — rule text and instrument coverage now name the
     # same boundary. --adapter-only runs the LEGACY subset (adapter process_raw_frame) for comparison.
     widened = "--adapter-only" not in sys.argv
+    measured_instrument = host_baseline.ACTIVE_INSTRUMENT if widened else host_baseline.LEGACY_INSTRUMENT
     r = asyncio.run(establish_full_loop(seconds) if widened else establish(seconds))
-    print(f"INSTRUMENT: {'WIDENED (default) — full loop iteration (adapter + loop overhead); rule scope == instrument scope' if widened else 'adapter-only process_raw_frame (LEGACY subset of the rule scope, --adapter-only)'}")
+    print(f"INSTRUMENT: {measured_instrument} — "
+          f"{'WIDENED (default), full loop iteration (adapter + loop); rule scope == instrument scope' if widened else 'adapter-only process_raw_frame (LEGACY subset of the rule scope, --adapter-only)'}")
     print(f"REPLAY SOURCE (pinned): {REPLAY_SOURCE}")
     print(f"LOAD scope: {RATE_SCOPE}; run-id {LOAD_RUN_ID}; material-diff trigger: {RATE_MATERIAL_DIFF}")
     print(f"LOAD-WORK scope (WO-017 §6): {LOAD_WORK}")
@@ -206,7 +211,6 @@ def main():
     # WO-013 follow-up C: read the STANDING figure from the store (was a stale hardcoded 0.108886 —
     # an orphan figure since the WO-017 re-baseline). Falls back to the class default only if unset.
     _rec = host_baseline.load_baseline()
-    standing = _rec["mean_cycle_seconds"] if _rec else 0.107923
     print("=== WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===")
     print(f"host fingerprint: {host_baseline.fingerprint_key()}  {host_baseline.host_fingerprint()}")
     print(f"duration={r['seconds']:.1f}s  frames_sent={r['frames_sent']}  lag_samples={r['lag_samples']}")
@@ -214,13 +218,20 @@ def main():
           f"REPRESENTATIVE(<=10%)={r['representative_within_10pct']}")
     print(f"REPLAY CAN SUSTAIN THE RATE: {r['representative_within_10pct']} "
           f"(finding, not worked around, if False)")
-    signal_ms = abs(r["mean_cycle_s"] - standing) * 1000.0
-    ratio = signal_ms / NOISE_FLOOR_MS
-    print(f"measured mean_cycle={r['mean_cycle_s']*1000:.3f}ms  vs STORED baseline "
-          f"{standing*1000:.3f}ms  delta={(r['mean_cycle_s']-standing)*1000:+.3f}ms "
-          f"({(r['mean_cycle_s']/standing-1)*100:+.1f}%)")
-    print(f"SIGNAL={signal_ms:.3f}ms  NOISE FLOOR={NOISE_FLOOR_MS:.3f}ms  RATIO={ratio:.2f}  "
-          f"=> {'SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)' if ratio < 1 else 'sign established (report signal/noise/ratio)'}")
+    print(f"measured mean_cycle={r['mean_cycle_s']*1000:.3f}ms  (instrument={measured_instrument})")
+    # WO-013 item 1: REFUSE a cross-instrument delta. Only difference against a baseline measured on
+    # the SAME instrument — else the delta is uninterpretable by construction. Refusal, not warning.
+    if _rec is None:
+        print("no stored baseline for this host — nothing to difference (establish + --write first).")
+    else:
+        host_baseline.require_measurement_instrument(measured_instrument, _rec)  # raises on mismatch
+        standing = _rec["mean_cycle_seconds"]
+        signal_ms = abs(r["mean_cycle_s"] - standing) * 1000.0
+        ratio = signal_ms / NOISE_FLOOR_MS
+        print(f"  vs STORED baseline {standing*1000:.3f}ms (instrument={host_baseline.record_instrument(_rec)}) "
+              f"delta={(r['mean_cycle_s']-standing)*1000:+.3f}ms ({(r['mean_cycle_s']/standing-1)*100:+.1f}%)")
+        print(f"  SIGNAL={signal_ms:.3f}ms  NOISE FLOOR={NOISE_FLOOR_MS:.3f}ms  RATIO={ratio:.2f}  "
+              f"=> {'SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)' if ratio < 1 else 'sign established (report signal/noise/ratio)'}")
     if "--write" in sys.argv:
         import datetime
         today = datetime.date.today().isoformat()
@@ -232,17 +243,20 @@ def main():
             date=today,
             load=f"replay ~{r['achieved_per_min']:.0f} msg/min ({RATE_SCOPE}); source run-id "
                  f"{LOAD_RUN_ID}; duration {r['seconds']:.0f}s; material-diff trigger: {RATE_MATERIAL_DIFF}",
+            instrument=measured_instrument,   # WO-013 item 1: the sixth scope dimension
             scope={
                 "host": host_baseline.fingerprint_key(),
+                "instrument": measured_instrument,
                 "load": f"replay ~{r['achieved_per_min']:.0f} msgs/min ({RATE_SCOPE})",
                 "source_run_id": LOAD_RUN_ID,
                 "duration": f"replay {r['seconds']:.1f}s establishment (pinned WO-009 source)",
                 "load_work": LOAD_WORK,   # WO-017 §6: the third scope dimension
                 "resolution": NOISE_FLOOR_DECL,   # WO-013 A: the fifth scope dimension (noise floor)
             })
-        # save_baseline carries any DIFFERING prior figure into rec['superseded'] (never overwritten).
-        print(f"[--write] saved this host's baseline: {rec['mean_cycle_seconds']}s "
-              f"({len(rec.get('superseded', []))} superseded record(s) retained)")
+        # save_baseline: a DIFFERENT-instrument prior CLOSES into closed_instrument_ledgers (entry zero);
+        # a SAME-instrument differing figure goes to superseded (never overwritten).
+        print(f"[--write] saved this host's '{measured_instrument}' baseline: {rec['mean_cycle_seconds']}s "
+              f"(superseded={len(rec.get('superseded', []))}, closed-ledgers={len(rec.get('closed_instrument_ledgers', []))})")
     else:
         print("[report only] not written; pass --write to save this host's record (new host).")
 

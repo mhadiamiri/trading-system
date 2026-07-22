@@ -1,0 +1,43 @@
+WO-013 item 1 BITE PROOF — cross-instrument delta REFUSED (four artifacts, sha256)
+Target: src\trading\loop\host_baseline.py::require_measurement_instrument
+Reason code: MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH  (refusal, not warning)
+test: tests/integration/test_mean_cycle_baseline_gate.py::test_instrument_mismatch_is_refused_not_warned
+
+sha256 BEFORE: 1f06a96e66c601c158b35c42c0f6bb90b0bac57eb8ee09dd5a9d19be30b9b858
+
+-- ARTIFACT 1 — PASS (refusal present: cross-instrument raises the code)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_mean_cycle_baseline_gate.py .                     [100%]
+
+============================== 1 passed in 0.09s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (refusal disabled: DID NOT RAISE)  [rc=1] --
+WEAKENING: 'if stored != measured_instrument:' -> 'if False:  # WEAKENED: cross-instrument refusal disabled'
+_______________ test_instrument_mismatch_is_refused_not_warned ________________
+tests\integration\test_mean_cycle_baseline_gate.py:94: in test_instrument_mismatch_is_refused_not_warned
+    with pytest.raises(ValueError, match="MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_mean_cycle_baseline_gate.py::test_instrument_mismatch_is_refused_not_warned
+============================== 1 failed in 0.18s ==============================
+
+-- ARTIFACT 3 — PASS (refusal restored)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_mean_cycle_baseline_gate.py .                     [100%]
+
+============================== 1 passed in 0.10s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 1f06a96e66c601c158b35c42c0f6bb90b0bac57eb8ee09dd5a9d19be30b9b858
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

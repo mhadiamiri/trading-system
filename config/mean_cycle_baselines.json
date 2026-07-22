@@ -6,55 +6,74 @@
    "os": "Windows 11",
    "cpu_arch": "AMD64"
   },
-  "mean_cycle_seconds": 0.107923,
-  "date": "2026-07-21",
+  "instrument": "full-loop",
+  "mean_cycle_seconds": 0.108717,
+  "date": "2026-07-22",
+  "entry_zero": "LOOP-BOUNDARY LEDGER, ENTRY ZERO (WO-013 follow-up item 1). Established FROM SCRATCH on the widened (full-loop) instrument — NOT inherited from the adapter-only ledger via a cross-instrument delta (which is refused, not differenced). This is the active baseline the live gate (which measures the full loop) should reference.",
   "scope": {
    "host": "fingerprint ba47c96a36f36642 (machine_id a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)",
+   "instrument": "full-loop — the WIDENED instrument (WO-013 B): the pinned frame replayed through the REAL LiveTradingLoop (adapter parse+apply+checksum + strategy.decide + risk.check + reason-code emission), the event-loop lag sampler timing total occupancy. This is the SIXTH scope dimension (host/load/source/duration/resolution/INSTRUMENT); a measurement on a different instrument is REFUSED, never differenced (MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH). Containment behaviorally proved: evidence/WO-013/containment_bite_proof.txt.",
    "load": "replay ~1959 book msgs/min, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
    "source_run_id": "WO-008b-B-RERUN-20260721T170944Z",
    "duration": "replay 60.0s establishment (pinned WO-009 source, pinned rate ~1959/min, same host, same protocol)",
-   "load_work": "per-frame PROCESSING COST characterized by the pinned WO-009 fixture frame shapes (SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL), INCLUDING WO-017 wire-string retention (per-level WireDecimal construction at parse + .wire consumption at checksum, replacing the interim per-level format(x,'f') render). Empirical justification: live-vs-replay agreement at +0.008 ms, representative as measured. INVALIDATION CONDITION: deeper ladders, heavier per-level validation, or additional per-level storage require re-validation (WO-017 §6 — this WO's own change was that condition's first trigger).",
-   "resolution": "NOISE FLOOR of the establishment instrument (fifth scope dimension, WO-013 follow-up A / 0.1j). WIDENED (full-loop) instrument, this host (WO-013 B, now the DEFAULT): within-session core ~0.2 ms (1 sigma), plus heavier tails than adapter-only (an observed +1.6 ms outlier in 4 runs), so OPERATIONAL FLOOR ~1.5 ms (provisional, n=4). ADAPTER-ONLY (legacy subset): within-session ~0.3 ms (1 sigma), CROSS-SESSION ~1.0 ms (WO-017 107.961 vs WO-013 108.979 ms on byte-identical adapter code). STANDING REPORT FORM for every future delta: SIGNAL=|new-baseline|, NOISE=floor, RATIO=SIGNAL/NOISE; RATIO<1 => record with SIGN EXPLICITLY UNESTABLISHED and KEEP the ledger entry (it BOUNDS the effect). Derivations: evidence/WO-013/noise_floor_and_ab_report.txt (A) and widened_instrument.txt (B).",
-   "instrument": "The stored mean_cycle_seconds (0.107923) was measured on the ADAPTER-ONLY instrument (process_raw_frame). WO-013 follow-up B WIDENED the instrument to the FULL LOOP ITERATION (adapter + strategy.decide + risk.check + emission), so rule text and instrument coverage name the same boundary. The widened instrument measures ~108.7 ms core (108.519/108.711/108.912/110.303 ms), a +0.79 ms delta vs the stored figure at RATIO 0.79 — BELOW the noise floor, sign unestablished: loop overhead is below resolution (consistent with WO-017's +0.008 ms live-vs-replay agreement). The stored figure is RETAINED (not re-declared to a below-floor, different-instrument number) and remains a valid live-gate reference (the live gate already measures the full loop; 50% drift-VOID makes sub-ms immaterial). Instrument HENCEFORTH widened (establish tool default)."
+   "load_work": "per-frame PROCESSING COST characterized by the pinned WO-009 fixture frame shapes (SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL), INCLUDING WO-017 wire-string retention AND (now, on the widened instrument) the loop's per-MarketState work: strategy.decide, risk.check, reason-code emission. INVALIDATION: deeper ladders, heavier per-level validation, additional per-level storage, or heavier per-frame loop work require re-validation.",
+   "resolution": "NOISE FLOOR (fifth scope dim) on the WIDENED full-loop instrument (WO-013 item 1/3). Established from 9 runs (108.519/108.521/108.708/108.711/108.717/108.897/108.909/108.912/110.303 ms), MEDIAN 108.717 ms. Within-session core ~0.15-0.2 ms (1 sigma, 8 of 9), with ONE +1.586 ms outlier (110.303). CYCLE OPERATIONAL FLOOR = 2.0 ms — CONSERVATIVE: set ABOVE the largest observed noise excursion (1.586 ms) so noise is never read as signal (a floor set too TIGHT manufactures false signal). PROVISIONAL at n=9; ~20-30 runs would firm the outlier RATE and let the floor be set from a tail percentile. PER-FRAME LIMIT (item 3, DECLARED — corrected by the item-2 containment/calibration proof, NOT the naive arithmetic): mean_cycle = span/actual_samples is a SLEEP-WAKE LAG (starvation/responsiveness) metric, NOT a per-frame CPU meter. Below the ~30.6 ms/frame inter-frame budget the pacer leaves idle slack, so per-frame CPU cost is ATTENUATED ~5x: measured sensitivity ~0.2 ms-cycle per ms-frame (10 ms/frame injected -> only +1.97 ms mean_cycle, BELOW the 2.0 ms floor). EFFECTIVE per-frame DETECTION FLOOR ~= 2.0/0.2 ~= 10 ms/FRAME (not ~0.6 ms). WHAT IS CAUGHT: a per-frame cost approaching SATURATION (~30 ms/frame: 40 ms/frame -> +96.5 ms and the achieved rate drops to 1469/min). WHAT IS NOT: any per-frame cost below ~10 ms/frame reports clean — realistic sub-ms/frame changes are INVISIBLE to this instrument. THE UNCAUGHT CASE LOOKS LIKE: a WO adds 0.3-1 ms/frame, mean_cycle does not move, the gate reports compliance while per-frame throughput cost silently rose. Reviewer-known in advance; a direct per-frame timer would be the fit instrument (reported for a ruling, item-2 finding). STANDING REPORT FORM: SIGNAL/NOISE/RATIO; RATIO<1 => SIGN UNESTABLISHED, keep the entry. Derivations: evidence/WO-013/noise_floor_and_ab_report.txt (A), widened_instrument.txt (B), containment_bite_proof.txt (item 2), and this record."
   },
-  "derivation": "establishment protocol: 1959 frames replayed at 1959/min over 60s from tests/fixtures/kraken_v2_raw_frames.py (WO-009 pinned source); mean_cycle=span/actual. RE-BASELINED under WO-017 (wire-string retention), the first pre-declared, legitimate re-baseline (§5): executed inside the WO that caused the pipeline change, before the changed code faces any live gate.",
+  "derivation": "establishment protocol on the WIDENED (full-loop) instrument: pinned WO-009 frames replayed at ~1959/min over 60s through the real LiveTradingLoop; mean_cycle=span/actual. ENTRY ZERO of the loop-boundary ledger = MEDIAN of 9 runs (108.717 ms), established from scratch (WO-013 item 1) — never a cross-instrument delta from the adapter-only figure.",
   "load": "replay ~1959 book msgs/min (representative of WO-008b-B-RERUN observed load); source run-id WO-008b-B-RERUN-20260721T170944Z; duration 60s; material-diff trigger: a sustained rate outside +-20% of 1959/min (<1567 or >2351/min) is MATERIALLY DIFFERENT and re-declares the representative rate, dated, old scope annotated.",
-  "rebaseline": {
-   "date": "2026-07-21",
-   "pipeline_change": "WO-017 wire-string retention: _current_ladder_strings now returns the venue's retained WireDecimal.wire text; the per-level format(x,'f') render (WO-016 INTERIM fix) is removed.",
-   "prior_mean_cycle_seconds": 0.108886,
-   "new_mean_cycle_seconds": 0.107923,
-   "delta_ms": -0.963,
-   "delta_pct": -0.9,
-   "attributed_to": "wire-string retention replacing per-level fixed-point rendering (a .wire attribute read is cheaper than format(x,'f') per level). Three establishment runs at 1959/min/60s: 107.732, 107.923, 107.923 ms (range ~0.2%); the -0.9% shift is reproducible, not run-to-run noise.",
-   "material": "NOT material to any gate (well within the 50% mean-cycle drift-VOID bound and the +-20% rate scope), but a REAL, reproducible, FAVORABLE change: the structural fix is also marginally cheaper per cycle. The 'at what cost' clause is answered in milliseconds under identical replayed load: the cost is negative.",
-   "noise_floor_annotation_2026-07-22": "Recorded, SIGN NOT ESTABLISHED. Measured across sessions; WO-013's establishment runs subsequently demonstrated cross-session variation of comparable magnitude on unchanged code. The mechanism (removing a per-cycle rendering pass) remains plausible; this measurement does not establish it. The honest reading is 'wire-string retention costs approximately nothing' — which satisfies the feasibility pre-ruling's bar of ACCEPTABLE cost. The letter-closure of FR-018a(f) never rested on the sign. [SIGNAL 0.963 ms / NOISE 1.0 ms / RATIO 0.96 -> inside the floor. Annotated per WO-013 follow-up A.3, never rewritten.]"
-  },
   "assessments": [
    {
     "date": "2026-07-22",
-    "pipeline_change": "WO-013 reason-code emission: loop (live.py) emits the DECLARED codes NO_SIGNAL / LONG_SIGNAL / SHORT_SIGNAL and KillSwitchEngagedError defaults to KILL_SWITCH_ENGAGED.",
-    "result": "BASELINE HOLDS at 0.107923s — NO re-declaration. Rationale: (1) the establishment tool measures the ADAPTER book-apply cycle (process_raw_frame), which WO-013 does not touch — the adapter is byte-identical to WO-017; (2) WO-013's loop change RENAMED an already-existing per-frame emission (STRAT_NO_SIGNAL -> NO_SIGNAL, byte-identical log_decision call) and added two RARELY-TRIGGERED emissions (LONG/SHORT_SIGNAL on signal, KILL_SWITCH_ENGAGED on a blocked order) — ZERO new per-frame work. Establishment runs measured 109.305/108.910/108.721 ms, differing from 107.923 by cross-session environmental NOISE (same-host, different day), NOT attributable to this change. A new figure pinned to reason-code emission would be false attribution of noise. Hot-path standing rule was APPLIED (work done), and the honest finding is: no per-frame cost added. Evidence: evidence/WO-013/rebaseline.txt."
-   },
-   {
-    "date": "2026-07-22",
-    "pipeline_change": "WO-013 follow-up B — INSTRUMENT WIDENED to the full loop iteration (adapter + strategy.decide + risk.check + emission), replacing the adapter-only process_raw_frame instrument so rule scope == instrument scope.",
-    "result": "BASELINE HOLDS at 0.107923s (adapter-only), scope annotated 'adapter-only'; instrument henceforth WIDENED (default). Widened establishment (4x 60s, ~1957/min): 108.519/108.711/108.912/110.303 ms, core mean 108.714 ms. Widened vs stored: SIGNAL 0.791 ms / NOISE 1.0 ms / RATIO 0.79 -> INSIDE THE FLOOR, sign unestablished; the widened core is even slightly BELOW the same-session adapter-only mean (108.714 vs 108.979 ms), i.e. loop overhead is below the noise floor (consistent with WO-017's +0.008 ms live-vs-replay). NOT re-declared to a below-floor, different-instrument figure (A.2). Widened noise floor re-established: within-session core ~0.2 ms (1 sigma), heavier tails (an outlier +1.6 ms), operational ~1.5 ms provisional (n=4). Closure: rule text (progress.md) and instrument (establish tool default) now name the full loop. Evidence: evidence/WO-013/widened_instrument.txt."
+    "event": "WO-013 follow-up item 1 — INSTRUMENT identity is the sixth scope dimension. The loop-boundary ledger OPENS here at entry zero (108.717 ms, full-loop). The adapter-only ledger CLOSED and moved to closed_instrument_ledgers (valid for what it measured, never invalidated). A cross-instrument delta is now REFUSED (MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH), not differenced. Enumeration of scope dimensions is OPEN (host/load/source/duration/resolution/instrument); every anomalous delta is first interrogated for an undeclared dimension before being read as signal."
    }
   ],
-  "superseded": [
+  "closed_instrument_ledgers": [
    {
-    "mean_cycle_seconds": 0.108886,
+    "instrument": "adapter-only",
+    "ledger_closed_date": "2026-07-22",
+    "close_reason": "Instrument boundary widened to 'full-loop' on 2026-07-22 (WO-013 item 1). This adapter-only ledger CLOSES. Its entries REMAIN VALID FOR WHAT THEY MEASURED (the adapter process_raw_frame cycle) — NOT invalidated. It is NEVER differenced against the full-loop instrument; the two cross-instrument comparisons previously drawn in the WO-013-B assessment are annotated as WITHDRAWN below.",
+    "mean_cycle_seconds": 0.107923,
     "date": "2026-07-21",
-    "scope_end_date": "2026-07-21",
-    "end_reason": "Superseded by the WO-017 wire-string-retention re-baseline (0.107923s). NOT overwritten: retained here as the baseline ledger's prior entry so the pipeline's performance evolution stays traceable (no orphan figures).",
     "scope": {
      "host": "fingerprint ba47c96a36f36642 (machine_id a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)",
-     "load": "~1959 book msgs/min received, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
+     "load": "replay ~1959 book msgs/min, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
      "source_run_id": "WO-008b-B-RERUN-20260721T170944Z",
-     "duration": "live 3600.00s (60-min single-window capture)"
+     "duration": "replay 60.0s establishment (pinned WO-009 source)",
+     "resolution": "adapter-only instrument: within-session ~0.3 ms (1 sigma), CROSS-SESSION ~1.0 ms (WO-017 107.961 vs WO-013 108.979 ms on byte-identical adapter code)."
     },
-    "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z), under representative observed load ~1959 msg/min. Re-confirmed under replay to +0.0% (D28) and -0.2% (D29) with the interim-render code; this WO's wire-string code re-baselines it."
+    "derivation": "establishment protocol (adapter-only process_raw_frame): 1959 frames at 1959/min over 60s from the WO-009 pinned source; mean_cycle=span/actual. RE-BASELINED under WO-017 (wire-string retention).",
+    "rebaseline": {
+     "date": "2026-07-21",
+     "pipeline_change": "WO-017 wire-string retention: _current_ladder_strings returns the venue's retained WireDecimal.wire; the per-level format(x,'f') render is removed.",
+     "prior_mean_cycle_seconds": 0.108886,
+     "new_mean_cycle_seconds": 0.107923,
+     "delta_ms": -0.963,
+     "delta_pct": -0.9,
+     "attributed_to": "wire-string retention replacing per-level fixed-point rendering. Three runs: 107.732/107.923/107.923 ms.",
+     "noise_floor_annotation_2026-07-22": "Recorded, SIGN NOT ESTABLISHED. Measured across sessions; WO-013's establishment runs demonstrated cross-session variation of comparable magnitude on unchanged code. The honest reading is 'wire-string retention costs approximately nothing', which meets the feasibility bar of ACCEPTABLE cost; the letter-closure of FR-018a(f) never rested on the sign. [SIGNAL 0.963 / NOISE 1.0 / RATIO 0.96 -> inside the floor. Annotated per A.3, never rewritten.]"
+    },
+    "superseded": [
+     {
+      "mean_cycle_seconds": 0.108886,
+      "date": "2026-07-21",
+      "scope_end_date": "2026-07-21",
+      "end_reason": "Superseded by the WO-017 wire-string-retention re-baseline (0.107923s), same (adapter-only) instrument. Retained, never overwritten.",
+      "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture, under representative observed load ~1959 msg/min. Re-confirmed under replay +0.0% (D28) / -0.2% (D29)."
+     }
+    ],
+    "prior_assessments": [
+     {
+      "date": "2026-07-22",
+      "pipeline_change": "WO-013 reason-code emission.",
+      "result": "adapter-only baseline held at 0.107923s; WO-013 renamed an existing per-frame emission and added rarely-triggered codes — no new per-frame work. Runs 109.305/108.910/108.721 ms differed from 107.923 by cross-session noise. Evidence: evidence/WO-013/rebaseline.txt."
+     },
+     {
+      "date": "2026-07-22",
+      "pipeline_change": "WO-013 follow-up B — instrument widened to the full loop.",
+      "result": "Widened establishment (4x60s): 108.519/108.711/108.912/110.303 ms.",
+      "WITHDRAWN_cross_instrument_comparisons": "WITHDRAWN per WO-013 item 1 (annotated, not deleted). The B assessment differenced the WIDENED figure against the ADAPTER-ONLY stored 107.923 ('SIGNAL 0.791 / NOISE 1.0 / RATIO 0.79') and compared 'widened core 108.714 vs same-session adapter-only 108.979'. BOTH are CROSS-INSTRUMENT and therefore UNINTERPRETABLE BY CONSTRUCTION — two boundaries, not one measurement with noise. The conclusion they were used to support (loop overhead is small) is instead established WITHOUT cross-instrument differencing: by the containment bite proof (the widened instrument demonstrably encloses and times injected loop work) and by the full-loop ledger standing on its OWN entry-zero baseline (108.717 ms) with its own noise floor. The comparisons are retained here only as a record of the withdrawn reasoning."
+     }
+    ]
    }
   ]
  }

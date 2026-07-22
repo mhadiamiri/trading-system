@@ -114,6 +114,14 @@ VALID_REASON_CODES = {
         # against a reference from another machine, so the run REFUSES to start (before any
         # connection) rather than limp or guess. New host => run tools/establish_mean_cycle_baseline.py.
         "MEAN_CYCLE_BASELINE_HOST_MISMATCH",
+        # WO-013 follow-up item 1: raised when a mean-cycle measurement is differenced against a
+        # STORED baseline whose INSTRUMENT differs (full-loop vs adapter-only). Instrument identity is
+        # the SIXTH scope dimension (host / load / source / duration / resolution / INSTRUMENT); a
+        # cross-instrument delta is UNINTERPRETABLE BY CONSTRUCTION (two boundaries), not merely noisy.
+        # Same treatment as the host mismatch: a REFUSAL (not a warning — a warning is vigilance). The
+        # loop-boundary ledger opens at entry zero and is never inherited via a cross-instrument delta.
+        # Prefix-free vs MEAN_CYCLE_BASELINE_HOST_MISMATCH (…_INSTRUMENT_… vs …_HOST_… — neither prefixes).
+        "MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH",
         # WO-015: raised by the live-capture runner's preflight when TRADING_ENV is not 'paper'
         # — a live capture must never run where the order-capable path could be reachable. The
         # refusal lives IN the runner (checklist-enforced rules are 0-for-N), before any component

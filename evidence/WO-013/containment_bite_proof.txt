@@ -1,0 +1,31 @@
+WO-013 item 2 CONTAINMENT + CALIBRATION — widened instrument vs the loop (four artifacts, sha256)
+Target: src\trading\loop\live.py (loop per-frame body); instrument: WIDENED full-loop
+Sweep per-frame delay BELOW (10 ms) and ABOVE (40 ms) the ~30.6 ms/frame inter-frame budget.
+Noise floor 2.0 ms. Establishment: 30s each. sha256 BEFORE: 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+
+-- ARTIFACT 1 — BASELINE widened mean_cycle = 108.801 ms (achieved 1958/min; frames/cycle ~3.55) --
+  vs STORED baseline 108.717ms (instrument=full-loop) delta=+0.084ms (+0.1%)
+  SIGNAL=0.084ms  NOISE FLOOR=2.000ms  RATIO=0.04  => SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)
+[report only] not written; pass --write to save this host's record (new host).
+
+-- ARTIFACT 2.10 — INJECTED 10 ms/frame in the LOOP: mean_cycle=110.771 ms (achieved 1958/min) --
+MEASURED RISE=+1.970 ms ; EXPECTED (full containment = inj x frames/cycle)=35.505 ms ; transfer ratio=0.055 ; vs floor: RATIO=0.98 (BELOW floor — sign unestablished)
+
+-- ARTIFACT 2.40 — INJECTED 40 ms/frame in the LOOP: mean_cycle=205.302 ms (achieved 1469/min) --
+MEASURED RISE=+96.501 ms ; EXPECTED (full containment = inj x frames/cycle)=142.022 ms ; transfer ratio=0.679 ; vs floor: RATIO=48.25 (ABOVE floor)
+
+-- ARTIFACT 3 — RESTORED: widened mean_cycle = 107.527 ms (back near baseline) --
+  vs STORED baseline 108.717ms (instrument=full-loop) delta=-1.190ms (-1.1%)
+  SIGNAL=1.190ms  NOISE FLOOR=2.000ms  RATIO=0.60  => SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)
+[report only] not written; pass --write to save this host's record (new host).
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+EXACT RESTORE: YES — byte-identical
+
+=== FINDINGS ===
+ENCLOSURE: CONFIRMED — a per-frame delay injected into the LOOP moves the WIDENED mean_cycle (the adapter-only instrument never runs this line, so it cannot). 10 ms/frame -> +1.970 ms; 40 ms/frame -> +96.501 ms.
+ATTENUATION (the calibration finding, per item 2 — reported, NOT adjusted): mean_cycle = span / actual_samples is the mean SLEEP-WAKE (event-loop lag) cycle, NOT per-frame CPU throughput. Below the ~30.6 ms/frame inter-frame budget the pacer leaves idle slack, so a per-frame block delays the sampler's wake only by ~its residual-on-arrival: 10 ms/frame -> 1.970 ms (transfer 0.055, and BELOW the 2.0 ms floor). Above the budget the loop SATURATES and the rise grows sharply: 40 ms/frame -> 96.501 ms (achieved 1469/min — rate drop is itself a signal). So mean_cycle is a STARVATION/responsiveness detector (its WO-014c-1 purpose), not a linear per-frame cost meter; per-frame CPU changes are largely INVISIBLE until they approach saturation.
+IMPLICATION (item 3): the effective per-frame DETECTION floor is NOT ~0.6 ms — because of attenuation a 10 ms/frame change is already below the cycle floor. Sensitivity ~0.197 ms-cycle per ms-frame below saturation, so the per-frame detection floor is ~tens of ms/frame at this rate. Realistic sub-ms/frame changes are invisible to this instrument — a declared LIMIT.
+
+RESULT: baseline=108.801  10ms->rise +1.970  40ms->rise +96.501  restored=107.527  sha256-exact=True  enclosure=True  => OK (enclosure shown + attenuation characterised)

@@ -42,16 +42,23 @@ def test_runner_refuses_host_with_no_baseline(tmp_path, monkeypatch):
                           trading_env="paper", data_source="kraken_v2")
 
 
-def test_this_host_baseline_carries_its_rebaseline_ledger():
-    """WO-017 §5: the re-baseline NEVER overwrote its predecessor. This host's record carries the
-    prior 0.108886s figure in its `superseded` ledger, annotated with a scope end date, and the
-    LOAD-WORK scope dimension (§6) is present."""
+def test_this_host_active_ledger_is_full_loop_with_the_adapter_only_ledger_closed():
+    """WO-013 item 1: the ACTIVE ledger is the full-loop (widened) instrument, opened at entry zero.
+    The adapter-only ledger CLOSED into closed_instrument_ledgers — retained (valid for what it
+    measured), never invalidated — and it carries the WO-017 re-baseline history (0.107923 with its
+    superseded 0.108886). The sixth scope dimension (instrument) and fifth (resolution) are present."""
     rec = host_baseline.load_baseline()
-    assert rec["mean_cycle_seconds"] == 0.107923           # the re-baselined figure
-    superseded = rec.get("superseded", [])
-    assert superseded and superseded[0]["mean_cycle_seconds"] == 0.108886
-    assert superseded[0]["scope_end_date"]                 # end-dated, not orphaned
-    assert "load_work" in rec["scope"]                     # §6 third scope dimension
+    assert rec["instrument"] == "full-loop"
+    assert rec["mean_cycle_seconds"] == 0.108717           # loop-boundary entry zero (median of 9)
+    assert "superseded" not in rec, "entry zero: no cross-instrument history inherited"
+    assert "instrument" in rec["scope"] and "resolution" in rec["scope"] and "load_work" in rec["scope"]
+
+    closed = rec["closed_instrument_ledgers"]
+    assert closed and closed[0]["instrument"] == "adapter-only"
+    assert closed[0]["mean_cycle_seconds"] == 0.107923     # the adapter-only ledger's last active figure
+    assert closed[0]["ledger_closed_date"]                 # closed, not invalidated
+    # its own WO-017 history is retained inside the closed ledger
+    assert closed[0]["superseded"][0]["mean_cycle_seconds"] == 0.108886
 
 
 def test_save_baseline_never_overwrites_a_differing_figure(tmp_path, monkeypatch):
@@ -78,6 +85,52 @@ def test_save_baseline_never_overwrites_a_differing_figure(tmp_path, monkeypatch
     r4 = host_baseline.save_baseline(0.080000, "d4", "2026-04-04", "l4", fp=fp)
     assert [s["mean_cycle_seconds"] for s in r4["superseded"]] == [0.090000, 0.100000]
     assert host_baseline.load_baseline(fp=fp)["mean_cycle_seconds"] == 0.080000
+
+
+def test_instrument_mismatch_is_refused_not_warned():
+    """WO-013 item 1: a cross-instrument delta is REFUSED with the declared code — a measurement on
+    one boundary differenced against a baseline on another is uninterpretable by construction."""
+    adapter_only = {"instrument": "adapter-only", "mean_cycle_seconds": 0.107923}
+    with pytest.raises(ValueError, match="MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH"):
+        host_baseline.require_measurement_instrument("full-loop", adapter_only)
+    # same instrument passes (no raise)
+    host_baseline.require_measurement_instrument("adapter-only", adapter_only)
+    # a legacy record (no instrument field) reads as adapter-only, so full-loop still refuses
+    with pytest.raises(ValueError, match="MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH"):
+        host_baseline.require_measurement_instrument("full-loop", {"mean_cycle_seconds": 0.1})
+    assert host_baseline.record_instrument({}) == "adapter-only"
+
+
+def test_save_baseline_closes_prior_ledger_on_instrument_change(tmp_path, monkeypatch):
+    """WO-013 item 1: a DIFFERENT-instrument write CLOSES the prior ledger (into
+    closed_instrument_ledgers, valid for what it measured) and OPENS the new one at ENTRY ZERO —
+    never inheriting a cross-instrument delta into `superseded`."""
+    store = tmp_path / "s.json"
+    monkeypatch.setenv("MEAN_CYCLE_BASELINE_STORE", str(store))
+    fp = host_baseline.host_fingerprint()
+
+    # adapter-only ledger with some history
+    host_baseline.save_baseline(0.108000, "d1", "2026-01-01", "l1", fp=fp, instrument="adapter-only")
+    host_baseline.save_baseline(0.107900, "d2", "2026-02-02", "l2", fp=fp, instrument="adapter-only")
+    rec = host_baseline.load_baseline(fp=fp)
+    assert rec["instrument"] == "adapter-only" and len(rec["superseded"]) == 1
+
+    # cross to full-loop: prior ledger CLOSES, new opens at entry zero (no inherited superseded)
+    rec2 = host_baseline.save_baseline(0.108714, "d3", "2026-03-03", "l3", fp=fp, instrument="full-loop")
+    assert rec2["instrument"] == "full-loop"
+    assert rec2["mean_cycle_seconds"] == 0.108714
+    assert "superseded" not in rec2, "entry zero: no cross-instrument history inherited"
+    assert len(rec2["closed_instrument_ledgers"]) == 1
+    closed = rec2["closed_instrument_ledgers"][0]
+    assert closed["instrument"] == "adapter-only"
+    assert closed["mean_cycle_seconds"] == 0.107900          # the closed ledger's last active figure
+    assert closed["ledger_closed_date"] == "2026-03-03"
+    assert len(closed["superseded"]) == 1                    # its own history retained, not invalidated
+
+    # same-instrument re-baseline now supersedes WITHIN the full-loop ledger (not the closed one)
+    rec3 = host_baseline.save_baseline(0.108500, "d4", "2026-04-04", "l4", fp=fp, instrument="full-loop")
+    assert [s["mean_cycle_seconds"] for s in rec3["superseded"]] == [0.108714]
+    assert len(rec3["closed_instrument_ledgers"]) == 1       # still there, unchanged
 
 
 def test_runner_accepts_host_with_a_matching_baseline(tmp_path, monkeypatch):

@@ -86,22 +86,33 @@ the alternative is erosion). Sequence: wire-string → WO-013 → CI capture + v
 → 008c → corpus. Corpus preconditions now: fingerprinted load-representative baseline + no-sleep host
 + ~5.3 GB/24h + (checksum class closed).
 
-**INSTRUMENT == RULE SCOPE (WO-013 follow-up B, 2026-07-22):** the re-baseline instrument measures the
-FULL LOOP ITERATION — adapter parse+apply+checksum PLUS the loop's per-MarketState work (strategy.decide,
-risk.check, reason-code emission), via the real `LiveTradingLoop` with the event-loop lag sampler
-(`tools/establish_mean_cycle_baseline.py`, WIDENED default; `--adapter-only` = legacy subset). Rule text
-and instrument coverage now name THE SAME BOUNDARY — closing the 0.1g-family gap where the rule governed
-"the loop's hot path" while the instrument timed only the adapter (a rule whose instrument covers a
-subset of its scope reports compliance over the whole scope). A change adding real per-frame `live.py`
-work is now VISIBLE to the re-baseline.
+**INSTRUMENT == RULE SCOPE + INSTRUMENT IDENTITY is the SIXTH scope dimension (WO-013 follow-up B + item 1,
+2026-07-22):** the re-baseline instrument measures the FULL LOOP ITERATION — adapter parse+apply+checksum
+PLUS the loop's per-MarketState work (strategy.decide, risk.check, emission), via the real `LiveTradingLoop`
+with the event-loop lag sampler (`tools/establish_mean_cycle_baseline.py`, WIDENED default; `--adapter-only`
+= legacy). Rule text and instrument coverage now name THE SAME BOUNDARY. Scope is HOST / LOAD / SOURCE /
+DURATION / RESOLUTION / **INSTRUMENT** — and the enumeration is OPEN (two consecutive reports each surfaced
+one; interrogate every anomalous delta for an undeclared dimension BEFORE reading it as signal). A
+CROSS-INSTRUMENT delta is REFUSED (`MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH`), not differenced: the
+adapter-only ledger CLOSED (valid for what it measured), the loop-boundary ledger OPENED at ENTRY ZERO
+(108.717 ms), never inherited via a cross-instrument delta.
 
-**NOISE FLOOR is a DECLARED scope dimension (WO-013 follow-up A, 0.1j):** "a measurement without a
-declared noise floor is an estimate with better costumes." RESOLUTION is the fifth scope dimension
-(host / load / source / duration / RESOLUTION). Every re-baseline delta reports **SIGNAL / NOISE FLOOR /
-RATIO**; a delta with RATIO < 1 is recorded WITH SIGN EXPLICITLY UNESTABLISHED and the ledger KEEPS the
-entry (it bounds the effect). This host's widened floor ≈1.5 ms (provisional); adapter-only cross-session
-≈1.0 ms. Sub-millisecond per-frame deltas are below this instrument's floor on this host — interleaved
-within-session A/B (pre-approved, not yet implemented) would lower it toward the within-session ~0.3 ms.
+**CONTAINMENT + ATTENUATION FINDING (WO-013 item 2 — corrects the earlier "now VISIBLE" overclaim):** the
+widened instrument ENCLOSES the loop (a 40 ms/frame loop injection moved mean_cycle +96.5 ms; the
+adapter-only instrument cannot, it never runs the loop). BUT `mean_cycle = span/actual_samples` is a
+SLEEP-WAKE LAG (starvation/responsiveness) metric, NOT a per-frame CPU meter: below the ~30.6 ms/frame
+inter-frame budget the pacer leaves idle slack, so per-frame cost is ATTENUATED ~5x (10 ms/frame -> only
++1.97 ms, BELOW the floor). **Effective per-frame detection floor ~10 ms/FRAME**; sub-ms/frame changes are
+INVISIBLE (report clean); per-frame cost is only caught near SATURATION (~30 ms/frame, where the rate also
+drops). So a WO adding e.g. 0.3 ms/frame passes the gate silently — a DECLARED LIMIT; a direct per-frame
+timer would be the fit instrument (reported for a ruling).
+
+**NOISE FLOOR is a DECLARED scope dimension (WO-013 follow-up A, 0.1j):** "a measurement without a declared
+noise floor is an estimate with better costumes." RESOLUTION (fifth dim). Every re-baseline delta reports
+**SIGNAL / NOISE FLOOR / RATIO**; RATIO < 1 => SIGN EXPLICITLY UNESTABLISHED, ledger KEEPS the entry (it
+bounds the effect). Widened CYCLE floor = 2.0 ms (conservative, above the 1.586 ms max observed excursion,
+n=9 provisional). Interleaved within-session A/B (pre-approved, not implemented) would lower the CYCLE floor
+toward ~0.3 ms — but does not fix the per-frame ATTENUATION above, which is an instrument-kind limit.
 
 **Hot-path judgment (first NON-application of the standing rule, 2026-07-22, WO-017 follow-up A):** the
 wire-capture fields (`local_book_bids_wire`/`local_book_asks_wire`) execute only on CHECKSUM FAILURE,
