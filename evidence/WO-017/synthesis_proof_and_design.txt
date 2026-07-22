@@ -1,0 +1,78 @@
+WO-017 — §1.5 SYNTHESIS PROOF + VALIDATED DESIGN (checkpoint before hot-path surgery; rule 0.9)
+================================================================================================
+Baseline 0463e77. NO VENUE CONNECTION. This file is safe analysis (no code changed) done before the
+hot-path surgery, to de-risk it and satisfy §1.5. Checkpointed at ~74% context per the WO's named
+seam ("Checkpoint there if budget runs short — rule 0.9"); the surgery + 200/200 + re-baseline (§5,
+load-bearing) + report are for a fresh session that can hold them coherently.
+
+── §1.5 — EVERY LADDER-WRITING PATH (denominator = the writers, enumerated) ──────────────────
+Grep of `self.(bids|asks) (=|.append|[)` in LocalBookData. Two methods WRITE the ladder; the rest
+filter/reorder/slice/empty EXISTING tuples (they never CREATE a level's value):
+  WRITERS (create level values):
+    1. apply_snapshot  (kraken_v2_book.py:465-466)  self.bids/asks = sorted(bid_levels/ask_levels)
+    2. apply_incremental_update (:505 update self.bids[i]=(price,size); :509/:525 append; :521 asks)
+  NON-CREATING (operate on existing tuples, preserve their contents):
+    - delete (:499/:515)  self.bids = [(p,s) for p,s in self.bids if p != price]   (filter)
+    - sort   (:465-466/:528-529)  sorted(..., key price)                            (reorder)
+    - truncate (:532-533) self.bids = self.bids[:10]                                (slice)
+    - reset  (:567-568)   self.bids = []                                            (empty)
+  READS (not writes): best_bid_price/size etc. (:424-448) read self.bids[0]; return Decimal(str(...))
+    — a computed PROPERTY value for MarketState emission, NOT a ladder write and NOT checksum input.
+
+  ⇒ Every ladder level's VALUE originates from bid_levels/ask_levels, which come EXCLUSIVELY from
+    `_parse_levels` (:1237, called at :1289-1290). THE SINGLE ORIGIN POINT IS `_parse_levels`.
+
+  THE SYNTHESIS RISK, located precisely: `_parse_levels` today does
+      price if isinstance(price, Decimal) else Decimal(str(price))
+  - live path: value arrives as Decimal via json.loads(parse_float=Decimal) — the raw token text is
+    RECEIVED by parse_float and DISCARDED. (This is the "strings arrive and we discard them" finding.)
+  - fixture path: value arrives as a STRING (hand-built dict frames) -> Decimal(str(x)) -> plain
+    Decimal, no wire. THIS is a level with no transmitted string. Not currently a bug (the old code
+    re-rendered), but it IS the synthesis path the no-fallback guard must close.
+  ⇒ Closing it: `_parse_levels` must yield a WireDecimal for EVERY level — WireDecimal(token) in the
+    live path (parse_float), WireDecimal(string) in the fixture path — and any input with no
+    recoverable transmitted string RAISES (§1.4/§1.5), never falls back to a render. Then every
+    writer is fed wire-carrying levels, and the non-creating paths preserve them. No synthesis path
+    survives. Denominator: 2 writers, 1 origin function, 0 residual synthesis paths after the change.
+
+── VALIDATED DESIGN (linchpin proven this session; see the WireDecimal probe) ────────────────
+1. class WireDecimal(Decimal): __new__ stores the raw token when it is a str; `.wire` returns it.
+   PROVEN: json.loads(parse_float=WireDecimal) -> qty.wire == "0.00000010" (transmitted text, NOT
+   str(Decimal)="1.0E-7"); survives into the (price,qty) tuple and through sort() untouched; a plain
+   Decimal has no `.wire`. Arithmetic would drop the subclass, but the BOOK never does arithmetic on
+   a level — apply REPLACES — so the WireDecimal survives from parse to checksum.
+2. Live parse (:2506): json.loads(message, parse_float=WireDecimal, parse_int=WireDecimal).
+3. _parse_levels: str -> WireDecimal(str); WireDecimal -> as-is; else RAISE (declared code). §1.2 is
+   a PRIVATE representation change (ladder still holds (Decimal-subclass, Decimal-subclass) tuples) —
+   NO public signature change, so 0.1a is not triggered; if some public signature must change, STOP.
+4. _current_ladder_strings (§1.3): return (p.wire, q.wire) — NO str()/format(). If a level lacks
+   .wire -> raise CHECKSUM_WIRE_STRING_MISSING (§1.4 NO FALLBACK, load-bearing). The INTERIM
+   format('f') path is REMOVED here (§3), not left dead.
+5. compute_checksum: UNCHANGED (already consumes strings). The 'E'-sentinel STAYS (§3) — it now
+   guards the invariant "no synthesized notation reaches the CRC"; confirm it still bites.
+6. New reason code CHECKSUM_WIRE_STRING_MISSING (declared same commit).
+
+── CRITICAL SUBTLETY the next session MUST handle (the 200/200 replay, §2) ───────────────────
+The 200-capture fixture (tests/fixtures/kraken_v2_checksum_captures_wo016.json) stores local_book
+levels as str(Decimal) — e.g. qty "1.0E-7" (SCIENTIFIC), NOT the wire text "0.00000010". The
+capture predates wire retention. After the change, seeding the book with WireDecimal("1.0E-7")
+gives .wire="1.0E-7" -> checksum "10E-7" -> the OLD FAILING value, so a naive replay FAILS.
+  FIX: the replay must seed the WIRE form. The wire text == the fixed-point rendering of the captured
+  Decimal (WO-016 proved format(x,'f') reproduces Kraken's transmitted string 200/200 for this set).
+  So seed WireDecimal(format(Decimal(captured_str), 'f')) — .wire is the true transmitted string, and
+  _current_ladder_strings returns it -> checksum -> expected, 200/200. (The test RECONSTRUCTS the wire
+  the parse would have retained; production still uses .wire with no render.) Update BOTH
+  test_checksum_capture_replay.py AND tools/replay_checksum_capture.py (they seed via apply_snapshot
+  with plain Decimals today). Fixture-driven tests using wire-format string frames (SNAPSHOT_FRAME,
+  etc.) already pass — their strings are the wire form, so _parse_levels retains them correctly.
+
+── WHAT REMAINS FOR THE FRESH SESSION (the WO in full) ───────────────────────────────────────
+§1.1-1.4 implement retention (above); §1.6 three bite proofs (4 artifacts, sha256): (a) checksum
+input == transmitted text; (b) missing wire string RAISES the code; (c) round-trip a scientific-qty
+frame validates. §2 replay 200/200 (with the reconstruction above). §3 remove INTERIM label +
+confirm sentinel bites. §4 domain answered structurally. §5 RE-BASELINE (load-bearing, before the
+WO closes): establishment replay on the pinned WO-009 source at ~1959/min for 60s, report DELTA
+(108.886ms -> new, attributed to wire-string retention — the "at what cost" measurement), annotate
+old scope with END DATE, never overwrite. §6 add LOAD-WORK scope dimension. §7 annotate FR-018a(f)
+= satisfied literally. §8 decision log (text in the WO). §9 verify both orders. §10 report.
+Named seam is after §2; the re-baseline (§5) is why a coherent single session is preferable.
