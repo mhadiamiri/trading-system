@@ -1,0 +1,112 @@
+WO-020 §1 BITE PROOF — import-linter step: bare (no-op) vs 'import-linter lint' (real)
+Target of the deliberate violation: src/trading/loop/live.py
+Contract broken: 'Forbid loop from importing adapters directly' (+ two adjacent adapter contracts)
+import-linter version: import-linter 2.13
+Restore is byte-exact via a cp backup (git checkout renormalizes CRLF, breaking a byte hash).
+Outputs captured to real files, NOT /dev/null (Git-Bash /dev/null triggers a local Rich exit-1 artifact absent on CI/ubuntu).
+================================================================================
+--- sha256 BEFORE ---
+a60a540e0c819cf117826df4829d13091a5f4e90528c67ccd4db85aebfa50f58 *src/trading/loop/live.py
+
+>>> INJECT: append a direct adapter import to the loop
+tail: import trading.data.adapters.kraken_v2_book  # WO-020 bite-proof violation
+
+=== ARTIFACT 1 — OLD form 'import-linter' (BARE, ci.yml line 32 today), contract BROKEN ===
+=============
+Import Linter
+=============
+
+Usage: import-linter [OPTIONS] [COMMAND] [ARGS]...
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  drawgraph  Output a DOT format graph of a module's dependencies to stdout.
+  explore    Launch the interactive UI in a local browser.
+  lint       Check that a project adheres to a set of contracts.
+[OLD bare-form exit: 0]  <-- 0 while a contract is broken: the no-op the WO repairs
+
+=== ARTIFACT 2 — NEW form 'import-linter lint', SAME broken contract ===
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 61 files, 207 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter BROKEN
+Forbid loop from importing adapters directly BROKEN
+Registry is the sole adapter resolution path BROKEN
+No test doubles in production code KEPT
+
+Contracts: 3 kept, 3 broken.
+
+
+----------------
+Broken contracts
+----------------
+
+Forbidden v2-book-checksum imports above adapter
+------------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.kraken_v2_book (l.454)
+
+
+Forbid loop from importing adapters directly
+--------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.kraken_v2_book (l.454)
+
+
+Registry is the sole adapter resolution path
+--------------------------------------------
+
+trading.loop is not allowed to import trading.data.adapters.kraken_v2_book:
+
+-   trading.loop.live -> trading.data.adapters.kraken_v2_book (l.454)
+
+
+[NEW form exit: 1]  <-- nonzero, names the broken contracts
+
+>>> RESTORE byte-exact: cp backup back
+--- sha256 AFTER ---
+a60a540e0c819cf117826df4829d13091a5f4e90528c67ccd4db85aebfa50f58 *src/trading/loop/live.py
+
+=== ARTIFACT 3 — NEW form after restore: 6 kept / 0 broken ===
+=============
+Import Linter
+=============
+
+
+---------
+Contracts
+---------
+
+Analyzed 61 files, 206 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code KEPT
+
+Contracts: 6 kept, 0 broken.
+[NEW form exit: 0]  <-- 0
+
+=== ARTIFACT 4 — exact restore: git diff empty ===
+git diff EMPTY (byte-identical, sha256 BEFORE==AFTER)

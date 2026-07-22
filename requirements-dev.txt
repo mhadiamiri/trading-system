@@ -8,6 +8,10 @@
 pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-asyncio>=0.21.0
+# WO-020 §2: the randomized-ordering scan (has independently caught four real defects). It was
+# present in the dev env but missing here, so CI never randomized. Required for `-p no:randomly`
+# to be a valid flag and for the randomized CI step to print a seed.
+pytest-randomly>=3.12.0
 
 # Code quality
 import-linter>=2.0.0

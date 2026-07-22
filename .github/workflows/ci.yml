@@ -28,11 +28,27 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -e .
 
-    - name: Run import-linter (Constitutional Requirement IV)
-      run: import-linter
+    # WO-020 §3 (D10 / WO-010 §2): the preflight path assertion, wired BEFORE import-linter so a
+    # wrong-tree resolution is caught before any instrument analyses the wrong repository. Standalone
+    # form (exit 1 on failure); pytest_sessionstart runs the same assertion again at the pytest step.
+    - name: Preflight — trading package resolves inside the repo (WO-010 §2 / D10)
+      run: python tools/preflight_path_check.py
 
-    - name: Run pytest (Constitutional Requirements verification)
-      run: pytest --cov=src/trading --cov-report=xml --cov-report=term
+    # WO-020 §1: `import-linter` BARE is a no-op on 2.x (prints help, exits 0 — never checked a
+    # contract in CI). `import-linter lint` actually evaluates the contracts and exits nonzero on a
+    # break. Bite-proved: evidence/WO-020/import_linter_step_bite_proof.txt.
+    - name: Run import-linter (Constitutional Requirement IV)
+      run: import-linter lint
+
+    # WO-020 §2: run BOTH orders like the local gate. Deterministic first (writes coverage), then the
+    # randomized order — pytest-randomly prints "Using --randomly-seed=N", the visible proof it
+    # actually randomized. `if: always()` so the seed is emitted even when the deterministic run fails.
+    - name: Run pytest — deterministic order (-p no:randomly)
+      run: pytest tests/ -p no:randomly -rX --cov=src/trading --cov-report=xml --cov-report=term
+
+    - name: Run pytest — randomized order (pytest-randomly prints the seed)
+      if: always()
+      run: pytest tests/ -rX
 
     - name: Upload coverage
       uses: codecov/codecov-action@v3
