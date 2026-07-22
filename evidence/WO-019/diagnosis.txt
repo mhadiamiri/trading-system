@@ -1,0 +1,103 @@
+WO-019 — CI FAILURE DIAGNOSIS via CLEAN-ENVIRONMENT REPRODUCTION
+================================================================
+Baseline b7b18ce. Diagnosis only — nothing in src/config/workflow/pyproject changed.
+NO VENUE CONNECTION. HTTPS: YES (a fresh `pip install` fetches packages from PyPI).
+
+§1 — WHAT CI ACTUALLY DOES  (quoted from .github/workflows/ci.yml, not reconstructed)
+--------------------------------------------------------------------------------------
+  runner:            ubuntu-latest
+  python-version:    "3.11"   (matrix; CI reports 3.11.15)
+  working directory: repo root (actions/checkout default; no cd)
+  install (in order, lines 24-29):
+      python -m pip install --upgrade pip
+      pip install setuptools wheel
+      pip install -r requirements-dev.txt
+      pip install -e .
+  step order (lines 16-40):
+      checkout -> setup-python -> install -> import-linter -> pytest -> upload coverage
+  import-linter step (line 32):  `import-linter`      (bare)
+  pytest step (line 35):         `pytest --cov=src/trading --cov-report=xml --cov-report=term`
+                                 (BARE: no `tests/` path arg, no `-p no:randomly`)
+
+§2 — CLEAN-ENVIRONMENT REPRODUCTION
+-----------------------------------
+Method: `git archive HEAD | tar -x` into a scratch dir (mirrors CI's fresh checkout; keeps
+the working repo un-polluted by .egg-info), fresh venv on the LOCAL interpreter (NOT the dev
+env), CI's install sequence replicated verbatim, then CI's exact commands.
+
+  INSTALL: all four steps succeeded (requirements-dev.txt + `pip install -e .` clean; editable
+           wheel built for trading-system 0.1.0). Full log: clean_venv_314_result.txt.
+
+  import-linter (CI step, bare):  exits 0 but LINTS NOTHING — on import-linter 2.x the bare
+           command prints its help/usage and exits 0 (ci_import_linter_is_noop.txt). The real
+           contract check is `import-linter lint` (6 kept / 0 broken) OR conftest's
+           pytest_sessionstart (which DID run: "import-linter evaluated 6/6 contracts").
+           => "import-linter PASSES in CI" is TRUE but VACUOUS: the CI step is a no-op.
+
+  pytest (CI step, bare) on Python 3.14.6, clean venv:
+           collected 215 items  ->  215 passed in 247.03s  ->  exit 0.
+           NO ModuleNotFoundError. NO collection failure. (pytest.ini sets `testpaths = tests`,
+           so the root-level test_*.py debug scripts are never collected, in dev OR CI.)
+           [An earlier run showed "exit 120" — that was a BROKEN-PIPE artifact of piping the
+            output to `head`, not a test failure. The un-piped run above is authoritative.]
+
+  => H1 (PACKAGING — "fails on ANY fresh install, regardless of Python version") is REFUTED.
+     A genuinely clean fresh install, installed and invoked exactly as CI does, PASSES on 3.14.
+
+§2 cont. — THE 3.11 LEG COULD NOT BE RUN  (blocker, per WO §44, not worked around)
+----------------------------------------------------------------------------------
+  `py -0`  ->  only  -V:3.14 (default)  and  -V:3.13  are installed. NO 3.11.
+  (interpreters_available.txt). Per §44 this is reported as a blocker, not substituted with
+  3.13 (3.13 cannot reveal a 3.11-specific ADDED-module failure: since 3.14 passed, no module
+  removed after 3.11 is implicated; a module added in 3.12+ would pass on 3.13 too). So H2
+  (VERSION — "fails only on 3.11") is UNTESTED.
+
+  `gh` CLI is not installed either -> the actual failing CI run's log cannot be fetched from
+  the shell (would otherwise be the direct, non-browser way to get the real traceback).
+
+CHECKS RUN WHILE THE TRACEBACK WAS SOUGHT (reading code to interpret, per §3):
+  - conftest.py import chain (runs at collection for every invocation): imports only
+    tools.contract_count_check + tools.preflight_path_check, which import only stdlib
+    (re, shutil, subprocess, sys, pathlib) — nothing version- or platform-specific. It inserts
+    REPO_ROOT on sys.path (line 24-25), so `tools` resolves even in a clean env.
+  - No platform-conditional stdlib import anywhere (grep: winreg/msvcrt/_winapi/fcntl/termios/
+    pwd/grp/posix/... = NONE) -> no Windows-only import that would ModuleNotFoundError on Linux.
+  - `tomllib` (tests/test_boundaries.py:103) is stdlib since 3.11 -> present on 3.11.15, not a cause.
+  - packaging: [tool.setuptools.packages.find] where=["src"] (standard); the editable install
+    exposed every src/trading subpackage (215 tests import them and passed).
+  => No code path found that would raise ModuleNotFoundError specifically on 3.11 or on Linux.
+
+RELATED FIDELITY FINDING (not the failure cause):
+  The clean venv's plugin line is "anyio, asyncio, cov" — pytest-randomly is ABSENT. It is used
+  by the LOCAL gate (`--randomly-seed`, `-p no:randomly`) so it is in the DEV env, but it is NOT
+  in requirements-dev.txt. So CI never randomizes order and never exercises the "both orders"
+  guarantee. Nothing imports it, so it does not break collection.
+
+§3/§4 — DIAGNOSIS
+-----------------
+  H1 REFUTED. H2 UNTESTED (no 3.11). The described "known shape" (pytest collection failure with
+  ModuleNotFoundError) does NOT reproduce in a clean fresh install on 3.14/win32. Per §4, a
+  fresh install is therefore NOT itself broken; if CI is still red, the failure is confined to
+  the 3.11 interpreter and/or the ubuntu runner — neither testable on this machine.
+
+  A load-bearing caveat on the premise: the "failing since WO-009" shape predates the WO-010
+  work that ADDED conftest.py, the sys.path/tools wiring, and the preflight path guards —
+  exactly the class of fix a collection-time import error calls for. It is possible the failure
+  was already resolved and the premise is stale. This CANNOT be confirmed without the actual CI
+  log or a 3.11 run. Per §62, no cause is asserted that could not be reproduced.
+
+§3 — PROPOSED FIX (NOT IMPLEMENTED; propose-then-stop)
+------------------------------------------------------
+  The single unblocking step is to obtain the traceback the version ruling waits on:
+  (A) Install Python 3.11 (py launcher 3.11, python.org, or `uv python install 3.11`), then
+      re-run the IDENTICAL clean-venv reproduction on 3.11. One command from either the H2
+      traceback or an H2 refutation. Preferred — it is the WO's own method, just needing the
+      interpreter the WO named.
+  (B) OR fetch the latest failing CI run's log directly (install gh: `gh run view --log-failed`,
+      non-browser) — confirms whether CI is even still red and, if so, the exact error. This is
+      the CLI form of the long-outstanding browser capture.
+  Separately (OUT OF SCOPE here per §23 — propose only, do not edit CI): CI's `import-linter`
+  step should be `import-linter lint` (or the `lint-imports` console script) so it actually runs
+  in CI; and pytest-randomly should be added to requirements-dev.txt if CI is meant to exercise
+  both orders. Files that WOULD change for those: .github/workflows/ci.yml, requirements-dev.txt.
+  Neither touched. The real pytest fix cannot be named until the traceback exists.

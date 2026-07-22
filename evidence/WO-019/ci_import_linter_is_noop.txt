@@ -1,0 +1,31 @@
+$ import-linter   # exactly as ci.yml line 32 runs it
+=============
+Import Linter
+=============
+
+Usage: import-linter [OPTIONS] [COMMAND] [ARGS]...
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  drawgraph  Output a DOT format graph of a module's dependencies to stdout.
+  explore    Launch the interactive UI in a local browser.
+  lint       Check that a project adheres to a set of contracts.
+[exit: 0]
+
+$ import-linter lint   # the subcommand that actually lints
+
+Analyzed 61 files, 206 dependencies.
+------------------------------------
+
+Forbidden ML in Risk Layer KEPT
+Forbidden Execution Adapters Imports KEPT
+Forbidden v2-book-checksum imports above adapter KEPT
+Forbid loop from importing adapters directly KEPT
+Registry is the sole adapter resolution path KEPT
+No test doubles in production code KEPT
+
+Contracts: 6 kept, 0 broken.
+[exit: 0]

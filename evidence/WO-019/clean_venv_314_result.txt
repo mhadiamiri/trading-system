@@ -1,0 +1,38 @@
+CLEAN-VENV REPRODUCTION — local interpreter 3.14.6, fresh venv (NOT the dev env)
+Repo: git archive HEAD (b7b18ce) -> /c/Users/mhadi/AppData/Local/Temp/claude/C--Windows-System32/5dccfb5f-310e-44b7-a860-912be67d7182/scratchpad/wo019/repo ; CI install sequence replicated verbatim.
+Command: python -m pytest --cov=src/trading --cov-report=xml --cov-report=term  (CI's bare invocation)
+-------------------------------------------------------------------------------
+
+[preflight] trading package OK: C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\5dccfb5f-310e-44b7-a860-912be67d7182\scratchpad\wo019\repo\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\5dccfb5f-310e-44b7-a860-912be67d7182\scratchpad\wo019\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mhadi\AppData\Local\Temp\claude\C--Windows-System32\5dccfb5f-310e-44b7-a860-912be67d7182\scratchpad\wo019\repo
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 215 items
+
+tests/integration/test_backoff_breaker.py::test_transient_reopen_failure_retries_under_backoff_then_emission_resumes PASSED [  0%]
+tests/integration/test_backoff_breaker.py::test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail PASSED [  0%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_backtest_completes_successfully PASSED [  1%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_data_window_reported PASSED [  1%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_cost_inclusive_pnl_report PASSED [  2%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_determinism_verified PASSED [  2%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_negative_pnl_acceptable PASSED [  3%]
+tests/integration/test_backtest.py::TestBacktestIntegration::test_trade_list_included PASSED [  3%]
+tests/integration/test_backtest.py::TestBacktestReplay::test_backtest_reads_quote_data_from_parquet PASSED [  4%]
+tests/integration/test_backtest.py::TestBacktestReplay::test_backtest_honesty_replay_equals_live PASSED [  4%]
+tests/integration/test_checksum_capture_replay.py::test_fixture_present_and_labelled PASSED [  5%]
+tests/integration/test_checksum_capture_replay.py::test_all_200_captures_validate_through_production_checksum PASSED [  5%]
+tests/integration/test_checksum_sentinel.py::test_checksum_rejects_scientific_notation_with_reason_code PASSED [  6%]
+tests/integration/test_checksum_sentinel.py::test_checksum_rejects_uppercase_and_lowercase_e PASSED [  6%]
+tests/integration/test_checksum_sentinel.py::test_checksum_accepts_plain_fixed_point_input PASSED [  6%]
+tests/integration/test_cost_bite_proof.py::test_filled_order_has_strictly_positive_costs PASSED [  7%]
+tests/integration/test_cost_bite_proof.py::test_zero_cost_path_is_detectable_behaviorally PASSED [  7%]
+...[215 PASSED lines omitted]...
+TOTAL                                          2118    350    83%
+Coverage XML written to file coverage.xml
+======================= 215 passed in 247.03s (0:04:07) =======================
