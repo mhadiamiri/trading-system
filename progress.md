@@ -38,11 +38,64 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-21 (WO-016 COMPLETE & ACCEPTED at `0fbe512`, D25–D29 closed; wire-string WO is next — Ops drafts)
-**Current Phase**: **BETWEEN WOs.** WO-008b-B-RERUN (first live socket) and WO-016 (checksum diagnosis + fix + VOID-gate rebuild + host baseline) are both COMPLETE and ACCEPTED. Nothing in progress. Next by ruling: the **wire-string WO** (FR-018a(f) literal closure) — **Ops drafts it, not yet started.** See "▶ WO-016 COMPLETE" block below for what the wire-string WO must carry.
-**Status**: HEAD `0fbe512` on master (pushed; local == remote). **202 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL; read the **▶ WO-016 COMPLETE** and **▶ RUN COMPLETE** blocks below.
+**Last Updated**: 2026-07-22 (WO-018 CLOSED at `8dcf2ef` — event-type governance + raised⇒declared hatch; next by sequence: CI capture + version ruling)
+**Current Phase**: **BETWEEN WOs.** WO-018 (event-type governance + closing the raised⇒declared escape hatch) is COMPLETE and CLOSED, including all four follow-up rounds (A–D; the dead/live split; 0.1k + the prose-as-use/tracing-boundary doctrine). Nothing in progress. Next by sequence: **CI capture + version ruling → CI green → the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.** See "▶ WO-018 COMPLETE" block immediately below.
+**Status**: HEAD `8dcf2ef` on master (pushed; local == remote). **215 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260730`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The **▶ WO-016 COMPLETE** and **▶ CURRENT STATUS — 2026-07-20** blocks further below are HISTORICAL (WO-017, WO-013 + follow-ups, and WO-018 all landed since; git log is the authoritative sequence); read the **▶ WO-018 COMPLETE** block below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
+
+---
+
+## ▶ WO-018 COMPLETE & CLOSED (AUTHORITATIVE) — 2026-07-22 — event-type governance + raised⇒declared hatch
+
+> Event-Type Governance + closing the `raised ⇒ declared` escape hatch. **CLOSED by the project lead at
+> `8dcf2ef`.** Principle VIII the substantive authority; governance, not redesign (no namespace merged,
+> renamed, or restructured). Reports: `WO-018-FINAL-REPORT.md`, `WO-018-FOLLOWUP-ABCD-REPORT.md`,
+> `WO-018-DEAD-LIVE-SPLIT-REPORT.md`. Evidence under `evidence/WO-018/`. Decision log:
+> `docs/decisions/2026-07-22-a-check-is-bounded-by-the-form-it-matches.md`.
+
+- **CLOSED at `8dcf2ef`.** 215 passed both orders (`-p no:randomly` AND `--randomly-seed=20260730`),
+  0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean.
+- **What it closed:** `raised ⇒ declared` now holds in **BOTH literal forms** — the colon `"CODE:"` AND
+  the keyword `reason_code=`/`event_type=` (the `reason_code=` keyword form was the escape hatch). The
+  `event_type` namespace is **governed for the first time** (`VALID_EVENT_TYPES`, **0 → 13 declared**).
+  The four properties (raised⇒declared, declared⇒producible, prefix-freedom, scan-reads-emitted) are
+  proved **across both namespaces**. **Enum sync** is enforced **mechanically** by a test that may import
+  both `logkit` and `trading.risk` (`decision.py` cannot import `trading.risk` — layering/cycle), so the
+  RISK event_types can never drift from `RiskDecision.value` silently.
+- **The denominator (why it was worth doing):** the §1 enumeration found **12 emitted-but-undeclared
+  reason codes against a headline of 2** (the 5 `FEED_*` and 5 `RISK_*` lived in the `reason_code=`
+  keyword blind spot, plus `DATA_RECEIVED` and `EXEC_ORDER_FILLED` — the fill event), and **7 literal
+  forms against a prior scan that saw 1**. All 12 declared (not retired — canonical strings across five
+  modules; retirement is a rename, out of scope).
+- **New standing rule `0.1k`** (`docs/standing-rules.md`): **A BEHAVIORAL PROOF IS SOVEREIGN OVER A STATIC
+  SCAN**, with the evidence-competence hierarchy **BEHAVIORAL DEMONSTRATION > STATIC REACHABILITY >
+  DEFINITION > PROSE.**
+- **The tracing boundary** (doctrine file): the scan **may follow a name to its use site; it may not
+  simulate execution.** Competent tracing (required): `return CONST`, `raise X(CONST)`, `f"{CONST}: …"`,
+  the `decision.value` enum whitelist. Arms-race tracing (refused): variable-assignment dataflow, values
+  through branches/collections/calls.
+
+**CARRIED TO THE SUCCESSOR WO (taxonomy-migration) — so nothing is lost across the CI work:**
+- namespace-scoped **bidirectional** scan;
+- **prose-as-use closure** (producible = reachable-as-emitted, not definition/comment/docstring);
+- **uppercase normalization** of the four feed event_types (provenance settled: **ours, not Kraken's** —
+  adapter literals from our own control flow, each paired with an uppercase `reason_code`);
+- the ruled **taxonomy migrations**: `NO_SIGNAL` → reason_code only; `PASS`/`CLAMP`/`VETO` → event_types
+  with their reason_code declarations retiring; `ORDER_FILLED`/`EXEC_ORDER_FILLED` collapse to one
+  canonical form with an **alias scan** for the loser;
+- the **genuinely-dead 5 retire** (`PASS`/`CLAMP`/`VETO`/`ORDER_FILLED`/`ORDER_REJECTED` as reason_codes —
+  each a live declared event_type, so no vocabulary is lost); the **post-tightening residual** gets inline
+  annotations citing behavioral proof at file:line — annotation is a **PERMANENT EASEMENT, not a temporary
+  waiver** (a future audit may re-verify the proof passes; it may not re-flag for static invisibility);
+- **measure-then-fork**: tighten first, **measure** the residual, THEN apply the large/small conditional
+  (the fork was mistakenly evaluated against the pre-tightening 11);
+- the **~2 residual figure is recorded AS A PREDICTION** (`LONG_SIGNAL`/`SHORT_SIGNAL`, the arms-race-side
+  codes that stay annotated) — a materially higher measured value is **itself a finding** about what the
+  scan cannot see.
+
+**Corpus preconditions — unchanged, still four:** fingerprinted load-representative baseline on the
+capture host; verified no-sleep host; ~5.3 GB budget; parquet policy.
 
 ---
 
