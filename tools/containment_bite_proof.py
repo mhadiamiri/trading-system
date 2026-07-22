@@ -121,7 +121,16 @@ def main():
             "this rate. Realistic sub-ms/frame changes are invisible to this instrument — a declared LIMIT.",
             "",
             f"RESULT: baseline={m0:.3f}  10ms->rise {r10[3]:+.3f}  40ms->rise {r40[3]:+.3f}  restored={m2:.3f}  "
-            f"sha256-exact={exact}  enclosure={enclosed}  => {'OK (enclosure shown + attenuation characterised)' if (enclosed and exact) else 'SEE FINDINGS'}"]
+            f"sha256-exact={exact}  enclosure={enclosed}  => {'OK (enclosure shown + attenuation characterised)' if (enclosed and exact) else 'SEE FINDINGS'}",
+            "",
+            "=== ITEM A — ENCLOSURE RESTS ON THE SAMPLING MODEL, NOT A WRAPPER (reasoning, not a mirror) ===",
+            "mean_cycle = span/actual_samples is NOT a wrapper around a timed region: _sample_event_loop_lag",
+            "is a sentinel task that `await asyncio.sleep(interval)` in a loop and measures wake lateness — it",
+            "samples EVENT-LOOP RESPONSIVENESS. So ANY work on the loop (adapter process_raw_frame OR the loop's",
+            "strategy/risk/emission) is enclosed BY THE SAMPLING MECHANISM. WIDENED superset ADAPTER is therefore",
+            "STRUCTURAL (the widened run executes the adapter in its feed); the adapter-vs-loop transfer is",
+            "IDENTICAL by the same mechanism, so a mirror adapter injection adds no information. Enclosure rests",
+            "on the sampling model, not a timed-region wrapper — stated so no future reader mistakes it."]
 
     text = "\n".join(out)
     dest = os.path.join(REPO, "evidence", "WO-013", "containment_bite_proof.txt")

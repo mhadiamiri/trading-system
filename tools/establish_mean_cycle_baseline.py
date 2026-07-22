@@ -90,6 +90,10 @@ LOAD_WORK = ("per-frame PROCESSING COST characterized by the pinned WO-009 fixtu
 # instrument). Every delta reports SIGNAL / NOISE / RATIO; RATIO<1 => sign unestablished, ledger kept.
 NOISE_FLOOR_MS = 2.0   # WIDENED instrument CYCLE operational floor (WO-013 item 3); CONSERVATIVE — set
 #                        ABOVE the largest observed noise excursion (1.586 ms at n=9) so noise != signal.
+# WO-013 item 2/D: MEASURED per-frame transfer of this instrument (ms-cycle per ms-frame), from the
+# containment sweep (10 ms/frame -> +1.97 ms mean_cycle). Effective per-frame floor = cycle floor /
+# transfer ~= 2.0/0.2 ~= 10 ms/frame. Used to report a sub-floor delta as UNDETECTABLE, not 'no change'.
+PER_FRAME_TRANSFER = 0.2
 NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim) on the WIDENED full-loop instrument (WO-013 item 1/2/3). "
                     "9 runs, median 108.717 ms; core ~0.15-0.2 ms (1 sigma), one +1.586 ms outlier. CYCLE "
                     "FLOOR = 2.0 ms (conservative, above the largest excursion; provisional n=9). PER-FRAME "
@@ -228,10 +232,25 @@ def main():
         standing = _rec["mean_cycle_seconds"]
         signal_ms = abs(r["mean_cycle_s"] - standing) * 1000.0
         ratio = signal_ms / NOISE_FLOOR_MS
+        # WO-013 item 3: translate the cycle delta into the PER-FRAME term where changes actually land.
+        frames_per_cycle = (r["achieved_per_min"] / 60.0) * r["mean_cycle_s"]
+        per_frame_floor_ms = (NOISE_FLOOR_MS / PER_FRAME_TRANSFER) if PER_FRAME_TRANSFER else float("inf")
         print(f"  vs STORED baseline {standing*1000:.3f}ms (instrument={host_baseline.record_instrument(_rec)}) "
               f"delta={(r['mean_cycle_s']-standing)*1000:+.3f}ms ({(r['mean_cycle_s']/standing-1)*100:+.1f}%)")
-        print(f"  SIGNAL={signal_ms:.3f}ms  NOISE FLOOR={NOISE_FLOOR_MS:.3f}ms  RATIO={ratio:.2f}  "
-              f"=> {'SIGN UNESTABLISHED (inside floor; record + keep, it BOUNDS the effect)' if ratio < 1 else 'sign established (report signal/noise/ratio)'}")
+        print(f"  SIGNAL={signal_ms:.3f}ms  NOISE FLOOR={NOISE_FLOOR_MS:.3f}ms (cycle)  RATIO={ratio:.2f}")
+        # WO-013 item D (DEFERRAL CONDITION, mechanical — binding until a fit per-frame timer exists):
+        # a sub-floor delta is reported as UNDETECTABLE, NOT as a measurement of 'no change'. The rule
+        # must never quietly revert to the old adapter-only instrument's implied precision.
+        if ratio < 1:
+            print(f"  => BELOW FLOOR — UNDETECTABLE. This is NOT a measurement of 'no change': this "
+                  f"instrument (a sleep-wake LAG/starvation detector) has a MEASURED per-frame transfer "
+                  f"~{PER_FRAME_TRANSFER:.2f} ms-cycle/ms-frame => effective per-frame floor ~{per_frame_floor_ms:.0f} "
+                  f"ms/frame. Any per-frame cost change below that is invisible. Record SIGN UNESTABLISHED / "
+                  f"BELOW FLOOR and KEEP the entry (it BOUNDS the effect); do NOT read the sub-floor delta as "
+                  f"precise. A per-frame timer is DEFERRED post-corpus (item F).")
+        else:
+            print(f"  => ABOVE cycle floor — likely APPROACHING SATURATION (this instrument's regime): "
+                  f"report SIGNAL/NOISE/RATIO and check the achieved rate (a rate drop corroborates saturation).")
     if "--write" in sys.argv:
         import datetime
         today = datetime.date.today().isoformat()

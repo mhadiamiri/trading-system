@@ -29,3 +29,28 @@ ATTENUATION (the calibration finding, per item 2 — reported, NOT adjusted): me
 IMPLICATION (item 3): the effective per-frame DETECTION floor is NOT ~0.6 ms — because of attenuation a 10 ms/frame change is already below the cycle floor. Sensitivity ~0.197 ms-cycle per ms-frame below saturation, so the per-frame detection floor is ~tens of ms/frame at this rate. Realistic sub-ms/frame changes are invisible to this instrument — a declared LIMIT.
 
 RESULT: baseline=108.801  10ms->rise +1.970  40ms->rise +96.501  restored=107.527  sha256-exact=True  enclosure=True  => OK (enclosure shown + attenuation characterised)
+
+================================================================================================
+ITEM A (WO-013 follow-up ruling) — ENCLOSURE RESTS ON THE SAMPLING MODEL, NOT A WRAPPER.
+My proof injected into the LOOP path (WIDENED ⊃ LOOP). Ops originally asked for the ADAPTER
+direction (WIDENED ⊃ ADAPTER). MY CALL: confirm by reasoning — no mirror injection needed —
+because the reasoning holds and is cheaper.
+
+MECHANISM (verified in src, kraken_v2_book.py::_sample_event_loop_lag): mean_cycle = span /
+actual_samples is NOT a wrapper around a timed code region. The lag sampler is a SENTINEL TASK that
+does `await asyncio.sleep(interval)` in a loop and measures how LATE the shared event loop schedules
+its wake (lag = actual_interval - interval); mean_cycle is span / number-of-wakes. It samples
+EVENT-LOOP RESPONSIVENESS. Therefore ANY synchronous work executing on that event loop — adapter
+process_raw_frame OR the loop's strategy.decide/risk.check/emission — delays the sampler's wake and
+is enclosed BY THE SAMPLING MECHANISM. The adapter-only/widened distinction is about WHAT CODE RUNS
+on the loop, not about what is timed.
+
+CONSEQUENCE: WIDENED ⊃ ADAPTER is STRUCTURAL — the widened run executes the adapter (its feed calls
+process_raw_frame every frame), so adapter work runs on the sampled loop and is enclosed by
+construction; no injection is required to show it. The item-2 LOOP injection additionally showed
+WIDENED ⊃ LOOP behaviorally. And the adapter-vs-loop TRANSFER FUNCTION is IDENTICAL by the same
+mechanism: both are event-loop occupancy, attenuated identically below the ~30.6 ms/frame budget
+(the sampler cannot tell which code held the loop). So a mirror adapter injection would reproduce the
+same transfer already measured for the loop — no new information. Enclosure here rests on the
+SAMPLING MODEL (responsiveness sampling of the shared loop), stated explicitly so a future reader
+does not mistake it for a timed-region wrapper.

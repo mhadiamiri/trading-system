@@ -79,12 +79,23 @@ them now would reopen the closed WO-016):
    measured answer to the feasibility "at what cost" clause); OLD scope annotated with its end date,
    never overwritten; re-declaration dated + justified by the named pipeline change.
 
-**STANDING RULE (binding forward, all WOs):** ANY WORK ORDER THAT TOUCHES THE LOOP'S HOT PATH CARRIES
-A RE-BASELINE SECTION — establishment replay on the pinned source, delta reported + attributed, old
-scope annotated — EXECUTED BEFORE THE WO CLOSES. When in doubt, re-baseline (the cost is a replay;
-the alternative is erosion). Sequence: wire-string → WO-013 → CI capture + version ruling → CI green
-→ 008c → corpus. Corpus preconditions now: fingerprinted load-representative baseline + no-sleep host
-+ ~5.3 GB/24h + (checksum class closed).
+**STANDING RULE — a SATURATION-DETECTION section, NOT cost tracking (RELABELLED WO-013 item C, 2026-07-22):**
+ANY WORK ORDER THAT TOUCHES THE LOOP'S HOT PATH CARRIES A **saturation-detection** SECTION — establishment
+replay on the pinned source (WIDENED full-loop instrument), reported against the DECLARED noise/per-frame
+floor, old scope annotated — EXECUTED BEFORE THE WO CLOSES. **What this section CAN see and CANNOT (state it
+where the rule is read, not only in the tool docstring):** the instrument is `mean_cycle = span/actual_samples`,
+an event-loop LAG / STARVATION detector. Its measured per-frame transfer is ~0.2 ms-cycle per ms-frame, so its
+**effective per-frame detection floor is ~10 ms/frame**. It CATCHES per-frame cost approaching SATURATION
+(~30 ms/frame, where the achieved rate also drops); it CANNOT see per-frame changes below ~10 ms/frame. **The
+uncaught case:** a WO adds 0.3–1 ms/frame, mean_cycle does not move, and the section reports clean while
+per-frame throughput cost silently rose — so a reviewer changing per-frame work must know the rule cannot
+resolve their change. "When in doubt, run the section" still holds (the cost is a replay), but read its output
+as saturation/starvation evidence, not as a cost measurement. Sequence: WO-013 → EVENT_TYPE GOVERNANCE (Ops
+drafts) → CI capture + version ruling → CI green → 008c → corpus. Corpus preconditions: fingerprinted
+load-representative baseline + no-sleep host + ~5.3 GB/24h + (checksum class closed). A fit per-frame timer is
+DEFERRED POST-CORPUS (WO-013 item F) — not corpus-blocking; the corpus's integrity rests on throughput (gate
+cleared ~30x), gap honesty, checksum validity, and vocabulary governance, none of which per-frame cost drift
+threatens.
 
 **INSTRUMENT == RULE SCOPE + INSTRUMENT IDENTITY is the SIXTH scope dimension (WO-013 follow-up B + item 1,
 2026-07-22):** the re-baseline instrument measures the FULL LOOP ITERATION — adapter parse+apply+checksum
