@@ -1,0 +1,16 @@
+### WO-013 §6 VERIFY — DETERMINISTIC ###
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 210 passed in 246.34s (0:04:06) =======================
+### RANDOMIZED (--randomly-seed=20260726) ###
+tests\integration\test_snapshot_recovery.py .                            [100%]
+
+======================= 210 passed in 246.17s (0:04:06) =======================
+### LINT-IMPORTS (§3 boundaries) ###
+
+Contracts: 6 kept, 0 broken.
+### CONTRACT COUNT (§3: must be 6/6) ###
+PASS: import-linter evaluated 6 contracts (expected 6)
+### RUFF ###
+All checks passed!
+### DONE ###

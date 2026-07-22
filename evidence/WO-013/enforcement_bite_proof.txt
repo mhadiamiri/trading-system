@@ -1,0 +1,42 @@
+WO-013 §2 BITE PROOF — declared=>producible enforcement (four artifacts, sha256)
+Target: src\trading\logkit\decision.py  (inject a declared-but-unproducible code)
+test: tests/test_reason_code_vocabulary.py::TestReasonCodeCompleteness::test_every_declared_code_is_producible
+
+sha256 BEFORE: 2632d0b2cf9aa141e5ca8cc896e0409d9e18e2da8f86aa7cd024f01554aa2025
+
+-- ARTIFACT 1 — PASS (exemption removed; every declared code producible)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (declared-but-unproducible code injected)  [rc=1] --
+INJECTED: "BITEPROOF_NEVER_EMITTED_XYZZY" into VALID_REASON_CODES
+E   assert {'BITEPROOF_N...MITTED_XYZZY'} == set()
+E     
+E     Extra items in the left set:
+E     'BITEPROOF_NEVER_EMITTED_XYZZY'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_reason_code_vocabulary.py::TestReasonCodeCompleteness::test_every_declared_code_is_producible
+============================== 1 failed in 0.08s ==============================
+
+-- ARTIFACT 3 — PASS (injection removed)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\test_reason_code_vocabulary.py .                                   [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 2632d0b2cf9aa141e5ca8cc896e0409d9e18e2da8f86aa7cd024f01554aa2025
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK

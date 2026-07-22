@@ -1,0 +1,84 @@
+WO-013 §0 — EMISSION DIAGNOSIS (unwired vs wired-but-untriggered; vocabulary reconciliation)
+Baseline 36a3f9a. NO VENUE CONNECTION. Source of truth: grep of production reason_code/event_type
+emissions vs VALID_REASON_CODES (src/trading/logkit/decision.py).
+
+================================================================================================
+THE SHAPE: DECLARED (canonical) vs EMITTED (namespaced). The declared STRATEGY/RISK codes are the
+ABSTRACT names; the loop/components EMIT them under NAMESPACED reason_code strings, and emit the
+canonical name only as the log line's event_type / enum value. The vocabulary checker's
+_is_producible() counts ANY string literal, so a canonical code that appears as an event_type or an
+enum VALUE reads as "producible" even though NO code path emits it as a reason_code. That is exactly
+"a checker satisfied by a code nobody emits under that name."
+
+--- decision-log line anatomy (live.py) ---
+  log_decision(layer=, event_type=<canonical/descriptive>, reason_code=<controlled vocabulary>, ...)
+  The CONTROLLED vocabulary field is reason_code. event_type is descriptive.
+
+================================================================================================
+THE THREE DECLARED-BUT-UNPRODUCIBLE CODES (the _KNOWN_UNPRODUCIBLE set) — per §0 classification:
+
+1. KILL_SWITCH_ENGAGED  (declared: RISK layer)
+   VERDICT: WIRED BUT UNDER A DIFFERENT NAME (not unwired, not wired-but-untriggered).
+   - The kill-switch block IS wired: paper.py:161 `raise KillSwitchEngagedError()`; the loop catches
+     it (live.py:298-309) and logs `reason_code=e.reason_code`.
+   - But KillSwitchEngagedError's DEFAULT reason_code is "EXEC_BLOCKED_KILL_SWITCH" (interface.py:19),
+     NOT the declared "KILL_SWITCH_ENGAGED". So the wired path emits EXEC_BLOCKED_KILL_SWITCH (which
+     is itself UNDECLARED and invisible to the colon-form raised-code scan), and KILL_SWITCH_ENGAGED
+     is emitted NOWHERE — no reason_code, no event_type, no enum literal -> unproducible.
+   - SECONDARY FINDING (loop reachability): in the INTEGRATED loop the except branch is unreachable —
+     when the kill switch is engaged the risk engine VETOes FIRST (engine.py:79-80, RISK_VETO_KILL_
+     SWITCH) and the loop `continue`s at the VETO branch (live.py:254) before place_order is ever
+     attempted; and the loop sources kill_switch_engaged FROM the risk engine (live.py:261), so the
+     two are the same flag. The execution-layer block is genuine defense-in-depth (place_order takes
+     kill_switch_engaged independently), so the behavioral proof isolates it with a risk-engine double
+     that PASSES yet reports the switch engaged — driving the PRODUCTION loop except branch + logging.
+   REMEDY (§1): change the exception default reason_code to the declared "KILL_SWITCH_ENGAGED"; the
+     loop then logs it. EXEC_BLOCKED_KILL_SWITCH (undeclared) is retired.
+
+2. LONG_SIGNAL   (declared: STRATEGY layer)
+3. SHORT_SIGNAL  (declared: STRATEGY layer)
+   VERDICT (both): WIRED BUT UNDER A DIFFERENT NAME. The signal emission EXISTS (live.py:218-231),
+   and the trivial strategy CAN produce a signal (trivial.py: Side.BUY/SELL on >1% move or 2x
+   volume) — but the loop emits reason_code "STRAT_SIGNAL_BUY"/"STRAT_SIGNAL_SELL" (both UNDECLARED)
+   and event_type "SIGNAL_GENERATED" (not the code). LONG_SIGNAL/SHORT_SIGNAL appear NOWHERE ->
+   unproducible. In the 60-min capture the strategy also never TRIGGERED a signal (0 of 111,010 were
+   BUY/SELL; all STRAT_NO_SIGNAL), so this is BOTH divergent-name AND untriggered-in-that-run.
+   REMEDY (§1): loop emits reason_code "LONG_SIGNAL" for BUY, "SHORT_SIGNAL" for SELL; drive a
+   strategy to each state and assert the code lands in the decision log (production emission path).
+
+================================================================================================
+§0 RECONCILIATION — NO_SIGNAL vs STRAT_NO_SIGNAL  (FINDING, reconciled):
+  DECLARED: "NO_SIGNAL" (STRATEGY). EMITTED reason_code: "STRAT_NO_SIGNAL" (live.py:208, 111,010x in
+  the capture) — UNDECLARED. NO_SIGNAL reads "producible" ONLY because live.py:207 sets
+  event_type="NO_SIGNAL" (a literal), NOT because any path emits it as a reason_code. Same shape as
+  the three above, but masked by the event_type literal — which is why it is NOT in the exemption set.
+  RECONCILED (this WO): the no-signal reason_code becomes the declared "NO_SIGNAL"; STRAT_NO_SIGNAL
+  (undeclared) is retired. The STRATEGY reason_code vocabulary then equals its declared set exactly:
+  {NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL}.
+
+§0 CHECK — PASS / CLAMP / VETO producible?  (CONFIRMED producible; do NOT join scope):
+  DECLARED: PASS, CLAMP, VETO (RISK). The risk engine emits DISTINCT reason_codes RISK_PASS,
+  RISK_CLAMP_MAX_POSITION, RISK_VETO_KILL_SWITCH / _DAILY_LOSS / _INVALID_INPUT / _INSUFFICIENT_
+  BALANCE (engine.py:37-42) — so Principle VI ("every clamp and veto MUST emit a distinct reason
+  code, separable from a clean pass") is SATISFIED by the RISK_* codes. PASS/CLAMP/VETO are also
+  genuinely EMITTED as the decision-log line's event_type (live.py:243, event_type=decision.value,
+  where RiskDecision.PASS.value=="PASS" etc.) and appear as enum-value literals (interface.py:25-27)
+  and a "VETO" comparison literal (live.py:254, runner.py:180). They are producible AND recorded
+  under their own name (as event_type) — NOT declared-only. They do NOT join this WO's scope.
+  NUANCE reported: as with NO_SIGNAL, the *reason_code* for a risk decision is the namespaced RISK_*
+  code, while PASS/CLAMP/VETO live in the event_type/enum. This is a defensible split (event_type =
+  canonical decision, reason_code = specific cause) and, unlike the three targets, both are recorded.
+
+================================================================================================
+OUT-OF-SCOPE FINDINGS (reported, NOT fixed here — no ruling to expand scope):
+  Emitted-but-UNDECLARED reason_codes invisible to the current property-1 scan (which only reads
+  colon-form "CODE:" raise strings, not reason_code= values): DATA_RECEIVED, EXEC_ORDER_FILLED, and
+  (pre-fix) STRAT_NO_SIGNAL / STRAT_SIGNAL_BUY / STRAT_SIGNAL_SELL / EXEC_BLOCKED_KILL_SWITCH. This
+  WO retires the last four by reconciliation; DATA_RECEIVED and EXEC_ORDER_FILLED remain emitted-but-
+  undeclared and are flagged for a future vocabulary-completeness pass (they are not in this WO's
+  three-code scope, and the colon-only raised scan does not catch them). Named here so the next
+  defect is diagnosed against known coverage, not assumed completeness.
+
+DENOMINATOR: 3 declared-unproducible codes (the exemption set), all three WIRED-BUT-DIVERGENT-NAME;
+0 truly unwired; NO_SIGNAL reconciled (4th divergence, same class, was masked by its event_type
+literal); PASS/CLAMP/VETO confirmed producible (not declared-only) — scope unchanged at the three.

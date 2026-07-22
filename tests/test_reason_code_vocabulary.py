@@ -67,15 +67,14 @@ def _production_source_text():
     )
 
 
-# Declared codes that NO current code path emits as a reason_code string. Reported
-# under WO-011 §5 property 2 ("Report any; do not delete without asking"): retained
-# pending a lead ruling, NOT deleted. Each names a mechanism that exists but does
-# not emit this string today.
-_KNOWN_UNPRODUCIBLE = {
-    "KILL_SWITCH_ENGAGED": "kill switch raises KillSwitchEngagedError (a class), never logs this string",
-    "LONG_SIGNAL": "strategy returns a DesiredPosition; does not emit this reason_code string",
-    "SHORT_SIGNAL": "strategy returns a DesiredPosition; does not emit this reason_code string",
-}
+# WO-013 §2: the known-set exemption is REMOVED. It formerly held KILL_SWITCH_ENGAGED, LONG_SIGNAL,
+# and SHORT_SIGNAL — declared codes that no code path emitted. WO-013 wired all three to the
+# PRODUCTION decision-log emission path (interface.py KillSwitchEngagedError default;
+# live.py signal reason_codes), each certified by a behavioral proof
+# (tests/integration/test_reason_code_emission.py). `declared => producible` now holds with NO
+# exceptions; the empty set below is retained only so the enforcement bite proof has a symbol to
+# assert against, and to make the closure explicit rather than deleting the concept silently.
+_KNOWN_UNPRODUCIBLE = {}
 
 
 def _is_producible(code, source_text):
@@ -169,10 +168,10 @@ class TestReasonCodeCompleteness:
 
     def test_every_declared_code_is_producible(self):
         """
-        Property 2: every declared code is producible by a code path, EXCEPT a small
-        documented set of known declared-but-unproducible codes reported to the lead
-        (WO-011 §5: report, do not delete without asking). Bites on any NEW
-        unproducible code outside that set.
+        Property 2: EVERY declared code is producible by a code path — FULLY ENFORCED, no
+        exceptions (WO-013 §2 removed the known-set exemption). Bites on ANY declared code that
+        no code path can produce (rule 0.1d in vocabulary form). The _KNOWN_UNPRODUCIBLE set is
+        now empty, so `new_unproducible` == `unproducible` and the assertion is unconditional.
         """
         source = _production_source_text()
         declared = set(_declared_codes())

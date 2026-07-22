@@ -1,0 +1,115 @@
+WO-013 §1 BITE PROOFS — reason-code emission (four artifacts each, sha256)
+
+==============================================================================
+PROOF: LONG_SIGNAL emitted to the decision log
+  test: tests/integration/test_reason_code_emission.py::test_long_signal_emitted_to_decision_log
+  target: src\trading\loop\live.py
+  sha256 BEFORE: 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+
+-- ARTIFACT 1 — PASS (declared code lands in the decision log)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.11s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (emission weakened to the old undeclared string)  [rc=1] --
+WEAKENING: 'signal_reason = "LONG_SIGNAL" if desired_position.side.value' -> old string
+[STRATEGY] SIGNAL_GENERATED: STRAT_SIGNAL_BUY
+  Size: 0.001, Side: BUY, Symbol: BTC/USD
+[RISK] VETO: RISK_VETO_DAILY_LOSS
+=========================== short test summary info ===========================
+FAILED tests/integration/test_reason_code_emission.py::test_long_signal_emitted_to_decision_log
+============================== 1 failed in 0.18s ==============================
+
+-- ARTIFACT 3 — PASS (emission restored)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.11s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF: SHORT_SIGNAL emitted to the decision log
+  test: tests/integration/test_reason_code_emission.py::test_short_signal_emitted_to_decision_log
+  target: src\trading\loop\live.py
+  sha256 BEFORE: 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+
+-- ARTIFACT 1 — PASS (declared code lands in the decision log)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.10s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (emission weakened to the old undeclared string)  [rc=1] --
+WEAKENING: 'signal_reason = "LONG_SIGNAL" if desired_position.side.value' -> old string
+[STRATEGY] SIGNAL_GENERATED: STRAT_SIGNAL_SELL
+  Size: -0.001, Side: SELL, Symbol: BTC/USD
+[RISK] VETO: RISK_VETO_DAILY_LOSS
+=========================== short test summary info ===========================
+FAILED tests/integration/test_reason_code_emission.py::test_short_signal_emitted_to_decision_log
+============================== 1 failed in 0.18s ==============================
+
+-- ARTIFACT 3 — PASS (emission restored)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.11s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 5e945b715da0c94fb5de5ecbc0ee00257c7f422892755c50ee57656254222706
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF: KILL_SWITCH_ENGAGED emitted + cancellation preserved
+  test: tests/integration/test_reason_code_emission.py::test_kill_switch_engaged_emitted_and_cancellation_preserved
+  target: src\trading\execution\interface.py
+  sha256 BEFORE: 2368a24ece6cb261f38190f512aa69a89375090a087e234b589c6a2844d15cbd
+
+-- ARTIFACT 1 — PASS (declared code lands in the decision log)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.10s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (emission weakened to the old undeclared string)  [rc=1] --
+WEAKENING: 'def __init__(self, reason_code: str = "KILL_SWITCH_ENGAGED")' -> old string
+  Size: 0.001, Side: BUY, Symbol: BTC/USD
+[EXECUTION] ORDER_REJECTED: EXEC_BLOCKED_KILL_SWITCH
+  Size: 0.001, Side: BUY, Symbol: BTC/USD
+=========================== short test summary info ===========================
+FAILED tests/integration/test_reason_code_emission.py::test_kill_switch_engaged_emitted_and_cancellation_preserved
+============================== 1 failed in 0.17s ==============================
+
+-- ARTIFACT 3 — PASS (emission restored)  [rc=0] --
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_reason_code_emission.py .                         [100%]
+
+============================== 1 passed in 0.11s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 2368a24ece6cb261f38190f512aa69a89375090a087e234b589c6a2844d15cbd
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+ALL THREE PROOFS: OK

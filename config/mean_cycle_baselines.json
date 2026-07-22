@@ -27,6 +27,13 @@
    "attributed_to": "wire-string retention replacing per-level fixed-point rendering (a .wire attribute read is cheaper than format(x,'f') per level). Three establishment runs at 1959/min/60s: 107.732, 107.923, 107.923 ms (range ~0.2%); the -0.9% shift is reproducible, not run-to-run noise.",
    "material": "NOT material to any gate (well within the 50% mean-cycle drift-VOID bound and the +-20% rate scope), but a REAL, reproducible, FAVORABLE change: the structural fix is also marginally cheaper per cycle. The 'at what cost' clause is answered in milliseconds under identical replayed load: the cost is negative."
   },
+  "assessments": [
+   {
+    "date": "2026-07-22",
+    "pipeline_change": "WO-013 reason-code emission: loop (live.py) emits the DECLARED codes NO_SIGNAL / LONG_SIGNAL / SHORT_SIGNAL and KillSwitchEngagedError defaults to KILL_SWITCH_ENGAGED.",
+    "result": "BASELINE HOLDS at 0.107923s — NO re-declaration. Rationale: (1) the establishment tool measures the ADAPTER book-apply cycle (process_raw_frame), which WO-013 does not touch — the adapter is byte-identical to WO-017; (2) WO-013's loop change RENAMED an already-existing per-frame emission (STRAT_NO_SIGNAL -> NO_SIGNAL, byte-identical log_decision call) and added two RARELY-TRIGGERED emissions (LONG/SHORT_SIGNAL on signal, KILL_SWITCH_ENGAGED on a blocked order) — ZERO new per-frame work. Establishment runs measured 109.305/108.910/108.721 ms, differing from 107.923 by cross-session environmental NOISE (same-host, different day), NOT attributable to this change. A new figure pinned to reason-code emission would be false attribution of noise. Hot-path standing rule was APPLIED (work done), and the honest finding is: no per-frame cost added. Evidence: evidence/WO-013/rebaseline.txt."
+   }
+  ],
   "superseded": [
    {
     "mean_cycle_seconds": 0.108886,

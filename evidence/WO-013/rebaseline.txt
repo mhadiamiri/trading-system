@@ -1,0 +1,47 @@
+WO-013 §4 — RE-BASELINE assessment (hot-path standing rule applied; work done, not skipped).
+Baseline 36a3f9a. Standing mean-cycle baseline: 107.923 ms (WO-017 re-baseline, host ba47c96a36f36642).
+Pinned WO-009 source, pinned ~1959/min, 60 s, same host.
+
+=== ESTABLISHMENT REPLAY (3 runs, pinned protocol) ===
+  run 1: measured mean_cycle = 109.305 ms
+  run 2: measured mean_cycle = 108.910 ms
+  run 3: measured mean_cycle = 108.721 ms
+  (the tool's printed "vs standing 108.886" is its own STALE hardcoded constant — see FINDING below;
+   the authoritative standing figure is 107.923 ms from the WO-017 store.)
+
+=== WHAT THE TOOL MEASURES vs WHAT WO-013 CHANGED (the load-bearing distinction) ===
+The establishment tool replays frames through KrakenV2BookAdapter.process_raw_frame — it measures the
+ADAPTER book-apply + checksum cycle. WO-013 changed NONE of that path: its edits are in the LOOP
+(src/trading/loop/live.py) and the execution exception (src/trading/execution/interface.py). The
+adapter is BYTE-IDENTICAL to WO-017. So the establishment tool cannot attribute anything to WO-013,
+and the measured 108.7-109.3 ms differs from 107.923 ms by CROSS-SESSION ENVIRONMENTAL NOISE (a
+different day's background load on the same host), NOT by this change. Attributing that delta to
+"reason-code emission" would be false attribution of noise.
+
+=== IS THIS HOT PATH? YES — but WO-013 ADDED NO PER-FRAME WORK (the honest §4 reasoning) ===
+Per the recorded precedent, "when in doubt re-baseline" is a default argued OUT of, not assumed away.
+Here the LOOP is unambiguously hot path (strategy evaluated per MarketState, 111,010x in the capture).
+But WO-013 did not ADD per-frame emission — it RENAMED an emission that ALREADY existed:
+  - No-signal path (the 111,010x common case): reason_code "STRAT_NO_SIGNAL" -> "NO_SIGNAL". The
+    log_decision call is byte-identical except the string constant (shorter). ZERO added per-frame work.
+    That emission was ALREADY present in the 60-minute capture and in any prior loop measurement.
+  - LONG_SIGNAL / SHORT_SIGNAL: emitted only when a signal TRIGGERS (0 of 111,010 in the capture) —
+    not per-frame.
+  - KILL_SWITCH_ENGAGED: emitted only on a kill-switch-blocked order — not per-frame.
+So there is no NEW per-frame cost for the establishment (or any harness) to measure. The change is a
+vocabulary rename on an existing call plus two rarely-triggered emissions.
+
+=== LEDGER DECISION ===
+The standing baseline 107.923 ms HOLDS. WO-013 does not touch the measured (adapter) path and adds no
+per-frame work, so there is NO re-declaration and the WO-017 entry is NOT end-dated (it did not end —
+nothing superseded it). Per "no orphan figures / no false attribution", the ledger accretes an
+ASSESSMENT note recording that WO-013 was evaluated against the baseline and confirmed to add no
+per-frame adapter work (rather than manufacturing a new figure from environmental noise and pinning
+this change to it). config/mean_cycle_baselines.json carries the assessment.
+
+=== FINDING (reported, minor, out of WO-013 scope) ===
+tools/establish_mean_cycle_baseline.py hardcodes `standing = 0.108886` (line ~108) for its printed
+delta — STALE since the WO-017 re-baseline to 0.107923. It is a display-only comparison (not the
+authoritative store value the live gate reads), but it is an orphan/stale figure of the kind
+WO-017 follow-up B addressed. Flagged for a future hygiene pass (reading the store's current figure);
+not fixed here to keep WO-013 scoped to reason-code emission.

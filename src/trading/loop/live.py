@@ -201,22 +201,26 @@ class LiveTradingLoop:
             desired_position = self._strategy.decide(market_state)
 
             if desired_position is None:
-                # No signal
+                # No signal. WO-013 §0: emit the DECLARED reason_code "NO_SIGNAL" (was the
+                # undeclared "STRAT_NO_SIGNAL"); the STRATEGY reason_code vocabulary now equals
+                # its declared set {NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL}.
                 self._decision_logger.log_decision(
                     layer=Layer.STRATEGY,
                     event_type="NO_SIGNAL",
-                    reason_code="STRAT_NO_SIGNAL",
+                    reason_code="NO_SIGNAL",
                     venue=venue,
                     symbol=market_state.symbol,
                     strategy_version=self._strategy.version,
                     feature_snapshot_hash=market_state.compute_snapshot_hash(),
                 )
-                events_by_reason["STRAT_NO_SIGNAL"] = events_by_reason.get("STRAT_NO_SIGNAL", 0) + 1
+                events_by_reason["NO_SIGNAL"] = events_by_reason.get("NO_SIGNAL", 0) + 1
                 processed_count += 1
                 continue
 
-            # Log strategy signal
-            signal_reason = "STRAT_SIGNAL_BUY" if desired_position.side.value == "BUY" else "STRAT_SIGNAL_SELL"
+            # Log strategy signal. WO-013 §1: emit the DECLARED codes LONG_SIGNAL / SHORT_SIGNAL
+            # (were the undeclared STRAT_SIGNAL_BUY / STRAT_SIGNAL_SELL) so each is PRODUCED on its
+            # triggering event and lands in the decision log.
+            signal_reason = "LONG_SIGNAL" if desired_position.side.value == "BUY" else "SHORT_SIGNAL"
             self._decision_logger.log_decision(
                 layer=Layer.STRATEGY,
                 event_type="SIGNAL_GENERATED",
