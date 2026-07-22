@@ -1,0 +1,71 @@
+WO-020 §4 — REAL CI RUN OBSERVATION (gh now available: logged in as mhadiamiri)
+================================================================================
+Run: 29955008418 (the WO-020 push, commit 7f16991) — https://github.com/mhadiamiri/trading-system/actions/runs/29955008418
+Job: test (3.11) on ubuntu-latest, Python 3.11.15. Result: FAILURE in ~26s.
+
+STEP RESULTS (gh run view 29955008418):
+  ✓ Set up job
+  ✓ Run actions/checkout@v3
+  ✓ Set up Python 3.11
+  ✓ Install dependencies
+  ✓ Preflight — trading package resolves inside the repo (WO-010 §2 / D10)   <-- §3 NEW STEP, ran & passed
+  ✓ Run import-linter (Constitutional Requirement IV)                         <-- §1 now 'import-linter lint', ran & passed
+  X Run pytest — deterministic order (-p no:randomly)                         <-- FAILS (exit 2): the real bug
+  X Run pytest — randomized order (pytest-randomly prints the seed)           <-- ran anyway (if: always()); same failure
+  - Upload coverage (skipped)
+
+(a) import-linter lint ACTUALLY EVALUATES CONTRACTS IN CI (no longer the bare no-op):
+      Analyzed 61 files, 206 dependencies.
+      Forbidden ML in Risk Layer KEPT
+      Forbidden Execution Adapters Imports KEPT
+      Forbidden v2-book-checksum imports above adapter KEPT
+      Forbid loop from importing adapters directly KEPT
+      Registry is the sole adapter resolution path KEPT
+      No test doubles in production code KEPT
+      Contracts: 6 kept, 0 broken.
+
+(b) RANDOMIZED RUN'S SEED IS VISIBLE (proves CI now randomizes):
+      Using --randomly-seed=1608462615
+
+(c) PREFLIGHT ran (both the new standalone step above AND conftest.pytest_sessionstart, which
+    printed at the pytest step):
+      [preflight] trading package OK: /home/runner/work/trading-system/trading-system/src/trading/__init__.py
+      [preflight] import-linter evaluated 6/6 contracts
+
+=> ALL THREE WO-020 REPAIRS ARE CONFIRMED WORKING IN REAL CI. The verification steps now verify.
+
+--------------------------------------------------------------------------------
+THE PYTEST FAILURE (out of scope for WO-020 — reported, NOT fixed; awaits version ruling)
+--------------------------------------------------------------------------------
+gh run view 29955008418 --log-failed:
+
+  collected 67 items / 31 errors
+  ==================================== ERRORS ====================================
+  ___ ERROR collecting tests/integration/test_backoff_breaker.py ___
+  ...
+  src/trading/data/adapters/kraken_v2_book.py:2300: in KrakenV2BookAdapter
+      async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
+  E   NameError: name 'AsyncIterator' is not defined
+  ...
+  !!!!!!!!!!!!!!!!!!! Interrupted: 31 errors during collection !!!!!!!!!!!!!!!!!!!
+  ##[error]Process completed with exit code 2.
+
+TWO PREMISES DEMOLISHED:
+  1. It is NOT a ModuleNotFoundError (the shape assumed for ten WOs) — it is a NameError.
+  2. It is NOT environmental to the runner, and it was NOT fixed by WO-010. It is H2 (VERSION),
+     confirmed, with a precise mechanism:
+
+ROOT CAUSE (confirmed in source):
+  - src/trading/data/adapters/kraken_v2_book.py uses `AsyncIterator[MarketState]` as a return-type
+    annotation at line 2300 (and line 2718) but NEVER IMPORTS it. Line 20 imports only
+    `from typing import Optional, List, Dict`. No `from __future__ import annotations`.
+  - Python 3.11 evaluates annotations EAGERLY at class-definition time -> the name `AsyncIterator`
+    is looked up when the class body runs -> NameError at import -> collection fails (31 errors).
+  - Python 3.14 defers annotation evaluation (PEP 649) -> the annotation is never evaluated at def
+    time -> the missing import is MASKED -> the local 3.14 clean-venv run (WO-019) passed with 215.
+  This is exactly why WO-019's local 3.14 reproduction could not surface it, and why the H2 leg
+  (which needed 3.11) was the missing piece.
+
+THE FIX (do NOT apply here — awaits the lead's ruling): import AsyncIterator (from collections.abc,
+or typing), or add `from __future__ import annotations` to the module. A trivial change to ONE
+production file — but it is production code, in scope for the version-ruling successor, not WO-020.

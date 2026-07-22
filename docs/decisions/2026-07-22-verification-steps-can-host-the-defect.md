@@ -42,9 +42,12 @@ both bite-proved, run at `pytest_sessionstart`) was the real enforcement all alo
 because the moment the pytest step is fixed, the pipeline would otherwise certify Principle IV/VII with a
 command that prints help.
 
-**Not confirmed here (honest bound on THIS entry).** That the repaired steps ACTUALLY RUN in CI — the
-literal content of 5.2 — requires observing a real CI run. `gh` is unavailable in this environment and the
-repo is private (no anonymous API), so that observation is deferred (WO-020 §4 blocker). The local bite
-proof establishes the commands behave correctly; it does not by itself establish that CI executed them.
-The entry's own doctrine therefore applies to its own closure: this is recorded as PENDING CI observation,
-not asserted as done.
+**CI observation — obtained (the entry closes on its own terms).** `gh` was authenticated after the push,
+and the real run (29955008418) was observed directly: `import-linter lint` evaluated `6 kept, 0 broken`,
+the randomized step printed `Using --randomly-seed=1608462615`, and the preflight step ran — the repaired
+verification steps ACTUALLY EXECUTED in CI, satisfying 5.2's demand on this WO's own closure
+(`evidence/WO-020/real_ci_run_observation.txt`). The same run also demolished the premise 5.2 describes:
+CI's pytest failure was never a `ModuleNotFoundError` but a `NameError: name 'AsyncIterator' is not defined`
+(kraken_v2_book.py:2300) — masked locally by Python 3.14's deferred annotations (PEP 649), eager on 3.11.
+An inference from CI behavior is only as good as proof the step executed: the step finally executed, and it
+said something different from what ten WOs assumed.

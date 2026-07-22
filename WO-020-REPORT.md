@@ -48,14 +48,27 @@ defense-in-depth at the pytest step.
 **Confirmed by CI observation or code reading?** Code reading + the WO-019 clean-venv reproduction (which
 showed `[preflight] trading package OK` at `pytest_sessionstart`). **Actual-CI confirmation is pending §4.**
 
-### 4. §4 verify against a real CI run — **BLOCKED (reported, not worked around)**
-`gh` is not installed (confirmed: `command -v gh` empty) and the repo is private with no `GITHUB_TOKEN`,
-so the real run's log cannot be fetched from the shell. Per §69 this is reported as a **blocker** rather
-than substituting a local run for a CI observation. The push below triggers CI; observing that
-**(a)** `import-linter lint` evaluates contracts with its count, **(b)** the randomized step's seed, and
-**(c)** the preflight step run — requires `gh run view` (install `gh`) or the browser capture. The local
-bite proof establishes the commands behave correctly; it does **not** establish CI executed them (that is
-exactly 5.2's doctrine, and it applies to this WO's own closure).
+### 4. §4 verify against a real CI run — **COMPLETE** (gh made available post-push; run 29955008418)
+`evidence/WO-020/real_ci_run_observation.txt`. `gh` was authenticated in another terminal after the push,
+so §4's blocker was resolved and the real run observed directly. **All three repairs confirmed working in
+real CI** (job `test (3.11)`, ubuntu, Python 3.11.15):
+- **(a) `import-linter lint` actually evaluates contracts** (no longer the bare no-op): step passed with
+  `Analyzed 61 files, 206 dependencies … Contracts: 6 kept, 0 broken.`
+- **(b) randomized step's seed is visible:** `Using --randomly-seed=1608462615`.
+- **(c) preflight ran:** the new standalone step passed ✓, and `pytest_sessionstart` also printed
+  `[preflight] trading package OK: /home/runner/work/.../src/trading/__init__.py` and
+  `[preflight] import-linter evaluated 6/6 contracts` — D10 confirmed **by CI observation**, as §3 required.
+
+**The pytest step still fails — expected and out of scope (§4/OUT-OF-SCOPE); reported, not fixed.** But the
+premise is now demolished twice over. It is **not** `ModuleNotFoundError` (the shape assumed for ten WOs)
+and **not** environmental — it is a **`NameError: name 'AsyncIterator' is not defined`** at
+`src/trading/data/adapters/kraken_v2_book.py:2300` (`-> AsyncIterator[MarketState]`), causing
+`Interrupted: 31 errors during collection`, exit 2. **H2 confirmed** with mechanism: `AsyncIterator` is
+used as a return annotation at lines 2300/2718 but never imported (line 20 imports only
+`Optional, List, Dict`; no `from __future__ import annotations`). Python **3.11 evaluates annotations
+eagerly** → NameError at class definition; Python **3.14 defers them (PEP 649)** → masked, which is exactly
+why the WO-019 local 3.14 run passed 215. The fix (import `AsyncIterator`, or add `from __future__ import
+annotations`) is a one-file production change — **left for the version-ruling successor, not touched here.**
 
 ### 5. Decision-log entries — `docs/decisions/2026-07-22-verification-steps-can-host-the-defect.md`
 Both pasted verbatim: **5.1** ("green-while-checking-nothing at three layers … ANY LAYER THAT REPORTS
@@ -80,10 +93,10 @@ THAT THE CI STEP EXECUTED").
   (§2), `docs/decisions/2026-07-22-verification-steps-can-host-the-defect.md` (§5),
   `evidence/WO-020/import_linter_step_bite_proof.txt`, this report. `instructions.md` (lead's WO text) not
   committed.
-- **What could not be completed, and why?** §4 real-CI observation — `gh` unavailable, repo private, no
-  token. Reported as a blocker (§69), not substituted. The pytest step itself may still fail in CI for the
-  reason WO-019 could not reproduce (no local 3.11); that is expected and OUT OF SCOPE — the point here is
-  that the VERIFICATION steps now verify.
+- **What could not be completed, and why?** Nothing outstanding. §4 was momentarily blocked (no `gh`), then
+  completed once `gh` was authenticated — the real run (29955008418) was observed and all three repairs
+  confirmed. The pytest step still fails, but that is expected/out of scope, and its cause is now IDENTIFIED
+  (the `AsyncIterator` NameError above, H2 confirmed) — the fix awaits the lead's version ruling.
 
 ---
 **STOP for review.** Did not fix the pytest failure or begin the taxonomy migration. Recommend installing
