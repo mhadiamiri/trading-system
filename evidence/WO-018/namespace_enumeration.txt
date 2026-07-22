@@ -1,0 +1,111 @@
+WO-018 §1 — NAMESPACE ENUMERATION (THE DENOMINATOR). Baseline cb6bd55. NO VENUE CONNECTION.
+Method: exhaustive grep of src/ for every literal form + semantic resolution of variables/constants/
+enums, cross-checked against VALID_REASON_CODES. "State the denominator before writing any check."
+
+================================================================================================
+LITERAL FORMS THAT EXIST IN THE CODEBASE (and which a scan must cover):
+  (1) "CODE:"                    colon-form in raise/message strings — the CURRENT _raised_codes scan.
+  (2) reason_code="CODE"         keyword-arg literal — INVISIBLE to (1). *** the escape hatch ***
+  (3) event_type="CODE"          keyword-arg literal — INVISIBLE to (1); whole namespace ungoverned.
+  (4) reason_code=<var>/=<attr>  variable — resolves to a constant, an enum .value, or e.reason_code.
+  (5) CONST = "CODE"             module/class constant (risk REASON_*, KillSwitchEngagedError default,
+                                 host_baseline INSTRUMENT_MISMATCH_CODE).
+  (6) Enum member  X = "CODE"    RiskDecision.PASS/CLAMP/VETO (.value used as event_type).
+  (7) f"{CONST}: ..."            f-string — INVISIBLE to (1) (the colon follows '}', not a code literal).
+FINDING: the current scan sees only form (1). Forms (2)-(7) are unseen — that is the recurring shape
+(the colon-form blind spot). The enumeration below is by SEMANTIC READING + multi-pattern grep, and
+covers all seven forms.
+
+================================================================================================
+=== NAMESPACE A: reason_code ===
+
+DECLARED in VALID_REASON_CODES (30): ABNORMAL_SPREAD_REJECT, CHECKSUM_INPUT_SYNTHESIZED_NOTATION,
+CHECKSUM_RESYNC, CHECKSUM_WIRE_STRING_MISSING, CLAMP, EXEC_MARKET_STATE_TIMESTAMP_MISSING,
+EXEC_NO_MARKET_STATE, EXEC_STALE_MARKET_STATE, FAILURE_CAPTURE_CAPPED, GAP_LEDGER_INCOMPLETE,
+GAP_PERSIST_UNCONFIGURED, HEARTBEAT_ABSENCE, HOST_SUSPEND, INSTRUMENTS_GAPPY, KILL_SWITCH_ENGAGED,
+LIVE_CAPTURE_ENV_REFUSED, LIVE_CAPTURE_UNSUPPORTED, LONG_SIGNAL, MEAN_CYCLE_BASELINE_HOST_MISMATCH,
+MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH, NO_SIGNAL, ORDER_FILLED, ORDER_REJECTED, PASS,
+PAUSE_ON_BOOK_UNAVAILABLE, RECONNECT_CIRCUIT_BREAKER_TRIPPED, RECONNECT_FLAG_STRANDED, SHORT_SIGNAL,
+VENUE_CONNECTION_CLOSED, VETO.
+
+EMITTED as reason_code (site : form -> value):
+  colon-form (1), all DECLARED:
+    factory.py:82 LIVE_CAPTURE_UNSUPPORTED; costs.py:91 ABNORMAL_SPREAD_REJECT;
+    paper.py:166/174/181 EXEC_NO_MARKET_STATE / EXEC_MARKET_STATE_TIMESTAMP_MISSING / EXEC_STALE_MARKET_STATE;
+    live_capture.py:80/88/102 LIVE_CAPTURE_ENV_REFUSED / GAP_PERSIST_UNCONFIGURED / MEAN_CYCLE_BASELINE_HOST_MISMATCH;
+    kraken_v2_book.py: CHECKSUM_INPUT_SYNTHESIZED_NOTATION, CHECKSUM_WIRE_STRING_MISSING(x2),
+      FAILURE_CAPTURE_CAPPED, CHECKSUM_RESYNC, RECONNECT_CIRCUIT_BREAKER_TRIPPED, INSTRUMENTS_GAPPY(x4),
+      GAP_PERSIST_UNCONFIGURED, RECONNECT_FLAG_STRANDED, HOST_SUSPEND, HEARTBEAT_ABSENCE,
+      VENUE_CONNECTION_CLOSED, GAP_LEDGER_INCOMPLETE.
+  f-string (7), DECLARED: host_baseline.py:74 f"{INSTRUMENT_MISMATCH_CODE}:" -> MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH.
+  keyword-arg (2) literal:
+    live.py:149/163 PAUSE_ON_BOOK_UNAVAILABLE [decl]; :193 DATA_RECEIVED [UNDECLARED];
+    :210 NO_SIGNAL [decl]; :282 EXEC_ORDER_FILLED [UNDECLARED];
+    kraken_v2_book.py:1679 CHECKSUM_RESYNC; :2087 RECONNECT_CIRCUIT_BREAKER_TRIPPED; :2455 HOST_SUSPEND;
+      :2492 HEARTBEAT_ABSENCE; :2526/2576 VENUE_CONNECTION_CLOSED [all decl];
+    kraken_public.py:115/142/151/161/179 FEED_CONNECTED / FEED_MALFORMED_PAYLOAD / FEED_UNEXPECTED_PAYLOAD
+      / FEED_CONNECTION_CLOSED / FEED_CONNECTION_ERROR [ALL 5 UNDECLARED].
+  variable (4):
+    live.py:227 reason_code=signal_reason -> "LONG_SIGNAL"/"SHORT_SIGNAL" [decl] (live.py:223).
+    live.py:307 reason_code=e.reason_code -> KillSwitchEngagedError default "KILL_SWITCH_ENGAGED" [decl].
+    live.py:248 reason_code=reason_code <- risk engine check() returns REASON_* constants (5):
+      RISK_PASS, RISK_CLAMP_MAX_POSITION, RISK_VETO_KILL_SWITCH, RISK_VETO_DAILY_LOSS,
+      RISK_VETO_INVALID_INPUT  [ALL 5 UNDECLARED].
+    (forwarders live.py:248/kraken_v2_book.py:1431/kraken_public.py:279 pass through the above.)
+
+*** EMITTED-BUT-UNDECLARED reason codes — the escape hatch, 12 (not 2) ***:
+  DATA_RECEIVED, EXEC_ORDER_FILLED,
+  FEED_CONNECTED, FEED_MALFORMED_PAYLOAD, FEED_UNEXPECTED_PAYLOAD, FEED_CONNECTION_CLOSED, FEED_CONNECTION_ERROR,
+  RISK_PASS, RISK_CLAMP_MAX_POSITION, RISK_VETO_KILL_SWITCH, RISK_VETO_DAILY_LOSS, RISK_VETO_INVALID_INPUT.
+  FINDING (bigger than the WO headline): the WO named 2 (DATA_RECEIVED, EXEC_ORDER_FILLED). The
+  denominator has 12 — the 5 FEED_* feed-event codes and the 5 RISK_* risk-decision codes ALSO live in
+  the reason_code= keyword blind spot. All must be declared/retired to make raised=>declared unconditional.
+
+DEAD CONSTANT (separate minor finding): risk/engine.py:42 REASON_VETO_INSUFFICIENT_BALANCE =
+  "RISK_VETO_INSUFFICIENT_BALANCE" is DEFINED but NEVER RETURNED (only 80/84/88/104/116 return). So it is
+  a producible literal that is never EMITTED — a declared-nowhere, emitted-nowhere constant. Report.
+
+DECLARED-but-not-emitted-as-reason_code (producible only via an adjacent literal — the masking shape):
+  PASS / CLAMP / VETO  -> emitted as event_type via RiskDecision.value (the reason_code emitted is RISK_*).
+  ORDER_FILLED         -> emitted as event_type "ORDER_FILLED"  (the reason_code emitted is EXEC_ORDER_FILLED).
+  ORDER_REJECTED       -> emitted as event_type "ORDER_REJECTED" (the reason_code in that path is KILL_SWITCH_ENGAGED).
+  These read "producible" only because the SAME string appears as an event_type/enum literal — the exact
+  "borrow credibility from the adjacent namespace" defect. (Overlap detail -> §6.)
+
+================================================================================================
+=== NAMESPACE B: event_type ===
+
+DECLARED: NONE. There is no VALID_EVENT_TYPES; the namespace is entirely ungoverned (no scan, no
+completeness check). tests/test_reason_code_vocabulary.py reads reason_code only.
+
+EMITTED as event_type (site : value):
+  kraken_public.py (via log_feed_event) — LOWERCASE:
+    :114 feed_connected ; :141/:150 payload_error ; :160 feed_disconnected ; :178 feed_error.
+  live.py (via log_decision) — UPPERCASE:
+    :148/:162 FEED_PAUSED ; :192 MARKET_DATA_RECEIVED ; :209 NO_SIGNAL ; :226 SIGNAL_GENERATED ;
+    :281 ORDER_FILLED ; :306 ORDER_REJECTED.
+  variable (4)/enum (6):
+    live.py:247 event_type=decision.value -> RiskDecision PASS / CLAMP / VETO (interface.py:25-27).
+
+  Distinct emitted event_types (13): feed_connected, payload_error, feed_disconnected, feed_error,
+  FEED_PAUSED, MARKET_DATA_RECEIVED, NO_SIGNAL, SIGNAL_GENERATED, ORDER_FILLED, ORDER_REJECTED,
+  PASS, CLAMP, VETO.
+
+FINDING (casing): feed-layer event_types are lowercase (feed_connected) while loop-layer are UPPERCASE
+  (FEED_PAUSED). Two conventions in one ungoverned namespace — declare-time reconciliation needed (§3).
+
+================================================================================================
+OVERLAP PREVIEW (full treatment in §6, report-only): values appearing in BOTH namespaces —
+  NO_SIGNAL (event_type AND reason_code, same string, live.py:209/210);
+  PASS / CLAMP / VETO (declared reason_code AND emitted event_type via the enum);
+  ORDER_FILLED / ORDER_REJECTED (declared reason_code AND emitted event_type).
+This is the mechanism by which a canonical literal borrows the governed namespace's credibility.
+
+================================================================================================
+DENOMINATOR SUMMARY:
+  reason_code:  30 declared ; ~40 distinct emitted strings ; 12 EMITTED-BUT-UNDECLARED (the hatch);
+                5 declared-but-emitted-as-event_type-only ; 1 dead constant.
+  event_type:   0 declared ; 13 distinct emitted (4 lowercase / 9 upper incl. 3 enum-sourced).
+  Forms present: all 7 above; the current scan covers only form (1). No form was found that the
+  MULTI-PATTERN enumeration below cannot see — but a form-(1)-only scan is blind to (2)-(7), which is
+  precisely what this WO closes.
