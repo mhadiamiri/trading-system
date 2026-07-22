@@ -47,6 +47,17 @@ VALID_REASON_CODES = {
         # future formatting regression from a silent CRC mismatch into a LOUD NAMED failure. It
         # outlives the wire-string WO because it guards the invariant, not the implementation.
         "CHECKSUM_INPUT_SYNTHESIZED_NOTATION",
+        # WO-017 §1.4 (load-bearing NO-FALLBACK guard): raised when a ladder level reaches the
+        # checksum path without a retained wire string — either at the parse origin
+        # (_retain_wire) or at the consumption point (_current_ladder_strings/_wire_pair). The
+        # checksum consumes the venue's TRANSMITTED token EXCLUSIVELY (FR-018a(f), satisfied
+        # literally); a level with no such token cannot be checksummed correctly, so the code
+        # REFUSES rather than synthesize one by re-rendering. A silent fallback would reintroduce
+        # the exact scientific-notation defect class this WO closes structurally and would be
+        # undetectable until some future edge (0.1g: an unimplementable path fails loudly, never
+        # quietly succeeds). Prefix-free against CHECKSUM_INPUT_SYNTHESIZED_NOTATION and
+        # CHECKSUM_RESYNC (CHECKSUM_WIRE_ is a unique stem).
+        "CHECKSUM_WIRE_STRING_MISSING",
         # WO-014b-1: raised by get_live_market_data when a reconnect was requested
         # (_reconnect() set _pending_reconnect at 5 consecutive checksum failures) but
         # the transport failed to effect it before the next loop boundary. Silent

@@ -1,0 +1,131 @@
+WO-017 §1.6 BITE PROOFS — wire-string retention (four artifacts each, sha256)
+Target: src\trading\data\adapters\kraken_v2_book.py
+Reason code (b): CHECKSUM_WIRE_STRING_MISSING (no-fallback guard, load-bearing)
+
+sha256 BEFORE (all proofs): 43bad39658adee000d7232e7de923044faea2dcff890c65ea1ff9bd7bfde7869
+
+==============================================================================
+PROOF (a) checksum input == transmitted text, not a re-render
+  test: tests/integration/test_wire_string_retention.py::test_checksum_input_is_transmitted_text_not_a_rerender
+
+-- ARTIFACT 1 — PASS (guard present)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (guard weakened)  [rc=1] --
+WEAKENING: 'qw = getattr(qty, "wire", None)' -> 'qw = str(qty)  # WEAKENED: re-render instead of consuming .wire'
+E   AssertionError: checksum input must be the TRANSMITTED text
+E   assert '1.0E-7' == '0.00000010'
+E     
+E     - 0.00000010
+E     + 1.0E-7
+=========================== short test summary info ===========================
+FAILED tests/integration/test_wire_string_retention.py::test_checksum_input_is_transmitted_text_not_a_rerender
+============================== 1 failed in 0.10s ==============================
+
+-- ARTIFACT 3 — PASS (guard restored)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 43bad39658adee000d7232e7de923044faea2dcff890c65ea1ff9bd7bfde7869
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF (b) missing wire string RAISES CHECKSUM_WIRE_STRING_MISSING (no fallback)
+  test: tests/integration/test_wire_string_retention.py::test_missing_wire_string_raises_declared_code
+
+-- ARTIFACT 1 — PASS (guard present)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (guard weakened)  [rc=1] --
+WEAKENING: 'if pw is None or qw is None:' -> 'if False:  # WEAKENED: no-fallback guard disabled'
+________________ test_missing_wire_string_raises_declared_code ________________
+tests\integration\test_wire_string_retention.py:63: in test_missing_wire_string_raises_declared_code
+    with pytest.raises(ValueError, match="CHECKSUM_WIRE_STRING_MISSING"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_wire_string_retention.py::test_missing_wire_string_raises_declared_code
+============================== 1 failed in 0.10s ==============================
+
+-- ARTIFACT 3 — PASS (guard restored)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 43bad39658adee000d7232e7de923044faea2dcff890c65ea1ff9bd7bfde7869
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+PROOF (c) scientific-notation frame round-trips and validates
+  test: tests/integration/test_wire_string_retention.py::test_scientific_notation_frame_round_trips_and_validates
+
+-- ARTIFACT 1 — PASS (guard present)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+-- ARTIFACT 2 — REAL FAIL (guard weakened)  [rc=1] --
+WEAKENING: 'qw = getattr(qty, "wire", None)' -> 'qw = str(qty)  # WEAKENED: re-render instead of consuming .wire'
+    declared = KrakenV2BookAdapter.compute_checksum(_bstr, _astr)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\trading\data\adapters\kraken_v2_book.py:1177: in compute_checksum
+    raise ValueError(
+E   ValueError: CHECKSUM_INPUT_SYNTHESIZED_NOTATION: assembled checksum input contains scientific notation; a formatting regression re-entered the render path. fragment='6610051540000006610152540000006610253540000006610354540000006610'
+=========================== short test summary info ===========================
+FAILED tests/integration/test_wire_string_retention.py::test_scientific_notation_frame_round_trips_and_validates
+============================== 1 failed in 0.11s ==============================
+
+-- ARTIFACT 3 — PASS (guard restored)  [rc=0] --
+[preflight] trading package OK: C:\Projects\bot\trading-system\src\trading\__init__.py
+[preflight] import-linter evaluated 6/6 contracts
+============================= test session starts =============================
+collected 1 item
+
+tests\integration\test_wire_string_retention.py .                        [100%]
+
+============================== 1 passed in 0.04s ==============================
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER : 43bad39658adee000d7232e7de923044faea2dcff890c65ea1ff9bd7bfde7869
+EXACT RESTORE: YES — byte-identical
+
+RESULT: A1 PASS=True  A2 REAL-FAIL=True  A3 PASS=True  A4 sha256-exact=True  => OK
+
+==============================================================================
+ALL THREE PROOFS: OK

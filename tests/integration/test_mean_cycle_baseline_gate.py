@@ -42,6 +42,44 @@ def test_runner_refuses_host_with_no_baseline(tmp_path, monkeypatch):
                           trading_env="paper", data_source="kraken_v2")
 
 
+def test_this_host_baseline_carries_its_rebaseline_ledger():
+    """WO-017 §5: the re-baseline NEVER overwrote its predecessor. This host's record carries the
+    prior 0.108886s figure in its `superseded` ledger, annotated with a scope end date, and the
+    LOAD-WORK scope dimension (§6) is present."""
+    rec = host_baseline.load_baseline()
+    assert rec["mean_cycle_seconds"] == 0.107923           # the re-baselined figure
+    superseded = rec.get("superseded", [])
+    assert superseded and superseded[0]["mean_cycle_seconds"] == 0.108886
+    assert superseded[0]["scope_end_date"]                 # end-dated, not orphaned
+    assert "load_work" in rec["scope"]                     # §6 third scope dimension
+
+
+def test_save_baseline_never_overwrites_a_differing_figure(tmp_path, monkeypatch):
+    """WO-017 §5 (durable): save_baseline carries a DIFFERING prior figure into `superseded`
+    (end-dated) rather than overwrite it; a same-figure re-run just refreshes and does not
+    manufacture a spurious superseded entry."""
+    store = tmp_path / "s.json"
+    monkeypatch.setenv("MEAN_CYCLE_BASELINE_STORE", str(store))
+    fp = host_baseline.host_fingerprint()
+
+    r1 = host_baseline.save_baseline(0.100000, "d1", "2026-01-01", "l1", fp=fp)
+    assert r1["mean_cycle_seconds"] == 0.100000 and "superseded" not in r1
+
+    r2 = host_baseline.save_baseline(0.090000, "d2", "2026-02-02", "l2", fp=fp)
+    assert r2["mean_cycle_seconds"] == 0.090000
+    assert [s["mean_cycle_seconds"] for s in r2["superseded"]] == [0.100000]
+    assert r2["superseded"][0]["scope_end_date"] == "2026-02-02"    # end-dated with the new date
+
+    # a THIRD, differing figure prepends and preserves the whole ledger (newest-first)
+    r3 = host_baseline.save_baseline(0.080000, "d3", "2026-03-03", "l3", fp=fp)
+    assert [s["mean_cycle_seconds"] for s in r3["superseded"]] == [0.090000, 0.100000]
+
+    # a same-figure re-run (confirmation) does NOT add a spurious entry
+    r4 = host_baseline.save_baseline(0.080000, "d4", "2026-04-04", "l4", fp=fp)
+    assert [s["mean_cycle_seconds"] for s in r4["superseded"]] == [0.090000, 0.100000]
+    assert host_baseline.load_baseline(fp=fp)["mean_cycle_seconds"] == 0.080000
+
+
 def test_runner_accepts_host_with_a_matching_baseline(tmp_path, monkeypatch):
     """Dual: a store that DOES carry this host's fingerprint lets the runner construct."""
     fp = host_baseline.host_fingerprint()

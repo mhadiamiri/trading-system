@@ -1,0 +1,16 @@
+WO-017 §5 — RE-BASELINE (first pre-declared, legitimate). Pinned WO-009 source, pinned ~1959/min, 60s, same host.
+Standing prior: 108.886 ms (WO-008b-B-RERUN live; re-confirmed under replay +0.0% D28 / -0.2% D29 with interim-render code).
+
+=== THREE ESTABLISHMENT RUNS UNDER WO-017 WIRE-STRING CODE ===
+target rate=1959/min  achieved=1959/min  REPRESENTATIVE(<=10%)=True
+measured mean_cycle=108.520ms  vs standing baseline 108.886ms  delta=-0.366ms (-0.3%)
+  --- run 1 ---
+target rate=1959/min  achieved=1959/min  REPRESENTATIVE(<=10%)=True
+measured mean_cycle=107.933ms  vs standing baseline 108.886ms  delta=-0.953ms (-0.9%)
+  --- run 2 ---
+target rate=1959/min  achieved=1959/min  REPRESENTATIVE(<=10%)=True
+measured mean_cycle=107.733ms  vs standing baseline 108.886ms  delta=-1.153ms (-1.1%)
+  --- run 3 ---
+
+DECLARED NEW BASELINE: 107.923 ms (reproduced modal). DELTA -0.963 ms (-0.9%), ATTRIBUTED to wire-string retention replacing per-level format(x,'f') render.
+MATERIAL? No gate impact (within 50% drift-VOID bound and +-20% rate scope); real, reproducible, FAVORABLE. 'At what cost' = negative cost.

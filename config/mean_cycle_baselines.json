@@ -6,15 +6,41 @@
    "os": "Windows 11",
    "cpu_arch": "AMD64"
   },
-  "mean_cycle_seconds": 0.108886,
+  "mean_cycle_seconds": 0.107923,
   "date": "2026-07-21",
   "scope": {
    "host": "fingerprint ba47c96a36f36642 (machine_id a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)",
-   "load": "~1959 book msgs/min received, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
+   "load": "replay ~1959 book msgs/min, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
    "source_run_id": "WO-008b-B-RERUN-20260721T170944Z",
-   "duration": "live 3600.00s (60-min single-window capture)"
+   "duration": "replay 60.0s establishment (pinned WO-009 source, pinned rate ~1959/min, same host, same protocol)",
+   "load_work": "per-frame PROCESSING COST characterized by the pinned WO-009 fixture frame shapes (SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL), INCLUDING WO-017 wire-string retention (per-level WireDecimal construction at parse + .wire consumption at checksum, replacing the interim per-level format(x,'f') render). Empirical justification: live-vs-replay agreement at +0.008 ms, representative as measured. INVALIDATION CONDITION: deeper ladders, heavier per-level validation, or additional per-level storage require re-validation (WO-017 §6 — this WO's own change was that condition's first trigger)."
   },
-  "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z), under representative observed load ~1959 msg/min",
-  "load": "LIVE, representative: ~1959 book msgs/min received (WO-008b-B-RERUN). Derived under load, so compatible with the establishment protocol's representative-load replay (which reproduced it to +0.0%), not superseded by it. Re-declaration trigger: a sustained rate differing from ~1959/min by >20% (outside 1567-2351/min) is MATERIALLY DIFFERENT and re-declares the representative rate, dated, old scope annotated."
+  "derivation": "establishment protocol: 1959 frames replayed at 1959/min over 60s from tests/fixtures/kraken_v2_raw_frames.py (WO-009 pinned source); mean_cycle=span/actual. RE-BASELINED under WO-017 (wire-string retention), the first pre-declared, legitimate re-baseline (§5): executed inside the WO that caused the pipeline change, before the changed code faces any live gate.",
+  "load": "replay ~1959 book msgs/min (representative of WO-008b-B-RERUN observed load); source run-id WO-008b-B-RERUN-20260721T170944Z; duration 60s; material-diff trigger: a sustained rate outside +-20% of 1959/min (<1567 or >2351/min) is MATERIALLY DIFFERENT and re-declares the representative rate, dated, old scope annotated.",
+  "rebaseline": {
+   "date": "2026-07-21",
+   "pipeline_change": "WO-017 wire-string retention: _current_ladder_strings now returns the venue's retained WireDecimal.wire text; the per-level format(x,'f') render (WO-016 INTERIM fix) is removed.",
+   "prior_mean_cycle_seconds": 0.108886,
+   "new_mean_cycle_seconds": 0.107923,
+   "delta_ms": -0.963,
+   "delta_pct": -0.9,
+   "attributed_to": "wire-string retention replacing per-level fixed-point rendering (a .wire attribute read is cheaper than format(x,'f') per level). Three establishment runs at 1959/min/60s: 107.732, 107.923, 107.923 ms (range ~0.2%); the -0.9% shift is reproducible, not run-to-run noise.",
+   "material": "NOT material to any gate (well within the 50% mean-cycle drift-VOID bound and the +-20% rate scope), but a REAL, reproducible, FAVORABLE change: the structural fix is also marginally cheaper per cycle. The 'at what cost' clause is answered in milliseconds under identical replayed load: the cost is negative."
+  },
+  "superseded": [
+   {
+    "mean_cycle_seconds": 0.108886,
+    "date": "2026-07-21",
+    "scope_end_date": "2026-07-21",
+    "end_reason": "Superseded by the WO-017 wire-string-retention re-baseline (0.107923s). NOT overwritten: retained here as the baseline ledger's prior entry so the pipeline's performance evolution stays traceable (no orphan figures).",
+    "scope": {
+     "host": "fingerprint ba47c96a36f36642 (machine_id a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)",
+     "load": "~1959 book msgs/min received, representative of OBSERVED 60-MINUTE LOAD (WO-008b-B-RERUN)",
+     "source_run_id": "WO-008b-B-RERUN-20260721T170944Z",
+     "duration": "live 3600.00s (60-min single-window capture)"
+    },
+    "derivation": "span/actual = 3600.00s / 33062 lag samples, WO-008b-B-RERUN live 60-min capture (run WO-008b-B-RERUN-20260721T170944Z), under representative observed load ~1959 msg/min. Re-confirmed under replay to +0.0% (D28) and -0.2% (D29) with the interim-render code; this WO's wire-string code re-baselines it."
+   }
+  ]
  }
 }

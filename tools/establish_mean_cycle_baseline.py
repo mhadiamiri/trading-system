@@ -58,6 +58,15 @@ REPLAY_SOURCE = ("tests/fixtures/kraken_v2_raw_frames.py (WO-009 ground truth: S
                  "UPDATE_MODIFY_LEVEL) — PINNED, immutable, not recency-picked")
 LOAD_RUN_ID = "WO-008b-B-RERUN-20260721T170944Z"
 DEFAULT_WARMUP_SECONDS = 60.0   # validated duration (D29 §C: declared == validated)
+# WO-017 §6: the THIRD scope dimension. Load was characterized by RATE alone; per-frame WORK
+# was undeclared. LOAD-WORK is the per-frame processing cost, represented by the pinned fixture's
+# frame shapes, and it changes when the pipeline's per-frame work changes.
+LOAD_WORK = ("per-frame PROCESSING COST characterized by the pinned WO-009 fixture frame shapes "
+             "(SNAPSHOT_FRAME + UPDATE_MODIFY_LEVEL), INCLUDING WO-017 wire-string retention "
+             "(per-level WireDecimal construction at parse + .wire consumption at checksum). "
+             "Empirical justification: live-vs-replay agreement at +0.008 ms, representative as "
+             "measured. INVALIDATION: deeper ladders, heavier per-level validation, or additional "
+             "per-level storage require re-validation (WO-017 §6 — its own change was the first trigger).")
 
 
 async def establish(seconds: float):
@@ -105,6 +114,7 @@ def main():
     r = asyncio.run(establish(seconds))
     print(f"REPLAY SOURCE (pinned): {REPLAY_SOURCE}")
     print(f"LOAD scope: {RATE_SCOPE}; run-id {LOAD_RUN_ID}; material-diff trigger: {RATE_MATERIAL_DIFF}")
+    print(f"LOAD-WORK scope (WO-017 §6): {LOAD_WORK}")
     standing = 0.108886
     print("=== WO-016 §D28 §C — mean-cycle baseline establishment (no verdict authority) ===")
     print(f"host fingerprint: {host_baseline.fingerprint_key()}  {host_baseline.host_fingerprint()}")
@@ -119,15 +129,26 @@ def main():
     print("(the standing 0.108886s was derived under LIVE load at ~1,959/min -> compatible with "
           "this protocol, not superseded)")
     if "--write" in sys.argv:
+        import datetime
+        today = datetime.date.today().isoformat()
         rec = host_baseline.save_baseline(
             mean_cycle_seconds=round(r["mean_cycle_s"], 6),
             derivation=f"establishment protocol: {r['frames_sent']} frames replayed at "
                        f"{r['achieved_per_min']:.0f}/min over {r['seconds']:.0f}s from {REPLAY_SOURCE}; "
                        f"mean_cycle=span/actual",
-            date="(set-at-write)",
+            date=today,
             load=f"replay ~{r['achieved_per_min']:.0f} msg/min ({RATE_SCOPE}); source run-id "
-                 f"{LOAD_RUN_ID}; duration {r['seconds']:.0f}s; material-diff trigger: {RATE_MATERIAL_DIFF}")
-        print(f"[--write] saved this host's baseline: {rec['mean_cycle_seconds']}s")
+                 f"{LOAD_RUN_ID}; duration {r['seconds']:.0f}s; material-diff trigger: {RATE_MATERIAL_DIFF}",
+            scope={
+                "host": host_baseline.fingerprint_key(),
+                "load": f"replay ~{r['achieved_per_min']:.0f} msgs/min ({RATE_SCOPE})",
+                "source_run_id": LOAD_RUN_ID,
+                "duration": f"replay {r['seconds']:.1f}s establishment (pinned WO-009 source)",
+                "load_work": LOAD_WORK,   # WO-017 §6: the third scope dimension
+            })
+        # save_baseline carries any DIFFERING prior figure into rec['superseded'] (never overwritten).
+        print(f"[--write] saved this host's baseline: {rec['mean_cycle_seconds']}s "
+              f"({len(rec.get('superseded', []))} superseded record(s) retained)")
     else:
         print("[report only] not written; pass --write to save this host's record (new host).")
 

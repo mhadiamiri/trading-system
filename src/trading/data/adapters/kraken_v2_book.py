@@ -35,6 +35,39 @@ from trading.logkit.redaction import redact
 logger = logging.getLogger(__name__)
 
 
+class WireDecimal(Decimal):
+    """WO-017 §1.1/§1.2: a Decimal that ALSO carries the venue's transmitted token text.
+
+    FR-018a(f) requires the checksum to be computed over the venue's TRANSMITTED
+    representation, never a re-render. ``json.loads(parse_float=WireDecimal,
+    parse_int=WireDecimal)`` invokes this constructor with the RAW TOKEN TEXT of each
+    number (e.g. the string ``"0.00000010"``, not the float 1e-7), and it retains that
+    text on ``.wire``. The numeric identity is the Decimal itself and is used everywhere
+    a value is compared, sorted, or compared to zero.
+
+    Why the wire string survives from parse to checksum: arithmetic on a Decimal subclass
+    returns a PLAIN Decimal (dropping ``.wire``), but the local book NEVER does arithmetic
+    on a ladder level — apply REPLACES the (price, qty) tuple, delete FILTERS it, sort
+    REORDERS it, truncate SLICES it (WO-017 §1.5 enumeration). None of those touch the
+    value, so the WireDecimal instance reaches ``_current_ladder_strings`` intact.
+
+    ``.wire`` is the transmitted string ONLY when constructed from a str. A WireDecimal
+    built from a non-str (int, float, or an arithmetic result) has ``.wire is None``: it
+    carries NO transmitted string and MUST NOT be used as checksum input — the no-fallback
+    guard (WO-017 §1.4) raises CHECKSUM_WIRE_STRING_MISSING rather than synthesize one.
+    """
+
+    def __new__(cls, value):
+        self = super().__new__(cls, value)
+        self._wire = value if isinstance(value, str) else None
+        return self
+
+    @property
+    def wire(self):
+        """The venue's transmitted token text, or None if this value never carried one."""
+        return self._wire
+
+
 class CircuitBreakerTripped(RuntimeError):
     """
     WO-014b-2 §2. Raised when reconnect reopen attempts exceed the circuit-breaker
@@ -1234,22 +1267,49 @@ class KrakenV2BookAdapter:
     # ────────────────────────────────────────────────────────────────────
 
     @staticmethod
+    def _retain_wire(value) -> "WireDecimal":
+        """WO-017 §1.1-1.4: yield a WireDecimal carrying the venue's TRANSMITTED token.
+
+        This is the single point where a ladder value acquires (or is proven to already
+        carry) its wire string. Every ladder level originates here (§1.5: _parse_levels is
+        the sole origin; the two writers only route these tuples through).
+
+        - str  -> WireDecimal(str): the token AS SENT is retained on .wire. This is the
+          live path's ``parse_float`` output routed back through here, and the fixture
+          path's wire-form string frames.
+        - WireDecimal WITH a wire string -> passed through unchanged (idempotent).
+        - anything else (plain Decimal, WireDecimal with .wire is None, int, float):
+          there is NO recoverable transmitted string, so we RAISE. NO FALLBACK to a
+          render (§1.4, load-bearing) — a synthesized string is the exact defect class
+          this WO closes structurally, and it must fail LOUDLY (0.1g), never quietly.
+        """
+        if isinstance(value, str):
+            return WireDecimal(value)
+        if isinstance(value, WireDecimal) and value.wire is not None:
+            return value
+        raise ValueError(
+            "CHECKSUM_WIRE_STRING_MISSING: ladder level value carries no transmitted "
+            "wire string; refusing to synthesize one (FR-018a(f) / WO-017 §1.4). "
+            f"value={value!r} type={type(value).__name__}"
+        )
+
+    @staticmethod
     def _parse_levels(raw_levels) -> List[tuple]:
         """
-        Convert Kraken v2 [{"price": ..., "qty": ...}, ...] into tuples.
+        Convert Kraken v2 [{"price": ..., "qty": ...}, ...] into (price, qty) tuples of
+        WireDecimal — each carrying the venue's transmitted token text (WO-017 §1.1-1.2).
 
-        Parsed from STRING form to preserve exact decimal precision: the checksum
-        is computed over the digits as sent, so a float round-trip would corrupt it.
+        The live path delivers these values as WireDecimal (json.loads(parse_float=
+        WireDecimal, parse_int=WireDecimal) retained the raw token); the fixture path
+        delivers them as strings. Either way _retain_wire yields a WireDecimal whose
+        .wire is the transmitted representation, or RAISES if none exists (§1.4, no
+        fallback). Precision is preserved by construction — nothing is ever re-rendered.
         """
         levels = []
         for level in raw_levels or []:
-            # WO-008b-A3 §1.1: values arriving as Decimal (parse_float/parse_int)
-            # are used AS-IS so the venue's digits survive. Decimal(str(x)) on a
-            # float would re-render and corrupt the checksum input.
-            price, qty = level["price"], level["qty"]
             levels.append((
-                price if isinstance(price, Decimal) else Decimal(str(price)),
-                qty if isinstance(qty, Decimal) else Decimal(str(qty)),
+                KrakenV2BookAdapter._retain_wire(level["price"]),
+                KrakenV2BookAdapter._retain_wire(level["qty"]),
             ))
         return levels
 
@@ -1306,26 +1366,46 @@ class KrakenV2BookAdapter:
 
         return updates
 
-    def _current_ladder_strings(self) -> tuple:
-        """Return (bid_levels, ask_levels) as strings for checksum computation.
+    @staticmethod
+    def _wire_pair(price, qty) -> tuple:
+        """WO-017 §1.3/§1.4: return (price.wire, qty.wire) — the transmitted text, NO
+        formatting, NO str(), NO format(). If EITHER value lacks a wire string the level
+        cannot be checksummed over the venue's representation, so we RAISE the declared
+        code rather than fall back to a render (the load-bearing no-fallback guard).
 
-        WO-016 INTERIM FIX (project-lead ruling D26). Render each Decimal in FIXED-POINT
-        (`format(x, "f")`), NOT `str()`. `str(Decimal)` emits SCIENTIFIC notation for small
-        quantities (e.g. `Decimal("1.0E-7")` -> `"1.0E-7"`); the checksum's remove-"."-and-
-        lstrip-zeros rule then yields `"10E-7"` instead of Kraken's `"10"`, so the CRC diverges.
-        This was the WO-008b-B-RERUN defect: 234 checksum failures (0.198%). `parse_float=Decimal`
-        already preserves the transmitted DIGITS (FR-018a(f) / WO-008b-A3, the parse edge);
-        `format(x, "f")` renders those digits without scientific notation. Verified: reproduces
-        Kraken's expected checksum for ALL 200 captured failures (tests/integration/
-        test_checksum_capture_replay.py; fixture tests/fixtures/kraken_v2_checksum_captures_wo016.json).
-
-        INTERIM by ruling: this makes the RE-RENDER correct; it does NOT eliminate re-rendering,
-        which FR-018a(f) prohibits in letter. The structural close (checksum over the venue's
-        TRANSMITTED STRING, not a re-render) is feasible (WO-016 report, wire-string §) and is
-        scoped to its own WO. Until then the 200-capture fixture is the standing guard on this edge.
+        This is the consumption-point twin of _retain_wire's origin-point guard: together
+        they make it structurally impossible for a synthesized string to reach the CRC.
         """
-        bid_levels = [(format(p, "f"), format(q, "f")) for p, q in self._local_book.bids[:10]]
-        ask_levels = [(format(p, "f"), format(q, "f")) for p, q in self._local_book.asks[:10]]
+        pw = getattr(price, "wire", None)
+        qw = getattr(qty, "wire", None)
+        if pw is None or qw is None:
+            raise ValueError(
+                "CHECKSUM_WIRE_STRING_MISSING: a local-book ladder level has no retained "
+                "wire string; refusing to re-render for the checksum (FR-018a(f) / WO-017 "
+                f"§1.4). price={price!r} ({type(price).__name__}) qty={qty!r} "
+                f"({type(qty).__name__})"
+            )
+        return (pw, qw)
+
+    def _current_ladder_strings(self) -> tuple:
+        """Return (bid_levels, ask_levels) as the venue's TRANSMITTED strings for the checksum.
+
+        WO-017 §1.3: the checksum consumes the wire string EXCLUSIVELY. Each ladder level is a
+        (price, qty) tuple of WireDecimal retained at parse (WO-017 §1.1), and this returns their
+        `.wire` text verbatim — no `str()`, no `format()`, no rendering of any kind. FR-018a(f) is
+        satisfied LITERALLY: checksum input derives from the venue's transmitted representation,
+        never re-rendered, so the scientific-notation defect (WO-008b-B-RERUN: `str(Decimal("1.0E-7"))`
+        -> `"1.0E-7"` -> CRC fragment `"10E-7"` instead of `"10"`, 234 failures) is structurally
+        impossible — there is no rendering step left to be wrong for ANY input the venue can send.
+
+        NO FALLBACK (WO-017 §1.4, load-bearing): a level lacking its wire string RAISES
+        CHECKSUM_WIRE_STRING_MISSING via _wire_pair; it does not silently re-render. The
+        200-capture fixture (tests/integration/test_checksum_capture_replay.py) remains the standing
+        regression guard, and compute_checksum's 'E'-sentinel (WO-016 D27) guards the invariant that
+        no synthesized notation ever reaches the CRC.
+        """
+        bid_levels = [self._wire_pair(p, q) for p, q in self._local_book.bids[:10]]
+        ask_levels = [self._wire_pair(p, q) for p, q in self._local_book.asks[:10]]
         return bid_levels, ask_levels
 
     # ── WO-014c-2 §2: gap-ledger primitives ─────────────────────────────────────
@@ -2492,18 +2572,18 @@ class KrakenV2BookAdapter:
                 self._raw_received += 1
 
                 try:
-                    # WO-008b-A3 §1.1: PRESERVE the venue's transmitted digits.
-                    # parse_float/parse_int receive the RAW TEXT of each number,
-                    # so Kraken's "0.00005100" stays "0.00005100". Plain
-                    # json.loads would float it and Decimal(str(float)) would
-                    # render "0.000051", dropping the trailing zeros the CRC32
-                    # digits require. We do NOT re-render into an assumed format
-                    # (e.g. fixed 8dp): that would encode an uncited assumption
-                    # about venue behaviour (rule 0.1e) that holds for BTC/USD
-                    # today and breaks silently on the first symbol Kraken
-                    # renders differently.
+                    # WO-008b-A3 §1.1 / WO-017 §1.1: PRESERVE the venue's transmitted
+                    # digits AND retain the token text itself. parse_float/parse_int
+                    # receive the RAW TEXT of each number and construct a WireDecimal,
+                    # so Kraken's "0.00005100" stays "0.00005100" both as a value and on
+                    # .wire. Plain json.loads would float it and Decimal(str(float)) would
+                    # render "0.000051", dropping the trailing zeros the CRC32 digits
+                    # require. We do NOT re-render into an assumed format (e.g. fixed 8dp):
+                    # that would encode an uncited assumption about venue behaviour (rule
+                    # 0.1e). The retained wire string is what the checksum consumes
+                    # (WO-017 §1.3) — there is no rendering step left to be wrong.
                     raw_frame = json.loads(
-                        message, parse_float=Decimal, parse_int=Decimal
+                        message, parse_float=WireDecimal, parse_int=WireDecimal
                     )
                 except json.JSONDecodeError as exc:
                     self._log_error(f"Non-JSON frame from venue: {exc}")

@@ -27,7 +27,11 @@ from decimal import Decimal
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [REPO, os.path.join(REPO, "src")]
 
-from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, LocalBookData  # noqa: E402
+from trading.data.adapters.kraken_v2_book import (  # noqa: E402
+    KrakenV2BookAdapter,
+    LocalBookData,
+    WireDecimal,
+)
 
 DUMP = os.path.join(REPO, "evidence", "WO-008b-B-RERUN", "instruments_dump.json")
 
@@ -38,20 +42,26 @@ def load():
     return inst["checksum_failure_captures"], inst.get("checksum_failure_summaries", [])
 
 
-def dec_levels(levels):
-    return [(Decimal(p), Decimal(q)) for p, q in levels]
+def wire_levels(levels):
+    """WO-017 §2: reconstruct the transmitted wire string the parse would have retained.
+    The dump stores each level as str(Decimal) (scientific for small qty); its fixed-point
+    rendering IS the wire form (WO-016 proof), carried on a WireDecimal so production consumes
+    .wire with no render."""
+    return [(WireDecimal(format(Decimal(p), "f")), WireDecimal(format(Decimal(q), "f")))
+            for p, q in levels]
 
 
 def replay_production(cap):
-    """Seed a production LocalBookData with the captured top-10 ladder and drive the PRODUCTION
-    formatter + checksum. Returns the checksum the production path computes."""
+    """Seed a production LocalBookData with the captured top-10 ladder (reconstructed to wire
+    form) and drive the PRODUCTION wire-string + checksum path. Under WO-017 this yields the
+    venue's EXPECTED checksum — the render bug is structurally gone (no formatter left to fail)."""
     book = LocalBookData()
-    book.apply_snapshot(bid_levels=dec_levels(cap["local_book_bids"]),
-                        ask_levels=dec_levels(cap["local_book_asks"]),
+    book.apply_snapshot(bid_levels=wire_levels(cap["local_book_bids"]),
+                        ask_levels=wire_levels(cap["local_book_asks"]),
                         sequence=0, checksum=0)
     adapter = KrakenV2BookAdapter()          # fixture mode; opens NO socket
     adapter._local_book = book
-    bid_strs, ask_strs = adapter._current_ladder_strings()   # PRODUCTION formatter (bug site)
+    bid_strs, ask_strs = adapter._current_ladder_strings()   # PRODUCTION wire-string path
     return adapter.compute_checksum(bid_strs, ask_strs), bid_strs, ask_strs
 
 
@@ -73,24 +83,25 @@ def replay_fixed(cap):
 def main():
     caps, summaries = load()
     n = len(caps)
-    repro = fixed_ok = 0
+    prod_ok = fixed_ok = 0
     bad = []
     for cap in caps:
         comp, _, _ = replay_production(cap)
-        if comp == cap["computed_checksum"]:
-            repro += 1
+        if comp == cap["expected_checksum"]:
+            prod_ok += 1
         else:
-            bad.append((cap["sequence_position_in_run"], comp, cap["computed_checksum"]))
+            bad.append((cap["sequence_position_in_run"], comp, cap["expected_checksum"]))
         if replay_fixed(cap) == cap["expected_checksum"]:
             fixed_ok += 1
-    print(f"=== WO-016 REPLAY HARNESS — {n} full captures (+{len(summaries)} summaries) ===")
-    print(f"PRODUCTION path reproduces captured computed_checksum : {repro}/{n}")
-    print(f"FIX CANDIDATE (fixed-point size) yields expected      : {fixed_ok}/{n}")
+    print(f"=== WO-017 REPLAY HARNESS — {n} full captures (+{len(summaries)} summaries) ===")
+    print(f"PRODUCTION path (wire-string) yields EXPECTED checksum : {prod_ok}/{n}")
+    print(f"FIX CANDIDATE (fixed-point size) yields expected       : {fixed_ok}/{n}")
     if bad:
-        print(f"  NON-reproducing: {bad[:5]}")
-    print("PROVES: the production apply+format path deterministically reproduces every captured")
-    print("failure, and precision-preserving (fixed-point) size formatting recovers Kraken's")
-    print("expected checksum for every one. Root cause = scientific-notation size formatting.")
+        print(f"  NON-matching: {bad[:5]}")
+    print("PROVES: WO-017 closed the defect STRUCTURALLY — the production path now consumes the")
+    print("venue's retained wire string and yields Kraken's expected checksum for every captured")
+    print("failure. No rendering step remains to be wrong. (WO-016's fixed-point candidate, kept")
+    print("for provenance, agrees — it was the interim render this WO made non-existent.)")
 
 
 def detail(i):

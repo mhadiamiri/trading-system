@@ -8,9 +8,19 @@ Kraken's `expected_checksum`. "The defect class is closed" means the captured fa
 not that new runs happen to stay clean.
 
 The defect: `str(Decimal)` rendered small quantities in scientific notation ('1.0E-7'), so the
-checksum's remove-'.'-lstrip-zeros rule produced '10E-7' not '10'. The INTERIM fix renders
-fixed-point (`format(x, 'f')`) at _current_ladder_strings. This fixture WITNESSES small-quantity
-rendering and repeated-price application (its stated evidentiary bounds).
+checksum's remove-'.'-lstrip-zeros rule produced '10E-7' not '10'. WO-017 closed it STRUCTURALLY:
+`_current_ladder_strings` now consumes the venue's retained WIRE STRING (`.wire`), with no rendering
+step at all. This fixture WITNESSES small-quantity rendering and repeated-price application (its
+stated evidentiary bounds).
+
+FIXTURE RECONSTRUCTION SUBTLETY (WO-017 §2): the capture predates wire retention and stores each
+local_book level as `str(Decimal)` — e.g. qty '1.0E-7' (SCIENTIFIC), NOT the transmitted text
+'0.00000010'. Seeding WireDecimal('1.0E-7') would set .wire='1.0E-7' -> the OLD FAILING value. So
+the replay RECONSTRUCTS the wire form the parse would have retained: `format(Decimal(x), 'f')` is
+the fixed-point rendering WO-016 proved reproduces Kraken's transmitted string 200/200 for exactly
+this set. The book is seeded with WireDecimal(that string); production then consumes .wire with no
+render. The reconstruction lives in the TEST harness (rebuilding recorded evidence); production
+retains .wire at parse and never renders.
 """
 import json
 import os
@@ -18,7 +28,11 @@ from decimal import Decimal
 
 import pytest
 
-from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, LocalBookData
+from trading.data.adapters.kraken_v2_book import (
+    KrakenV2BookAdapter,
+    LocalBookData,
+    WireDecimal,
+)
 
 _FIXTURE = os.path.join(os.path.dirname(__file__), "..", "fixtures",
                         "kraken_v2_checksum_captures_wo016.json")
@@ -29,15 +43,20 @@ def _load():
         return json.load(f)
 
 
-def _dec(levels):
-    return [(Decimal(p), Decimal(q)) for p, q in levels]
+def _wire(levels):
+    """Reconstruct the transmitted wire string (WO-017 §2): fixed-point rendering of the
+    captured Decimal, carried on a WireDecimal exactly as the live parse would have retained it."""
+    return [
+        (WireDecimal(format(Decimal(p), "f")), WireDecimal(format(Decimal(q), "f")))
+        for p, q in levels
+    ]
 
 
 def _production_checksum(cap):
-    """Drive the PRODUCTION apply + format + checksum path over a capture's recorded ladder."""
+    """Drive the PRODUCTION apply + wire-string + checksum path over a capture's recorded ladder."""
     book = LocalBookData()
-    book.apply_snapshot(bid_levels=_dec(cap["local_book_bids"]),
-                        ask_levels=_dec(cap["local_book_asks"]),
+    book.apply_snapshot(bid_levels=_wire(cap["local_book_bids"]),
+                        ask_levels=_wire(cap["local_book_asks"]),
                         sequence=0, checksum=0)
     adapter = KrakenV2BookAdapter()          # fixture mode; opens NO socket
     adapter._local_book = book

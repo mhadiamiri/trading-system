@@ -57,12 +57,37 @@ def load_baseline(store_path: Optional[str] = None, fp: Optional[dict] = None) -
 
 
 def save_baseline(mean_cycle_seconds: float, derivation: str, date: str, load: str,
-                  store_path: Optional[str] = None, fp: Optional[dict] = None) -> dict:
-    """Write/replace this host's baseline record. Used by the establishment protocol
-    (tools/establish_mean_cycle_baseline.py) — NOT by the runtime capture path."""
+                  store_path: Optional[str] = None, fp: Optional[dict] = None,
+                  scope: Optional[dict] = None, rebaseline: Optional[dict] = None) -> dict:
+    """Write this host's baseline record. Used by the establishment protocol
+    (tools/establish_mean_cycle_baseline.py) — NOT by the runtime capture path.
+
+    NEVER OVERWRITES A DIFFERING FIGURE (WO-017 §5): if a record already exists for this host
+    and its mean_cycle_seconds differs, that prior record is carried into the new record's
+    `superseded` ledger — annotated with `scope_end_date` and an end reason — ahead of any
+    superseded entries it already carried. The baseline history thus stays a traceable ledger
+    of the pipeline's performance evolution (no orphan figures). A re-run at the SAME figure
+    (a confirmation, not a re-declaration) simply refreshes the active record. `scope` and
+    `rebaseline` (when given) are recorded verbatim on the active record.
+    """
     path = store_path or _default_store()
     fp = fp if fp is not None else host_fingerprint()
     store = load_store(path)
+    key = fingerprint_key(fp)
+    prior = store.get(key)
+
+    superseded = []
+    if prior is not None and prior.get("mean_cycle_seconds") != mean_cycle_seconds:
+        prior_entry = {k: v for k, v in prior.items() if k != "superseded"}
+        prior_entry["scope_end_date"] = date
+        prior_entry.setdefault(
+            "end_reason",
+            f"Superseded by the {date} re-baseline ({mean_cycle_seconds}s); retained (never "
+            "overwritten) so the baseline ledger stays traceable (WO-017 §5).")
+        superseded = [prior_entry] + list(prior.get("superseded", []))
+    elif prior is not None:
+        superseded = list(prior.get("superseded", []))
+
     record = {
         "fingerprint": fp,
         "mean_cycle_seconds": mean_cycle_seconds,
@@ -70,7 +95,14 @@ def save_baseline(mean_cycle_seconds: float, derivation: str, date: str, load: s
         "derivation": derivation,
         "load": load,
     }
-    store[fingerprint_key(fp)] = record
+    if scope is not None:
+        record["scope"] = scope
+    if rebaseline is not None:
+        record["rebaseline"] = rebaseline
+    if superseded:
+        record["superseded"] = superseded
+
+    store[key] = record
     with open(path, "w", encoding="utf-8") as f:
         json.dump(store, f, indent=1, sort_keys=True)
     return record
