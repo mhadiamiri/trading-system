@@ -1,0 +1,33 @@
+WO-018 FOLLOW-UP (items A/B/C/D) — VERIFICATION
+================================================
+Baseline: b1e6fff (215 green both orders). This follow-up changes no test count.
+
+pytest tests/ -p no:randomly -rX
+    215 passed in 245.94s (0:04:05)     0 failed / 0 xfailed / 0 xpassed
+
+pytest tests/ --randomly-seed=20260730 -rX
+    215 passed in 245.81s (0:04:05)     0 failed / 0 xfailed / 0 xpassed
+
+DELTA vs 215 baseline: 0. B is a docstring-only edit to tests/test_reason_code_vocabulary.py
+(still 11 tests in that module, collection verified); tools/producible_only_via_definition.py
+is a report-only script, NOT a test. No test added or removed.
+
+lint-imports
+    Analyzed 61 files, 206 dependencies.
+    Contracts: 6 kept, 0 broken.
+
+python tools/contract_count_check.py
+    PASS: import-linter evaluated 6 contracts (expected 6)
+
+ruff check .
+    All checks passed!
+
+Secret scan (git diff HEAD + new files): 0 secret-like hits. All "token"/"credential"
+matches are the literal words in prose ("layer token", "wire token", template line) — no
+API key, password, session, or connection ID.
+
+New code this commit: tools/producible_only_via_definition.py (report-only analysis; emits
+NO reason_code / event_type, so nothing to declare in the vocabulary).
+
+Hot path: NOT touched (docstring + .md + report-only tool + evidence). No re-baseline.
+Venue connection: NO. HTTPS doc fetch: NO.

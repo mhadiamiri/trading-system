@@ -20,6 +20,25 @@ event_type=decision.value) are NOT statically resolved here — they are covered
 resolved values, verified in the §1 denominator, and (b) for the RiskDecision enum event_types, the
 mechanical drift guard test_event_type_risk_values_match_enum below. A check is bounded by the form it
 matches and the namespace it reads (WO-018 §8); those bounds are stated, not hidden.
+
+DECLARED LIMIT — the variable-indirection residual (WO-018 follow-up B), stated in the HOST_SUSPEND /
+active-probe form so the bound is read where the guard is read, not only in a report:
+  - CAUGHT: every reason_code / event_type emitted as a string LITERAL at the call site — colon
+    "CODE:", reason_code="CODE", event_type="CODE" (any case). raised⇒declared holds for these.
+  - NOT CAUGHT: an emission through VARIABLE INDIRECTION whose value is not a literal at the call
+    site — reason_code=<var>, reason_code=self.SOME_CONST, reason_code=e.reason_code,
+    event_type=decision.value. The scan does not statically resolve the variable to its string.
+  - WHAT THE UNCAUGHT CASE LOOKS LIKE: a future emission adds `reason_code=new_var` where `new_var`
+    holds an UNDECLARED string. raised⇒declared reads only literals, so it never sees `new_var`, and
+    the code ships as a GOVERNED SYSTEM EMITTING AN UNGOVERNED CODE — the colon-form blind spot one
+    level in. (Symmetric half: declared⇒producible is satisfied for a declared code by its CONSTANT
+    DEFINITION, or even a COMMENT / DOCSTRING mention, not only by a genuine emit — WO-018 follow-up
+    A; the successor WO's tightened "reachable-as-emitted" scan closes that half. Not fixed here.)
+  - WHAT COVERS THE GAP TODAY, AND WHAT DOES NOT: the §1 enumeration was a ONE-TIME semantic pass
+    that resolved the current indirected values and DECLARED them; the enum-drift guard
+    (test_event_type_risk_values_match_enum) pins ONLY the RiskDecision event_types emitted as
+    event_type=decision.value. NEITHER covers a NEW indirection introduced after this pass — that is
+    the standing residual, load-bearing until the successor WO's tightened scan lands.
 """
 
 import itertools

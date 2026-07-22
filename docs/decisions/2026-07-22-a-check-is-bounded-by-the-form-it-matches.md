@@ -36,3 +36,27 @@ the feed casing split) is reported (`evidence/WO-018/overlap_finding.txt`) as a 
 ruling** — nothing was merged, renamed, or restructured. The RiskDecision enum is the single source of
 truth for the risk `event_type` values, guarded mechanically against drift (the declaration cannot
 import `risk`, so a test enforces the equality).
+
+---
+
+**DECLARED LIMIT — the variable-indirection residual (WO-018 follow-up B).** The §1 enumeration was a
+one-time semantic pass; the completeness scan is the ONGOING guard, and it matches LITERAL forms only.
+Stated in the HOST_SUSPEND / active-probe form — what is caught, what is not, what the uncaught case
+looks like:
+
+- **CAUGHT:** every reason_code / event_type emitted as a string LITERAL at the call site
+  (`"CODE:"`, `reason_code="CODE"`, `event_type="CODE"`).
+- **NOT CAUGHT:** an emission through VARIABLE INDIRECTION whose value is not a literal at the call site
+  — `reason_code=<var>`, `reason_code=self.SOME_CONST`, `reason_code=e.reason_code`,
+  `event_type=decision.value`. The scan does not statically resolve the variable to its string.
+- **What the uncaught case looks like:** a future emission adds `reason_code=new_var` where `new_var`
+  holds an UNDECLARED string. `raised⇒declared` reads only literals, so it never sees `new_var`, and the
+  code ships as a **governed system emitting an ungoverned code** — the colon-form blind spot one level
+  in. (Symmetric half, reported in follow-up A: `declared⇒producible` is satisfied for a declared code by
+  its CONSTANT DEFINITION, or even a COMMENT/DOCSTRING mention, not only by a genuine emit — 13 declared
+  reason codes and 3 event_types currently pass with no emit-site literal at all. The successor WO's
+  tightened *reachable-as-emitted* scan closes that half; not fixed here.)
+- **What covers the gap today, and what does not:** the one-time §1 pass resolved the current indirected
+  values and DECLARED them; the enum-drift guard `test_event_type_risk_values_match_enum` pins ONLY the
+  RiskDecision event_types emitted as `event_type=decision.value`. NEITHER covers a NEW indirection
+  introduced after this pass — that is the standing residual, load-bearing until the tightened scan lands.

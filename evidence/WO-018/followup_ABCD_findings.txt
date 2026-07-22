@@ -1,0 +1,155 @@
+WO-018 FOLLOW-UP — items A, B, C, D (lead's `update:` block in instructions.md)
+================================================================================
+Baseline for this follow-up: b1e6fff (WO-018 §2-§10, pushed, 215 green both orders).
+Scope: A/C/D are REPORT ONLY; B is a docstring + decision-log edit. NO taxonomy
+migration, NO tightened scan — those are the successor WO by ruling.
+
+--------------------------------------------------------------------------------
+A. THE DEAD CONSTANT — which case holds, + the tightening's workload count
+--------------------------------------------------------------------------------
+FACTUAL, the named constant RISK_VETO_INSUFFICIENT_BALANCE:
+  CASE (a) HOLDS — it is NOT declared. It is defined at src/trading/risk/engine.py:42
+  (`REASON_VETO_INSUFFICIENT_BALANCE = "RISK_VETO_INSUFFICIENT_BALANCE"`) and never
+  returned anywhere. It is absent from VALID_REASON_CODES, so `declared => producible`
+  never evaluates it (nothing to fail). The §6 finding is inert: an undeclared,
+  never-returned constant is vocabulary nobody declares AND nobody speaks.
+
+BUT CASE (b) IS ALSO TRUE — as a property of the INSTRUMENT, not of this constant.
+  The producibility check `_is_producible` (tests/test_reason_code_vocabulary.py:83-85)
+  matches the literal string anywhere in production source EXCEPT decision.py. A bare
+  `NAME = "CODE"` definition satisfies it. So the scan DOES count a constant definition
+  as producible. Had RISK_VETO_INSUFFICIENT_BALANCE been declared, it would have passed
+  producibility purely on its line-42 definition while being provably dead — the
+  credibility-borrowing shape WO-018 exists to kill, surviving inside the instrument
+  that killed it. It escapes here only because it was never declared, not because the
+  instrument would have caught it.
+
+  The lead has pre-ruled (b): producible must mean REACHABLE-AS-EMITTED (trace to a
+  RETURN / EMIT / RAISE site, not a definition). That tightening lands in the successor
+  WO. NOT implemented here.
+
+WORKLOAD COUNT (reproducible: tools/producible_only_via_definition.py; full output in
+evidence/WO-018/item_A_producible_only_via_definition.txt). Grounded in the scan's OWN
+emit-site regexes (_RC_COLON, _RC_KWARG, _ET_KWARG) — a code is "reachable-as-emitted by
+literal" iff one of those matches it in src/ (excl decision.py).
+
+  reason_code: 42 declared; 13 have NO emit-site literal (pass producibility on a
+               non-emit occurrence only):
+    Tier 1 — DEFINITION-ONLY (the lead's exact phrase; only a `NAME="CODE"` constant
+             or enum member, nothing else): 5
+               CLAMP, PASS                         (RiskDecision enum members)
+               RISK_VETO_KILL_SWITCH               (engine.py:39 constant)
+               RISK_VETO_INVALID_INPUT             (engine.py:41 constant)
+               MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH (host_baseline.py:59 constant)
+    Tier 2 — DEFINITION + COMMENT/DOCSTRING prose (a constant exists, plus the string
+             also appears in a comment or docstring; same variable-return emission
+             mechanism as Tier 1): 3
+               RISK_PASS, RISK_CLAMP_MAX_POSITION, RISK_VETO_DAILY_LOSS
+    Tier 3 — VARIABLE-ASSIGNMENT LITERAL only, no module constant (dataflow to emit;
+             `signal_reason = "LONG_SIGNAL" if ... else "SHORT_SIGNAL"`, then
+             `reason_code=signal_reason`): 2
+               LONG_SIGNAL, SHORT_SIGNAL
+    Tier 4 — CROSS-NAMESPACE emit only (declared reason_code whose ONLY literal is an
+             `event_type="..."` emission — never emitted as a reason_code at all; the
+             namespace-BLIND producibility scan validates the reason_code against the
+             event_type emission): 2
+               ORDER_FILLED, ORDER_REJECTED
+    Tier 5 — enum member + list-membership prose (`if decision.value in ["VETO"]`): 1
+               VETO
+
+  event_type: 13 declared; 3 have no emit-site (_ET_KWARG) literal:
+               PASS, CLAMP, VETO — all emitted via `event_type=decision.value`
+               (RiskDecision enum). These are the INTENDED mechanism and are pinned by
+               test_event_type_risk_values_match_enum; the tightened scan must whitelist
+               the enum path, not flag it. Same three strings as the reason_code side.
+
+  ANSWER TO "how many are producible ONLY via their own definition":
+    - STRICT reading (only a definition, nothing else): 5 reason codes (Tier 1).
+    - The successor WO's ACTUAL workload (all declared codes not reachable-as-emitted by
+      a literal, whatever keeps them "producible" today): 13 distinct reason_code strings
+      + the 3 enum event_types. Knowing this now sizes the tightening.
+
+  TWO SHARPER FINDINGS the tightening must also close (both are the same shape one level
+  weaker than the lead flagged, i.e. producibility satisfiable by non-emit text):
+    (i)  COMMENT/DOCSTRING sufficiency — RISK_PASS/RISK_CLAMP_MAX_POSITION/
+         RISK_VETO_DAILY_LOSS are kept "producible" partly by a comment
+         (approved_order.py:38) and docstrings (interface.py:60-61). A code whose
+         definition were deleted but a comment retained would STILL pass. Weaker than a
+         definition.
+    (ii) NAMESPACE-BLIND producibility — ORDER_FILLED / ORDER_REJECTED are declared
+         reason_codes proven "producible" by their EVENT_TYPE emissions (live.py:281/306).
+         The scan reads raw source text, not the namespace, so a reason_code borrows an
+         event_type emission's credibility — the exact cross-namespace borrow WO-018 was
+         written to kill, surviving inside the producibility half of the instrument.
+
+--------------------------------------------------------------------------------
+B. VARIABLE-INDIRECTION RESIDUAL DECLARED AS A LIMIT  (DONE — the only edit)
+--------------------------------------------------------------------------------
+Declared in the HOST_SUSPEND / active-probe form (caught / not caught / uncaught-case /
+what covers the gap) in BOTH places the lead named:
+  - the scan's docstring: tests/test_reason_code_vocabulary.py (module docstring).
+  - the decision-log entry: docs/decisions/2026-07-22-a-check-is-bounded-by-the-form-it-matches.md
+Names what the enum-drift guard covers (event_type=decision.value only) and what it does
+NOT (any NEW indirection introduced after the one-time §1 pass). No behaviour changed.
+
+--------------------------------------------------------------------------------
+C. IS THE NAMING CONVENTION GOVERNED, OR ONLY STATED?  (report only)
+--------------------------------------------------------------------------------
+ONLY STATED — it is prose, not a property.
+  - The convention is stated once, as a docstring line: src/trading/logkit/decision.py:10
+    ("Valid Reason Codes (LAYER_VERB_DETAIL vocabulary)").
+  - NO test enforces conformance. tests/test_reason_code_vocabulary.py enforces the four
+    properties (raised=>declared, declared=>producible, prefix-freedom, scan-reads-emitted)
+    — none checks the LAYER_VERB_DETAIL shape. Grep for a naming/pattern check across
+    tests/ and src/ finds only the unrelated redaction-pattern-name test. Confirmed: the
+    convention is unchecked.
+  - EVIDENCE IT IS UNENFORCED: the declared strings visibly violate it. The layer lives in
+    the DICT KEY, not always in the string — many codes carry no layer prefix:
+      NO_SIGNAL, LONG_SIGNAL, SHORT_SIGNAL   (STRATEGY group, no STRATEGY_/STRAT_ prefix)
+      ORDER_FILLED, ORDER_REJECTED           (EXECUTION group, no EXEC_ prefix — yet
+                                              EXEC_ORDER_FILLED in the same group HAS it)
+      CHECKSUM_RESYNC, HEARTBEAT_ABSENCE, PASS, CLAMP, VETO  (no layer token at all)
+    A convention this unevenly followed is definitionally unenforced.
+  - COST TO ENFORCE (not done, per instruction): this is NOT a test-add — it is a
+    migration. Enforcing needs (1) a DECLARED grammar (allowed layer prefixes per group +
+    allowed verbs), (2) a property asserting each code matches, and (3) RENAMING every
+    non-conforming declared string above — renames of live audit vocabulary, which is
+    exactly the taxonomy-migration WO's job and collides with its ORDER_FILLED/PASS/CLAMP/
+    VETO moves. So the cost is "one property + a full vocabulary migration," best carried
+    by that successor WO, not bolted on here.
+
+--------------------------------------------------------------------------------
+D. CASING PROVENANCE — Kraken's vocabulary, or strings we chose?  (report only)
+--------------------------------------------------------------------------------
+ALL FOUR lowercase feed event_types are STRINGS WE CHOSE (not transmitted representation).
+They therefore NORMALIZE to uppercase per the lead's ruling — the FR-018a(f)
+"transmitted-representation" exception does NOT apply.
+
+Per value, with source (all are event_type="..." LITERALS in our own adapter, emitted from
+OUR control-flow conditions, not read from any Kraken payload field):
+  feed_connected     src/trading/data/adapters/kraken_public.py:114
+        emitted by US after a successful connect+subscribe; paired reason_code=FEED_CONNECTED.
+  payload_error      kraken_public.py:141 and :150
+        emitted inside OUR `except json.JSONDecodeError` (:141, reason FEED_MALFORMED_PAYLOAD)
+        and OUR generic `except Exception` (:150, reason FEED_UNEXPECTED_PAYLOAD).
+  feed_disconnected  kraken_public.py:160
+        emitted inside OUR `except ConnectionClosedError`; paired reason FEED_CONNECTION_CLOSED.
+  feed_error         kraken_public.py:178
+        emitted inside OUR generic connection `except Exception`; paired reason FEED_CONNECTION_ERROR.
+
+WHY THEY ARE OURS, NOT KRAKEN'S:
+  - Kraken v2 does not transmit these tokens. Its envelope uses channel/method/type values
+    (status, heartbeat, subscribe, book, trade, ...). "feed_connected" / "payload_error" /
+    "feed_disconnected" / "feed_error" describe OUR feed-lifecycle state, not a wire field.
+  - Each is emitted at a site keyed to OUR condition (our connect success, our parse
+    exception, our disconnect handler) — no value is copied out of an inbound message.
+  - Each is ALREADY paired with an uppercase reason_code for the same fact
+    (FEED_CONNECTED, FEED_MALFORMED_PAYLOAD, FEED_CONNECTION_CLOSED, FEED_CONNECTION_ERROR).
+    The same fact already has an uppercase form in the adjacent namespace — corroboration
+    the lowercase form is a stylistic choice of ours, not a transmitted token.
+  Conclusion for item (4) of the taxonomy ruling: normalize all four to uppercase.
+
+================================================================================
+CONFIRMATION: A, C, D acted on NOTHING (report only). B changed only a test-module
+docstring and a decision-log .md. No production emission code, no declaration, no
+namespace touched. The taxonomy migration and the tightened scan were NOT begun.

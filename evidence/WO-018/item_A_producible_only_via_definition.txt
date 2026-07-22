@@ -1,0 +1,52 @@
+===== reason_code: declared but NO emit-site literal =====
+  CLAMP   [DEFN]
+      DEFN      src/trading/risk/interface.py:26   CLAMP = "CLAMP"  # Order size reduced toward zero
+  LONG_SIGNAL   [PROSE/VAR]
+      PROSE/VAR src/trading/loop/live.py:223   signal_reason = "LONG_SIGNAL" if desired_position.side.value == "BUY" else "SHORT_SIGNAL"
+  MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH   [DEFN]
+      DEFN      src/trading/loop/host_baseline.py:59   INSTRUMENT_MISMATCH_CODE = "MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH"
+  ORDER_FILLED   [EMIT-et-kwarg]
+      EMIT-et-kwarg src/trading/loop/live.py:281   event_type="ORDER_FILLED",
+  ORDER_REJECTED   [EMIT-et-kwarg]
+      EMIT-et-kwarg src/trading/loop/live.py:306   event_type="ORDER_REJECTED",
+  PASS   [DEFN]
+      DEFN      src/trading/risk/interface.py:25   PASS = "PASS"  # Order approved unchanged
+  RISK_CLAMP_MAX_POSITION   [COMMENT,DEFN,PROSE/VAR]
+      COMMENT   src/trading/execution/approved_order.py:38   reason_code: str  # e.g., "RISK_PASS", "RISK_CLAMP_MAX_POSITION"
+      DEFN      src/trading/risk/engine.py:38   REASON_CLAMP_MAX_POSITION = "RISK_CLAMP_MAX_POSITION"
+      PROSE/VAR src/trading/risk/interface.py:61   "RISK_CLAMP_MAX_POSITION", "RISK_VETO_DAILY_LOSS")
+  RISK_PASS   [COMMENT,DEFN,PROSE/VAR]
+      COMMENT   src/trading/execution/approved_order.py:38   reason_code: str  # e.g., "RISK_PASS", "RISK_CLAMP_MAX_POSITION"
+      DEFN      src/trading/risk/engine.py:37   REASON_PASS = "RISK_PASS"
+      PROSE/VAR src/trading/risk/interface.py:60   - reason_code: String describing the decision (e.g., "RISK_PASS",
+  RISK_VETO_DAILY_LOSS   [DEFN,PROSE/VAR]
+      DEFN      src/trading/risk/engine.py:40   REASON_VETO_DAILY_LOSS = "RISK_VETO_DAILY_LOSS"
+      PROSE/VAR src/trading/risk/interface.py:61   "RISK_CLAMP_MAX_POSITION", "RISK_VETO_DAILY_LOSS")
+  RISK_VETO_INVALID_INPUT   [DEFN]
+      DEFN      src/trading/risk/engine.py:41   REASON_VETO_INVALID_INPUT = "RISK_VETO_INVALID_INPUT"
+  RISK_VETO_KILL_SWITCH   [DEFN]
+      DEFN      src/trading/risk/engine.py:39   REASON_VETO_KILL_SWITCH = "RISK_VETO_KILL_SWITCH"
+  SHORT_SIGNAL   [PROSE/VAR]
+      PROSE/VAR src/trading/loop/live.py:223   signal_reason = "LONG_SIGNAL" if desired_position.side.value == "BUY" else "SHORT_SIGNAL"
+  VETO   [DEFN,PROSE/VAR]
+      PROSE/VAR src/trading/backtest/runner.py:180   if decision.value in ["VETO"]:
+      PROSE/VAR src/trading/loop/live.py:258   if decision.value in ["VETO"]:
+      DEFN      src/trading/risk/interface.py:27   VETO = "VETO"  # Order rejected entirely
+
+===== event_type: declared but NO emit-site (_ET_KWARG) literal =====
+  CLAMP   [DEFN]  (emitted via RiskDecision.value -- enum-drift guard covers it)
+      DEFN      src/trading/risk/interface.py:26   CLAMP = "CLAMP"  # Order size reduced toward zero
+  PASS   [DEFN]  (emitted via RiskDecision.value -- enum-drift guard covers it)
+      DEFN      src/trading/risk/interface.py:25   PASS = "PASS"  # Order approved unchanged
+  VETO   [DEFN,PROSE/VAR]  (emitted via RiskDecision.value -- enum-drift guard covers it)
+      PROSE/VAR src/trading/backtest/runner.py:180   if decision.value in ["VETO"]:
+      PROSE/VAR src/trading/loop/live.py:258   if decision.value in ["VETO"]:
+      DEFN      src/trading/risk/interface.py:27   VETO = "VETO"  # Order rejected entirely
+
+===== SUMMARY =====
+reason_code declared: 42; with NO emit-site literal: 13
+    ['CLAMP', 'LONG_SIGNAL', 'MEAN_CYCLE_BASELINE_INSTRUMENT_MISMATCH', 'ORDER_FILLED', 'ORDER_REJECTED', 'PASS', 'RISK_CLAMP_MAX_POSITION', 'RISK_PASS', 'RISK_VETO_DAILY_LOSS', 'RISK_VETO_INVALID_INPUT', 'RISK_VETO_KILL_SWITCH', 'SHORT_SIGNAL', 'VETO']
+event_type declared: 13; with NO emit-site literal: 3
+    ['CLAMP', 'PASS', 'VETO']
+
+Tightening workload (declared codes not reachable-as-emitted by literal): 13 distinct strings (13 reason_code + 3 event_type)
