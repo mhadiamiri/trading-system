@@ -38,11 +38,66 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-22 (WO-018 CLOSED at `8dcf2ef` — event-type governance + raised⇒declared hatch; next by sequence: CI capture + version ruling)
-**Current Phase**: **BETWEEN WOs.** WO-018 (event-type governance + closing the raised⇒declared escape hatch) is COMPLETE and CLOSED, including all four follow-up rounds (A–D; the dead/live split; 0.1k + the prose-as-use/tracing-boundary doctrine). Nothing in progress. Next by sequence: **CI capture + version ruling → CI green → the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.** See "▶ WO-018 COMPLETE" block immediately below.
-**Status**: HEAD `8dcf2ef` on master (pushed; local == remote). **215 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260730`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The **▶ WO-016 COMPLETE** and **▶ CURRENT STATUS — 2026-07-20** blocks further below are HISTORICAL (WO-017, WO-013 + follow-ups, and WO-018 all landed since; git log is the authoritative sequence); read the **▶ WO-018 COMPLETE** block below to resume.
+**Last Updated**: 2026-07-22 (WO-019 + WO-020 done at `cceb156` — CI failure ROOT-CAUSED: `AsyncIterator` NameError on 3.11; a one-file fix awaits the lead's version ruling)
+**Current Phase**: **BETWEEN WOs — CI RED, root cause found, fix pending a ruling.** WO-018 (event-type governance) CLOSED; WO-019 (clean-env CI diagnosis) and WO-020 (CI verification-surface repair) COMPLETE. **The long-standing CI failure is diagnosed** (see block below) and its fix is a single production edit — NOT yet applied, because it is production code awaiting the lead's version ruling (fix approach + whether to add 3.14 to the CI matrix). **Immediate next step:** the version-ruling fix WO. Then by sequence: **CI green → the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.**
+**Status**: HEAD `cceb156` on master (pushed; local == remote). **215 tests green both orders LOCALLY** (`-p no:randomly` AND `--randomly-seed=20260722`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. **CI (GitHub Actions, Python 3.11) is RED** — pytest collection fails with a `NameError` (root-caused below), NOT a test regression; the local suite is genuinely green. `gh` CLI works via `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is the authoritative sequence); read the **▶ WO-019/WO-020** and **▶ WO-018** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
+
+---
+
+## ▶ WO-019 + WO-020 COMPLETE (AUTHORITATIVE) — 2026-07-22 — CI failure ROOT-CAUSED + verification surface repaired
+
+> The CI-failure investigation that had been outstanding "since WO-009." Two WOs: WO-019 diagnosed it in a
+> clean local environment; WO-020 repaired CI's verification steps AND (with `gh` now available) observed
+> the real CI run, which finally produced the traceback. Reports: `WO-019-REPORT.md`, `WO-020-REPORT.md`.
+> Evidence: `evidence/WO-019/`, `evidence/WO-020/`. Decision log:
+> `docs/decisions/2026-07-22-verification-steps-can-host-the-defect.md`.
+
+**THE CI FAILURE — ROOT-CAUSED (this is the headline; the fix is the immediate next step):**
+- **Symptom:** GitHub Actions (Python **3.11.15**, ubuntu) fails pytest at **collection** —
+  `NameError: name 'AsyncIterator' is not defined`, `Interrupted: 31 errors during collection`, exit 2.
+- **Root cause:** `src/trading/data/adapters/kraken_v2_book.py` annotates return types as
+  `AsyncIterator[MarketState]` at **line 2300 and line 2718** but **never imports `AsyncIterator`**
+  (line 20 imports only `Optional, List, Dict`; there is **no `from __future__ import annotations`**).
+  Python **3.11 evaluates annotations EAGERLY** at class-definition → NameError at import. Python **3.14
+  defers annotations (PEP 649)** → the missing import is masked → the LOCAL suite (run on 3.14.6) passes
+  215 and never saw it. This is a genuine **version (H2)** defect, NOT `ModuleNotFoundError` (the shape
+  assumed for ten WOs) and NOT environmental.
+- **THE FIX (NOT yet applied — awaits the lead's version ruling):** either add `from __future__ import
+  annotations` to the top of `kraken_v2_book.py` (module-wide, future-proofs all annotations) OR a targeted
+  `from collections.abc import AsyncIterator`. One production file. **Open ruling also:** add **3.14 to the
+  CI matrix** (or pin the local gate to 3.11) so local and CI can never again disagree on annotation
+  semantics — that divergence is what hid this for ten WOs.
+
+**WO-020 — CI verification-surface repair (COMPLETE, confirmed in real CI at run 29955008418):**
+- CI's `import-linter` step was **BARE** = a no-op on import-linter 2.x (prints help, exits 0 — never
+  checked a contract). Fixed → `import-linter lint` (bite-proved, 4 artifacts, sha256). Real CI now logs
+  `Analyzed 61 files … 6 kept, 0 broken`.
+- `pytest-randomly` was in the dev env but **missing from `requirements-dev.txt`** → CI never randomized.
+  Added; CI now runs **both orders**; the randomized step prints its seed (`Using --randomly-seed=…`, real
+  CI showed `1608462615`) and carries `if: always()` so the seed appears even when the deterministic run
+  fails.
+- **D10** (WO-010 §2 preflight path assertion, flagged "not yet wired into ci.yml before import-linter") is
+  now a standalone `python tools/preflight_path_check.py` step **before** import-linter; `pytest_sessionstart`
+  runs the same assertion at the pytest step (defense in depth). Both confirmed running in real CI.
+- **Decision log (two entries):** ANY LAYER THAT REPORTS VERIFICATION CAN HOST THE
+  green-while-checking-nothing DEFECT (found now at three layers: code, test doubles, pipeline); AN
+  INFERENCE FROM CI BEHAVIOR IS ONLY AS GOOD AS PROOF THAT THE CI STEP EXECUTED.
+
+**WO-019 — clean-environment diagnosis (COMPLETE):** reproduced CI faithfully (`git archive HEAD` → fresh
+venv, CI's install + bare `pytest`) on **3.14.6** → **215 passed** → refuted H1 (packaging). Could not run
+3.11 locally (`py -0`: only 3.14, 3.13) → reported as a blocker. WO-020's real-CI observation supplied the
+3.11 leg WO-019 lacked. Also surfaced the import-linter no-op and the pytest-randomly gap that WO-020 fixed.
+
+**What did NOT change (scope discipline):** no production source, no test was modified in WO-019/WO-020.
+WO-020 changed only `.github/workflows/ci.yml` + `requirements-dev.txt` (CI/dev tooling — does not affect
+what ships). The `AsyncIterator` fix is deliberately NOT applied here; it is the next WO's single task.
+
+**IMMEDIATE NEXT STEP for the next session:** the version-ruling fix WO — apply the `AsyncIterator` fix to
+`kraken_v2_book.py` (approach per the lead's ruling), decide the CI-matrix question, push, and confirm CI
+goes green via `gh run view` (gh works locally — see Status line). Only after CI is green does the sequence
+continue to the taxonomy-migration WO → 008c → 24h corpus.
 
 ---
 
