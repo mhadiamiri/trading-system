@@ -38,11 +38,53 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-21 (WO-008b-B-RERUN EXECUTED — the first real venue socket is DONE; awaiting project-lead review)
-**Current Phase**: WO-008b-B-RERUN — **COMPLETE**. The 60-minute live Kraken v2 book capture RAN (attempt 2, uninterrupted). Throughput verdict = **PASS unanimous (all four definitions)**; discrimination = **Branch 1 (protocol/venue), starvation FALSIFIED**, clean/non-gappy instruments. Two open findings for the lead: **234 checksum failures (0.198%, ~10× baseline)** — assume-our-defect-first, diagnose OFFLINE; and 2 venue closes / no 1011 under `ping_timeout=None`. Report: `WO-008b-B-RERUN-FINAL-REPORT.md`. See "▶ RUN COMPLETE" below.
-**Status**: HEAD `b1d3ee6` on master (pushed; local == remote). **190 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL (predates WO-014b-2/014c-*/015); read the **▶ RESUME HERE** block immediately below instead.
+**Last Updated**: 2026-07-21 (WO-016 COMPLETE & ACCEPTED at `0fbe512`, D25–D29 closed; wire-string WO is next — Ops drafts)
+**Current Phase**: **BETWEEN WOs.** WO-008b-B-RERUN (first live socket) and WO-016 (checksum diagnosis + fix + VOID-gate rebuild + host baseline) are both COMPLETE and ACCEPTED. Nothing in progress. Next by ruling: the **wire-string WO** (FR-018a(f) literal closure) — **Ops drafts it, not yet started.** See "▶ WO-016 COMPLETE" block below for what the wire-string WO must carry.
+**Status**: HEAD `0fbe512` on master (pushed; local == remote). **202 tests green both orders** (`-p no:randomly` AND `--randomly-seed=20260725`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. The dated **▶ CURRENT STATUS (AUTHORITATIVE) — 2026-07-20** block further below is HISTORICAL; read the **▶ WO-016 COMPLETE** and **▶ RUN COMPLETE** blocks below.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
+
+---
+
+## ▶ WO-016 COMPLETE & ACCEPTED (AUTHORITATIVE) — 2026-07-21 — D25–D29 all closed
+
+> The checksum-failure diagnosis + fix + gappy-threshold rebuild + host baseline. Accepted by the
+> project lead at `0fbe512`. Reports: `WO-016-FINAL-REPORT.md` (D26 ADDENDUM), `WO-016-D27/D28/D29-REPORT.md`.
+
+**What shipped (all bite-proved, both-order-green):**
+- Checksum defect diagnosed to ONE reproducing rule (scientific-notation size rendering); INTERIM
+  fixed-point fix at `_current_ladder_strings`; **200/200** captured failures validate through the
+  production path (permanent regression fixture `tests/fixtures/kraken_v2_checksum_captures_wo016.json`).
+- `'E'`-rejecting **invariant sentinel** in `compute_checksum` (`CHECKSUM_INPUT_SYNTHESIZED_NOTATION`).
+- VOID gate rebuilt as a **three-component OR-gate** (DISCRETE / SPIKY / UNIFORM), counterfactual
+  witnessed in a test. Baseline made **host-, load-, source-, duration-scoped** (D28/D29):
+  `config/mean_cycle_baselines.json` (hashed machine id), runner refuses on host mismatch,
+  establishment protocol `tools/establish_mean_cycle_baseline.py` (no venue/socket).
+
+**▶ NEXT — the wire-string WO (FR-018a(f) literal closure). Ops drafts it; NOT started here.**
+Two items the lead ruled it MUST carry (do NOT do them now — they belong to that WO, and touching
+them now would reopen the closed WO-016):
+1. **LOAD-WORK scope dimension.** The baseline scope enumerates host/load/source/duration, but LOAD
+   is characterized by RATE alone; per-frame PROCESSING WORK is a separate, undeclared dimension.
+   The wire-string WO adds to the scope object + protocol declaration: LOAD-WORK (per-frame cost, ==
+   the pinned fixture's frame shapes), the empirical justification (mean cycle reproduced live-derived
+   load to +0.008ms → representative as measured), and the INVALIDATION CONDITION (if per-frame work
+   materially changes — deeper ladders, heavier validation, per-level storage — the rate-only
+   characterization needs re-validation).
+2. **PRE-DECLARED RE-BASELINE section.** Wire-string retention adds per-level work on every frame —
+   exactly that invalidation condition, and the frozen-baseline rule's first LEGITIMATE re-baseline.
+   Executed BEFORE the changed code faces any live gate: establishment replay on the PINNED SOURCE
+   (WO-009 §2 fixture) at the PINNED RATE (~1,959/min), same 60s protocol; **report the DELTA and
+   ATTRIBUTE it** (old 108.886ms → new → difference, attributed to wire-string retention — a
+   measured answer to the feasibility "at what cost" clause); OLD scope annotated with its end date,
+   never overwritten; re-declaration dated + justified by the named pipeline change.
+
+**STANDING RULE (binding forward, all WOs):** ANY WORK ORDER THAT TOUCHES THE LOOP'S HOT PATH CARRIES
+A RE-BASELINE SECTION — establishment replay on the pinned source, delta reported + attributed, old
+scope annotated — EXECUTED BEFORE THE WO CLOSES. When in doubt, re-baseline (the cost is a replay;
+the alternative is erosion). Sequence: wire-string → WO-013 → CI capture + version ruling → CI green
+→ 008c → corpus. Corpus preconditions now: fingerprinted load-representative baseline + no-sleep host
++ ~5.3 GB/24h + (checksum class closed).
 
 ---
 
