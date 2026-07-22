@@ -1,0 +1,56 @@
+WO-013 FOLLOW-UP B — WIDEN THE INSTRUMENT to the FULL LOOP ITERATION
+Baseline 1fb96c1. NO VENUE CONNECTION. Host ba47c96a36f36642. Pinned WO-009 source, ~1959/min, 60s.
+
+================================================================================================
+THE DEFECT (0.1g-family, one level up): the rule governs "the LOOP's hot path", but the
+establishment instrument timed only the ADAPTER's process_raw_frame — a SUBSET of the rule's scope.
+A future change adding real per-frame work in live.py would be INVISIBLE, and the rule would report
+compliance while blind. Ops ruling: WIDEN THE INSTRUMENT (the lead's strong preference), because the
+loop is what faces the venue and shrinking rules to fit instruments is the wrong direction.
+
+WHAT WAS DONE (tools/establish_mean_cycle_baseline.py::establish_full_loop, now the DEFAULT):
+the pinned frame is replayed through the REAL LiveTradingLoop (0.1h — production loop, not a mimic):
+a feed produces each MarketState via the real adapter parse; the loop runs strategy.decide +
+risk.check + reason-code emission per MarketState; the adapter's event-loop LAG sampler — the SAME
+instrument a LIVE capture uses — measures TOTAL event-loop occupancy = adapter + loop. Replaying one
+fixed frame keeps the trivial strategy on its NO_SIGNAL path (the 111,010x per-frame case). Rule text
+and instrument coverage now name the SAME boundary (the full loop) — closure condition met by widening.
+
+================================================================================================
+WIDENED ESTABLISHMENT — 4 runs, 60 s each, achieved ~1957/min (representative):
+   108.519, 108.711, 108.912, 110.303 ms
+   core (3 runs): mean 108.714 ms, within-session 1 sigma 0.20 ms, peak-to-peak 0.393 ms
+   with run 4 (an outlier, +1.59 ms above core): mean 109.111 ms, 1 sigma 0.81 ms, p2p 1.784 ms
+
+COMPARISON (all this-host, this cluster of days):
+   WIDENED full-loop core mean : 108.714 ms
+   ADAPTER-ONLY (WO-013 session): 108.979 ms  (108.721 / 108.910 / 109.305)
+   Difference (widened - adapter-only) = -0.265 ms  ->  NEGATIVE.
+
+READING: the widened (full-loop) figure is statistically INDISTINGUISHABLE from — even slightly
+BELOW — the adapter-only figure. The loop's per-frame work (trivial strategy.decide + risk.check +
+NO_SIGNAL emission) is BELOW THE NOISE FLOOR: a negative measured difference means the loop-overhead
+signal is smaller than the run-to-run noise (~0.3-1.0 ms). Consistent with WO-017's live-vs-replay
+agreement of +0.008 ms. So widening the instrument does NOT move the figure detectably — but it now
+COVERS the loop, so a FUTURE change adding real per-frame live.py work would be VISIBLE (the gap the
+ruling closes).
+
+================================================================================================
+WIDENED NOISE FLOOR (re-established on the widened instrument, per B's interaction with A):
+   within-session core ~0.2 ms (1 sigma, 3 runs); with the observed outlier, ~0.8 ms (1 sigma),
+   ~1.8 ms peak-to-peak. The full loop shows HEAVIER TAILS than adapter-only (an extra ~1.6 ms
+   outlier in 4 runs), so the widened OPERATIONAL FLOOR is declared ~1.5 ms (provisional, n=4;
+   refine with more runs before the 24-h corpus). Core resolution is unchanged (~0.2-0.3 ms).
+
+STORED-FIGURE DECISION (per B "annotate the 107.923 scope"; per A.2 "below-floor => keep, sign
+unestablished, do not manufacture a new figure"):
+   Widened 108.714 vs STORED adapter-only 107.923: SIGNAL 0.791 ms / NOISE 1.0 ms / RATIO 0.79 ->
+   INSIDE THE FLOOR, sign unestablished. The stored figure is NOT re-declared to a below-floor,
+   different-instrument number. It is RETAINED and its scope ANNOTATED: measured adapter-only; the
+   widened instrument measures ~108.7 ms (below floor vs it); loop overhead below resolution; figure
+   remains a valid live-gate reference (the live gate already measures the full loop and 50%
+   drift-VOID makes sub-ms immaterial). Instrument HENCEFORTH widened (the default).
+
+CLOSURE CONDITION MET: rule text (progress.md) and instrument coverage (establish tool default) now
+both name THE FULL LOOP. No declared-limit fallback was needed — full-loop timing was neither
+genuinely noisy (core ~0.2 ms) nor invasive (drives the real loop, ~15 lines).

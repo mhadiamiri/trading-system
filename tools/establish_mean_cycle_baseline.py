@@ -48,7 +48,23 @@ sys.path[:0] = [REPO, os.path.join(REPO, "src")]
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, LagSampleRecord  # noqa: E402
 from trading.loop import host_baseline                                                  # noqa: E402
+from trading.loop.live import LiveTradingLoop                                           # noqa: E402
+from trading.logkit.decision import DecisionLogger                                      # noqa: E402
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL      # noqa: E402
+
+
+class _NullPersistence:
+    """No-op persistence for the widened (full-loop) establishment — measures loop CPU, not disk."""
+    _data_dir = "(establishment)"
+
+    def write_event(self, market_state):
+        pass
+
+    def close(self):
+        pass
+
+    def get_file_info(self):
+        return {}
 
 TARGET_PER_MIN = 1959.0
 TARGET_PER_S = TARGET_PER_MIN / 60.0
@@ -72,12 +88,13 @@ LOAD_WORK = ("per-frame PROCESSING COST characterized by the pinned WO-009 fixtu
 # session spread on unchanged code (evidence/WO-013/noise_floor_and_ab_report.txt). OPERATIONAL floor
 # for a single-session establishment vs the STORED figure = 1.0 ms (cross-session, current adapter
 # instrument). Every delta reports SIGNAL / NOISE / RATIO; RATIO<1 => sign unestablished, ledger kept.
-NOISE_FLOOR_MS = 1.0
-NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim): within-session ~0.3 ms (1 sigma), ~0.6-0.8 ms p2p; "
-                    "CROSS-SESSION ~1.0 ms on unchanged code (WO-017 107.961 vs WO-013 108.979 ms). "
-                    "OPERATIONAL FLOOR = 1.0 ms. Report every delta as SIGNAL/NOISE/RATIO; RATIO<1 => "
-                    "SIGN UNESTABLISHED, keep the entry (it BOUNDS the effect). CURRENT adapter "
-                    "instrument; re-established on the WIDENED (full-loop) instrument in WO-013 follow-up B.")
+NOISE_FLOOR_MS = 1.5   # WIDENED (default) instrument operational floor (WO-013 B; provisional, n=4)
+NOISE_FLOOR_DECL = ("RESOLUTION (5th scope dim). WIDENED full-loop instrument (default, WO-013 B): "
+                    "within-session core ~0.2 ms (1 sigma), heavier tails (an observed +1.6 ms outlier "
+                    "in 4 runs) -> OPERATIONAL FLOOR ~1.5 ms (provisional, n=4). ADAPTER-ONLY legacy: "
+                    "within-session ~0.3 ms, CROSS-SESSION ~1.0 ms (WO-017 107.961 vs WO-013 108.979 ms "
+                    "on byte-identical adapter code). Report every delta as SIGNAL/NOISE/RATIO; RATIO<1 "
+                    "=> SIGN UNESTABLISHED, keep the entry (it BOUNDS the effect).")
 
 
 async def establish(seconds: float):
@@ -118,11 +135,70 @@ async def establish(seconds: float):
     }
 
 
+async def establish_full_loop(seconds: float):
+    """WO-013 follow-up B — WIDENED instrument: time the FULL LOOP ITERATION (adapter parse+apply+
+    checksum PLUS the loop's per-MarketState work: strategy.decide, risk.check, reason-code emission).
+
+    The rule governs "the LOOP's hot path"; the adapter-only establish() covered a SUBSET. Here the
+    pinned frame is replayed through the REAL LiveTradingLoop (0.1h — the production loop, not a
+    mimic): a feed produces each MarketState via the real adapter parse, the loop processes it, and
+    the adapter's event-loop LAG sampler — the SAME instrument a live capture uses — measures TOTAL
+    event-loop occupancy = adapter + loop. This is the boundary the rule names, so rule text and
+    instrument coverage now name the same thing (closure condition). Replaying one fixed frame keeps
+    the trivial strategy on its NO_SIGNAL path (no price movement), the 111,010x per-frame case."""
+    adapter = KrakenV2BookAdapter()
+    await adapter.process_raw_frame(SNAPSHOT_FRAME)          # seed the book once
+    record = LagSampleRecord(interval_s=adapter.LAG_SAMPLE_INTERVAL_SECONDS)
+    sampler = asyncio.create_task(adapter._sample_event_loop_lag(record))
+
+    interval = 1.0 / TARGET_PER_S
+    start = time.monotonic()
+    counters = {"sent": 0}
+
+    async def feed():
+        # Same deadline-based catch-up pacer as establish(), but each MarketState flows through the
+        # full loop before the next frame is produced.
+        while time.monotonic() - start < seconds:
+            for market_state in await adapter.process_raw_frame(UPDATE_MODIFY_LEVEL):
+                yield market_state
+            counters["sent"] += 1
+            delay = (start + counters["sent"] * interval) - time.monotonic()
+            await asyncio.sleep(delay if delay > 0 else 0)
+
+    loop = LiveTradingLoop(
+        decision_logger=DecisionLogger(log_file=os.devnull),
+        persistence=_NullPersistence(),
+    )
+    # Feed drives duration (it stops at `seconds`); loop limits set high so the feed's exhaustion ends it.
+    await loop.run(max_updates=10 ** 12, duration_minutes=(seconds / 60.0) + 5.0, feed=feed())
+    elapsed = time.monotonic() - start
+    sampler.cancel()
+    try:
+        await sampler
+    except asyncio.CancelledError:
+        pass
+
+    sent = counters["sent"]
+    achieved_per_min = sent / elapsed * 60.0 if elapsed > 0 else 0.0
+    within_10pct = abs(achieved_per_min - TARGET_PER_MIN) / TARGET_PER_MIN <= 0.10
+    return {
+        "seconds": elapsed, "frames_sent": sent,
+        "achieved_per_min": achieved_per_min, "target_per_min": TARGET_PER_MIN,
+        "representative_within_10pct": within_10pct,
+        "mean_cycle_s": record.mean_cycle_s, "lag_samples": record.actual_samples,
+    }
+
+
 def main():
     seconds = DEFAULT_WARMUP_SECONDS
     if "--seconds" in sys.argv:
         seconds = float(sys.argv[sys.argv.index("--seconds") + 1])
-    r = asyncio.run(establish(seconds))
+    # WO-013 follow-up B: the rule governs "the LOOP's hot path", so the DEFAULT instrument is the
+    # WIDENED full-loop iteration (adapter + loop) — rule text and instrument coverage now name the
+    # same boundary. --adapter-only runs the LEGACY subset (adapter process_raw_frame) for comparison.
+    widened = "--adapter-only" not in sys.argv
+    r = asyncio.run(establish_full_loop(seconds) if widened else establish(seconds))
+    print(f"INSTRUMENT: {'WIDENED (default) — full loop iteration (adapter + loop overhead); rule scope == instrument scope' if widened else 'adapter-only process_raw_frame (LEGACY subset of the rule scope, --adapter-only)'}")
     print(f"REPLAY SOURCE (pinned): {REPLAY_SOURCE}")
     print(f"LOAD scope: {RATE_SCOPE}; run-id {LOAD_RUN_ID}; material-diff trigger: {RATE_MATERIAL_DIFF}")
     print(f"LOAD-WORK scope (WO-017 §6): {LOAD_WORK}")

@@ -1,0 +1,57 @@
+WO-013 FOLLOW-UP C — REPORT ONLY: two emitted-but-undeclared codes + an UNGOVERNED event_type namespace
+Baseline 1fb96c1. NO VENUE CONNECTION. (The one-line fix — the establishment tool's stale 0.108886
+printed constant — is DONE: main() now reads host_baseline.load_baseline(); see item A commit.)
+
+================================================================================================
+(i) ARE DATA_RECEIVED AND EXEC_ORDER_FILLED event_types OR reason_codes?
+Both are REASON_CODES (emitted as reason_code= values in the production loop), each paired with a
+DIFFERENT event_type:
+  - live.py:192-193  event_type="MARKET_DATA_RECEIVED", reason_code="DATA_RECEIVED"
+  - live.py:282      event_type="ORDER_FILLED",         reason_code="EXEC_ORDER_FILLED"
+Neither reason_code is declared in VALID_REASON_CODES. They are INVISIBLE to property 1
+(raised => declared) because _raised_codes() scans only COLON-FORM "CODE:" raise strings, and these
+are plain reason_code= assignments (no colon). So `raised => declared` still has an ESCAPE HATCH for
+reason_code= values, even though `declared => producible` is now unconditional (WO-013 §2) — the
+dictionary is half-closed: airtight in one direction, holed in the other.
+  EXEC_ORDER_FILLED matters most (Principle VIII): it is the FILL event. A post-trade audit trail
+  that cannot enumerate its own fill vocabulary is incomplete. (Note: the event_type "ORDER_FILLED"
+  IS declared in VALID_REASON_CODES' EXECUTION list — but as a would-be reason code, not as an
+  event_type; the actually-emitted reason_code EXEC_ORDER_FILLED is the undeclared one. Same
+  event_type-vs-reason_code split that masked the §0 codes.)
+
+================================================================================================
+(ii) IS event_type GOVERNED BY ANY COMPLETENESS CHECK?
+NO. event_type is a FREE `str` parameter of DecisionLogger.log_decision (decision.py:206) and
+log_feed_event (:276). There is:
+  - NO declared event_type vocabulary (no VALID_EVENT_TYPES; VALID_REASON_CODES governs reason_code
+    only);
+  - NO scan of event_type= emissions anywhere;
+  - NO completeness/prefix-freedom check over event_types.
+tests/test_reason_code_vocabulary.py scans reason_code strings exclusively (confirmed: no "event_type"
+reference). The only test touching event_type is WO-013's own test_reason_code_emission.py, which
+asserts a specific value ("ORDER_REJECTED"), not governance.
+
+THE DEEPER POINT (straight out of §0): an UNGOVERNED event_type namespace is EXACTLY what masked the
+reason-code problem for the project's lifetime. The producibility checker counts ANY string literal,
+so canonical codes (NO_SIGNAL, PASS, CLAMP, VETO) read "producible" merely because they appear as
+event_type LITERALS — and because event_type is ungoverned, nothing flagged that the reason_code
+under that name was never emitted. Governing reason_code while leaving event_type free is why "a
+checker satisfied by a code nobody emits under that name" kept recurring.
+
+================================================================================================
+(iii) WHAT WOULD GOVERNING event_type TAKE?
+A parallel of the reason-code machinery:
+  1. A declared VALID_EVENT_TYPES vocabulary (per layer, like VALID_REASON_CODES).
+  2. A scan of event_type= emissions across production (NOT colon-form — a proper AST/keyword-arg
+     scan, which would ALSO catch reason_code= values and close the property-1 escape hatch above).
+  3. The four properties applied to event_types: emitted => declared; declared => producible
+     (excluding the declaration site); prefix-freedom across the union; scan reads EMITTED strings.
+  4. Reconcile the current free event_types (MARKET_DATA_RECEIVED, SIGNAL_GENERATED, ORDER_FILLED,
+     ORDER_REJECTED, FEED_PAUSED, ...) — declare or retire each, same discipline as WO-013's §0.
+  5. Fold in the reason_code= escape hatch: replace the colon-form _raised_codes() regex with a
+     keyword-argument scan so DATA_RECEIVED / EXEC_ORDER_FILLED (and any future reason_code=) are
+     seen by property 1.
+
+SCOPE RULING REQUESTED: this is its OWN WORK ORDER (governance of the event_type namespace + closing
+the reason_code= scan hole). The lead rules on it. Reported here per C; NOT implemented (out of
+WO-013 scope). Named so the next audit is against known coverage, not assumed completeness.

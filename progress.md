@@ -86,6 +86,23 @@ the alternative is erosion). Sequence: wire-string → WO-013 → CI capture + v
 → 008c → corpus. Corpus preconditions now: fingerprinted load-representative baseline + no-sleep host
 + ~5.3 GB/24h + (checksum class closed).
 
+**INSTRUMENT == RULE SCOPE (WO-013 follow-up B, 2026-07-22):** the re-baseline instrument measures the
+FULL LOOP ITERATION — adapter parse+apply+checksum PLUS the loop's per-MarketState work (strategy.decide,
+risk.check, reason-code emission), via the real `LiveTradingLoop` with the event-loop lag sampler
+(`tools/establish_mean_cycle_baseline.py`, WIDENED default; `--adapter-only` = legacy subset). Rule text
+and instrument coverage now name THE SAME BOUNDARY — closing the 0.1g-family gap where the rule governed
+"the loop's hot path" while the instrument timed only the adapter (a rule whose instrument covers a
+subset of its scope reports compliance over the whole scope). A change adding real per-frame `live.py`
+work is now VISIBLE to the re-baseline.
+
+**NOISE FLOOR is a DECLARED scope dimension (WO-013 follow-up A, 0.1j):** "a measurement without a
+declared noise floor is an estimate with better costumes." RESOLUTION is the fifth scope dimension
+(host / load / source / duration / RESOLUTION). Every re-baseline delta reports **SIGNAL / NOISE FLOOR /
+RATIO**; a delta with RATIO < 1 is recorded WITH SIGN EXPLICITLY UNESTABLISHED and the ledger KEEPS the
+entry (it bounds the effect). This host's widened floor ≈1.5 ms (provisional); adapter-only cross-session
+≈1.0 ms. Sub-millisecond per-frame deltas are below this instrument's floor on this host — interleaved
+within-session A/B (pre-approved, not yet implemented) would lower it toward the within-session ~0.3 ms.
+
 **Hot-path judgment (first NON-application of the standing rule, 2026-07-22, WO-017 follow-up A):** the
 wire-capture fields (`local_book_bids_wire`/`local_book_asks_wire`) execute only on CHECKSUM FAILURE,
 not per applied frame; not hot path; no re-baseline required. Recorded so the rule's first exception is
