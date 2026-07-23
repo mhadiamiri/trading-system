@@ -43,6 +43,61 @@ import json
 import time
 
 
+class FakeClock:
+    """WO-023 §3 — ONE fake time source serving BOTH clock interfaces COHERENTLY.
+
+    A single counter drives `wall` and `monotonic`; each is that counter plus a FIXED,
+    different base — so advancing the source advances BOTH by the same delta. That is D25
+    holding INSIDE the fake: the monotonic base is small (a boot-relative counter that ORDERS),
+    the wall base is a real-epoch offset (calendar time that LOCATES); the two never diverge
+    because there is one counter. This coherent pair is the DEFAULT construction:
+
+        fc = FakeClock()
+        adapter = KrakenV2BookAdapter(mode=..., monotonic_clock=fc.monotonic, connect_fn=...)
+        adapter._wall_clock = fc.wall
+        fc.advance(5.0)   # both wall and monotonic move +5.0s
+
+    Coherence is MADE OBSERVABLE to the pre-connection gate (WO-023 §4): both readers carry a
+    shared `_coherence_token` (this FakeClock instance), so the gate PROVES the two callables
+    came from one source instead of inferring it. An incoherent pair carries no shared token.
+    """
+
+    _MONOTONIC_BASE = 10_000.0            # small, boot-relative — ORDERS (D25)
+    _WALL_BASE = 1_700_000_000.0          # a plausible unix epoch — LOCATES in calendar time (D25)
+
+    def __init__(self, start=0.0):
+        self._counter = float(start)
+        # Bind the two interfaces and stamp each with the SHARED coherence token (self).
+        self.wall = self._make_reader(self._WALL_BASE)
+        self.monotonic = self._make_reader(self._MONOTONIC_BASE)
+
+    def _make_reader(self, base):
+        def _read():
+            return base + self._counter
+        _read._coherence_token = self     # both readers share THIS instance == one source
+        return _read
+
+    def advance(self, delta):
+        """Advance the single source; BOTH interfaces move by the SAME delta (coherent)."""
+        self._counter += float(delta)
+
+
+def incoherent_clock_pair(wall_source=None, monotonic_source=None):
+    """WO-023 §3 — the EXPLICITLY-NAMED incoherent construction (NEVER the default path).
+
+    Returns a (wall, monotonic) pair that do NOT share a coherence token: by default a fake
+    wall (a fresh FakeClock's wall) against the REAL time.monotonic — the suspend-detector's
+    shape, where wall and monotonic MUST be allowed to diverge (that divergence is the thing
+    under test). The pre-connection gate refuses such a pair UNLESS the run passes
+    incoherent_clocks_allowed=<reason> by name (RULING D34-3: inference is vigilance, so every
+    incoherent run is greppable at its construction site). Naming this factory — rather than
+    letting FakeClock produce incoherence — keeps incoherence off the default path."""
+    import time
+    wall = wall_source if wall_source is not None else FakeClock().wall
+    monotonic = monotonic_source if monotonic_source is not None else time.monotonic
+    return wall, monotonic
+
+
 async def starve_event_loop(seconds: float) -> None:
     """
     WO-014c-1 §B.4 starvation simulation. Blocks the WHOLE event loop synchronously for

@@ -153,6 +153,19 @@ VALID_REASON_CODES = {
         # WO-015/re-run is DIAGNOSTIC (record + report loudly, do not terminate); the corpus WO
         # makes it load-bearing (invalidate the affected window). Prefix-free (HOST_ is unique).
         "HOST_SUSPEND",
+        # WO-023 §2 (RULINGS D34-2/D34-3): raised PRE-CONNECTION by the clock/transport gate when
+        # a clock is injected in a configuration the gate refuses. The ruled invariant, VERBATIM:
+        #
+        #     A NON-DEFAULT CLOCK IS PERMITTED ONLY WHERE THE TRANSPORT IS ALSO NON-DEFAULT.
+        #     A REAL TRANSPORT WITH A FAKE CLOCK REFUSES, PRE-CONNECTION, WITH THE DECLARED CODE.
+        #
+        # A fake clock against the real websockets transport would drive a LIVE socket off a
+        # SIMULATED clock — the deterministic-driving seam turned into a live-run hazard. The gate
+        # also refuses an INCOHERENT clock pair (wall and monotonic not from one source) unless the
+        # run declares the exception BY NAME, so D25 (monotonic orders, wall locates) holds for
+        # every injected pair. The refusal payload names WHICH assertion failed (COUPLING vs
+        # COHERENCE) — one code, diagnosable. Prefix-free (CLOCK_ is a unique stem).
+        "CLOCK_INJECTION_REFUSED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

@@ -1,0 +1,53 @@
+================================================================================
+WO-023 §7 — HOT-PATH RE-BASELINE (standing rule; D31)
+================================================================================
+CHANGE UNDER JUDGMENT: line 2467 (the loop's per-iteration guard) changed from
+  `while time.time() < deadline:`  ->  `while self._monotonic_clock() < deadline:`
+plus the two sibling deadline sites (2421 set, 2600 remaining). By the standing
+rule's letter, a per-iteration `time.time()` -> `self._monotonic_clock()` swap is
+a HOT-PATH TOUCH, so the entry is REQUIRED, not skipped as obviously-nothing.
+
+--------------------------------------------------------------------------------
+PREDICTION (RECORDED FIRST — Ops):  BELOW FLOOR / UNDETECTABLE.
+--------------------------------------------------------------------------------
+Two independent reasons the mean_cycle instrument cannot see this change:
+
+1. MAGNITUDE. The edit replaces one C-level clock call (`time.time`) with an
+   attribute load plus one C-level clock call (`self._monotonic_clock`, default
+   `time.monotonic`) — a delta on the order of tens of NANOSECONDS per iteration.
+   The instrument's effective per-frame detection floor is ~10 ms/frame (a
+   sleep-wake LAG/starvation detector, ~0.2 ms-cycle transfer per ms-frame). The
+   change is ~6 orders of magnitude below that floor.
+
+2. COVERAGE. The instrument (tools/establish_mean_cycle_baseline.py, WIDENED
+   full-loop) replays the pinned WO-009 fixture through process_raw_frame + the
+   real LiveTradingLoop. It DOES NOT run get_live_market_data's while-loop, where
+   line 2467 lives. So the instrument is STRUCTURALLY BLIND to the changed line —
+   the honest record is "below floor" AND "not on the measured path."
+
+Expected SIGN: UNESTABLISHED / BELOW FLOOR (RATIO < 1). The measurement below is a
+sanity replay confirming the loop-boundary mean_cycle is unmoved, not a claim to
+have measured the deadline-check cost (which needs get_live_market_data, not this
+instrument). "When in doubt, run the section" — run below, read as saturation
+evidence, not as a per-frame cost measurement.
+
+--------------------------------------------------------------------------------
+MEASUREMENT (appended after the run):
+--------------------------------------------------------------------------------
+INSTRUMENT: full-loop (WIDENED default; adapter + real LiveTradingLoop). --write NOT passed.
+host fingerprint: ba47c96a36f36642 (machine a28a45c1cac79570, Python 3.14.6, Windows 11, AMD64)
+duration=60.0s  frames_sent=1959  lag_samples=551  achieved=1959/min  REPRESENTATIVE=True
+
+  measured mean_cycle = 108.913 ms   (instrument = full-loop)
+  vs STORED baseline    108.717 ms    delta = +0.196 ms (+0.2%)
+  SIGNAL = 0.196 ms   NOISE FLOOR = 2.000 ms (cycle)   RATIO = 0.10
+  => BELOW FLOOR — UNDETECTABLE (RATIO < 1). SIGN UNESTABLISHED; entry KEPT (it bounds the effect).
+
+--------------------------------------------------------------------------------
+CONFIRMED OR SURPRISED:  CONFIRMED.
+--------------------------------------------------------------------------------
+The prediction (BELOW FLOOR / UNDETECTABLE) held on both grounds: the delta (+0.196 ms)
+is RATIO 0.10 against the 2.0 ms cycle floor, and the instrument does not execute the
+changed line (get_live_market_data's while-loop) at all. No re-baseline is written: a
+below-floor change is not a legitimate re-baseline trigger (D31 — an honest below-floor
+ledger entry is the correct record). No --write.

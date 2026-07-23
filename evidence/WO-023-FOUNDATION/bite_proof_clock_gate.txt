@@ -1,0 +1,90 @@
+================================================================================
+WO-023 §5 BITE PROOF — CLOCK/TRANSPORT PRE-CONNECTION GATE (D34-2, D34-3; S13/D37)
+guard: KrakenV2BookAdapter._assert_clock_transport_gate  (src/trading/data/adapters/kraken_v2_book.py)
+test : tests/integration/test_clock_injection_gate.py::test_clock_injection_gate  (3 assertions: refusal + 2 preservation duals)
+python: 3.14.6
+================================================================================
+
+PRISTINE sha256(src/trading/data/adapters/kraken_v2_book.py) = 83ccaeb0b9f44a76fd33d6c5df98a256e3ddae298ad85641b6e79627984ef677
+
+======================= ARTIFACT 1 — PASS on pristine code =====================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+=========== ARTIFACT 2 — MUTATION A: WHOLE GATE neutered (early return) =========
+  edit: insert 'return' at the top of _assert_clock_transport_gate body.
+  mutated sha256 = 712580d543795ba134474d52ddcddf4adfb770a4ac546d287fa2e69d125087cf
+  EXPECT: assertion 1 (REFUSAL/COUPLING) fails — 'DID NOT RAISE'.
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py F                         [100%]
+
+================================== FAILURES ===================================
+__________________________ test_clock_injection_gate __________________________
+tests\integration\test_clock_injection_gate.py:60: in test_clock_injection_gate
+    with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc1:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+============================== 1 failed in 0.11s ==============================
+  RESTORE sha256 = 83ccaeb0b9f44a76fd33d6c5df98a256e3ddae298ad85641b6e79627984ef677
+  EXACT RESTORE (== pristine): YES
+  mutation marker remaining: 0
+
+=========== ARTIFACT 2b — MUTATION B: COHERENCE branch only neutered ===========
+  edit: coherence guard condition -> False (coupling half left intact).
+  mutated sha256 = 56d232d3d7d936b087fc91bc285cbb81ee4b54ee1f0545ad876afdbf8f19271f
+  EXPECT: assertion 3b (COHERENCE, unnamed incoherent) fails — 'DID NOT RAISE';
+          assertion 1 (COUPLING) still passes (proves the branches are independent).
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py F                         [100%]
+
+================================== FAILURES ===================================
+__________________________ test_clock_injection_gate __________________________
+tests\integration\test_clock_injection_gate.py:105: in test_clock_injection_gate
+    with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc3:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+============================== 1 failed in 0.09s ==============================
+  RESTORE sha256 = 83ccaeb0b9f44a76fd33d6c5df98a256e3ddae298ad85641b6e79627984ef677
+  EXACT RESTORE (== pristine): YES
+  mutation marker remaining: 0
+
+===================== ARTIFACT 3 — PASS after exact restore =====================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.03s ==============================
+
+===================== ARTIFACT 4 — sha256 exact-restore =========================
+  final sha256   = 83ccaeb0b9f44a76fd33d6c5df98a256e3ddae298ad85641b6e79627984ef677
+  pristine sha256= 83ccaeb0b9f44a76fd33d6c5df98a256e3ddae298ad85641b6e79627984ef677
+  IDENTICAL: YES

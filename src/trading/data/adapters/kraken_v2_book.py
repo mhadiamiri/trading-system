@@ -1039,7 +1039,7 @@ class KrakenV2BookAdapter:
     VENUE_FIXTURE = "kraken_fixture"
     VENUE_LIVE = "kraken_mainnet"
 
-    def __init__(self, mode: str = MODE_FIXTURE):
+    def __init__(self, mode: str = MODE_FIXTURE, *, monotonic_clock=None, connect_fn=None):
         """
         Initialize adapter.
 
@@ -1048,10 +1048,16 @@ class KrakenV2BookAdapter:
                   provenance reported to the decision log. WO-008b-A1 §4: a
                   fixture replay and a live run MUST be distinguishable in the
                   audit trail (Principle VIII).
+            monotonic_clock: WO-023 §2 (RULING D34-1) test seam for the DEADLINE
+                  clock. Defaults to time.monotonic. A duration is an INTERVAL, and
+                  D25 puts intervals on the monotonic clock — so this, NOT _wall_clock,
+                  is the deadline clock (see line 1136 and the pre-connection gate).
 
         Note: MODE_LIVE only labels provenance. It opens NO connection —
         transport is WO-008b-A2.
         """
+        import time
+
         if mode not in (self.MODE_FIXTURE, self.MODE_LIVE):
             raise ValueError(
                 f"Unknown adapter mode {mode!r}. "
@@ -1134,6 +1140,23 @@ class KrakenV2BookAdapter:
         # ONLY for the suspend detector's wall sampling, so a test can simulate a wall jump
         # (a suspend) without touching the deadline. NOT used for the deadline/start_time.
         self._wall_clock = None
+        # WO-023 §2 (RULING D34-1): the injectable DEADLINE clock. A duration is an INTERVAL and
+        # D25 puts intervals on MONOTONIC, so the capture deadline runs on THIS, not on _wall_clock
+        # (which is the suspend detector's wall and CAN jump — line 1136). Default time.monotonic;
+        # a jumped _wall_clock therefore never touches the deadline. The pre-connection gate (§4)
+        # permits a non-default clock only paired with a non-default transport (_connect_fn).
+        self._monotonic_clock = monotonic_clock or time.monotonic
+        # WO-023 §2 (RULING D34-2): the injectable TRANSPORT factory. Stored as the RAW injection
+        # (None == default) — the OR-resolution to websockets.connect happens at the CALL SITE in
+        # _connect() (LATE binding). Two reasons (Checkpoint B): (1) existing tests monkeypatch
+        # websockets.connect AFTER constructing the adapter, so a default resolved here at __init__
+        # time would capture the UNPATCHED callable and the patch would never take — late resolution
+        # honours the module patch, keeping the suite green; (2) the pre-connection gate (§4) must be
+        # able to NAME whether the caller injected a transport, and keying on `self._connect_fn is
+        # None` (the injection sentinel) gives it exactly that. A module-level patch with NO injected
+        # clock is still a DEFAULT transport to the gate — the "real transport" case that, paired with
+        # a fake clock, must refuse. So the object can finally name its own transport (decision log 1).
+        self._connect_fn = connect_fn
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
             self._mode, self.venue_name,
@@ -2148,7 +2171,12 @@ class KrakenV2BookAdapter:
             # ping_timeout=None -> the library never closes on a missed pong; heartbeat-absence
             # (§1.1) + app ping (§1.2) decide liveness. We still SEND WS pings (interval) so we
             # are not silently disabling the protocol ping.
-            return await websockets.connect(
+            # WO-023 §2 (D34-2): resolve the transport factory LATE — the injected _connect_fn if
+            # one was given, else the module attribute `websockets.connect` (which an existing test
+            # may have monkeypatched). Late resolution is what keeps module-level patching working
+            # while the field still lets the gate name a default vs injected transport (see __init__).
+            connect_fn = self._connect_fn or websockets.connect
+            return await connect_fn(
                 self.WS_URL,
                 open_timeout=15,
                 close_timeout=5,
@@ -2318,17 +2346,79 @@ class KrakenV2BookAdapter:
             gappy = True
         return gappy
 
-    async def get_live_market_data(self, duration_seconds: float) -> AsyncIterator[MarketState]:
+    def _assert_clock_transport_gate(self, incoherent_clocks_allowed: str) -> None:
+        """
+        WO-023 §4 (RULINGS D34-2/D34-3) — the PRE-CONNECTION clock/transport gate.
+
+        Inspects the THREE constructor-injected fields (_wall_clock, _monotonic_clock, _connect_fn)
+        and refuses, BEFORE any connection, a clock injection that violates either assertion:
+
+          (1) COUPLING — a NON-DEFAULT clock is permitted ONLY where the transport is ALSO
+              non-default. A fake clock against the default (real websockets) transport would drive
+              a LIVE socket off a simulated clock; refuse it. This assertion is only EXPRESSIBLE
+              because _connect_fn made the transport nameable (decision log: a guard can audit the
+              object model) — the injection sentinel `_connect_fn is None` means "the caller did not
+              name a transport, so assume the real one."
+
+          (2) COHERENCE — injected clocks MUST be the coherent one-source pair (wall and monotonic
+              sharing a _coherence_token, per the FakeClock harness), UNLESS the run declares the
+              incoherence BY NAME via incoherent_clocks_allowed. The gate never INFERS the exception
+              from the injection pattern (RULING D34-3: inference is vigilance; every incoherent run
+              is greppable at its call site).
+
+        Refuses with CLOCK_INJECTION_REFUSED, the payload naming WHICH assertion failed. Default
+        clocks (no injection) return immediately — the path every real run and every non-suspend
+        test takes.
+        """
+        import time
+
+        wall_injected = self._wall_clock is not None
+        mono_injected = self._monotonic_clock is not time.monotonic
+        if not (wall_injected or mono_injected):
+            return  # no injected clock — the default path (real runs + every non-suspend test)
+
+        # (1) COUPLING — a non-default clock requires a non-default transport.
+        if self._connect_fn is None:
+            raise ValueError(
+                "CLOCK_INJECTION_REFUSED: COUPLING — a non-default clock is permitted ONLY where "
+                "the transport is also non-default; a real transport with a fake clock refuses, "
+                "pre-connection. Inject the transport through connect_fn, or drop the clock."
+            )
+
+        # (2) COHERENCE — the injected clocks must be the one-source coherent pair (shared token),
+        # unless the run declares the incoherence by name (never inferred — RULING D34-3).
+        wall_token = getattr(self._wall_clock, "_coherence_token", None)
+        mono_token = getattr(self._monotonic_clock, "_coherence_token", None)
+        coherent = (wall_injected and mono_injected
+                    and wall_token is not None and wall_token is mono_token)
+        if not coherent and not incoherent_clocks_allowed:
+            raise ValueError(
+                "CLOCK_INJECTION_REFUSED: COHERENCE — injected clocks must be the coherent "
+                "wall+monotonic pair from ONE source (D25: monotonic orders, wall locates). An "
+                "incoherent pair is permitted ONLY when declared by name via "
+                "incoherent_clocks_allowed=<reason>; the gate never infers it (RULING D34-3)."
+            )
+
+    async def get_live_market_data(self, duration_seconds: float,
+                                   incoherent_clocks_allowed: str = "") -> AsyncIterator[MarketState]:
         """
         Stream MarketStates from the LIVE Kraken v2 public book channel.
 
         Transport only. Every frame goes to process_raw_frame() unmodified.
 
         Args:
-            duration_seconds: hard wall-clock bound on the capture window.
+            duration_seconds: hard bound on the capture window (an INTERVAL — measured on the
+                monotonic deadline clock; D25).
+            incoherent_clocks_allowed: WO-023 §4.3 (RULING D34-3) — an EXPLICIT, per-invocation
+                declaration that this run injects an INCOHERENT wall/monotonic pair on purpose
+                (the sole enumerated customer is the suspend detector, which tests wall-vs-monotonic
+                divergence and so cannot use a coherent pair). The gate reads it BY NAME and never
+                infers the exception from the injection pattern. Empty = coherence is enforced.
 
         Raises:
-            ValueError: if called on a fixture-mode adapter (no silent switching).
+            ValueError: if called on a fixture-mode adapter (no silent switching); or
+                CLOCK_INJECTION_REFUSED, pre-connection, if the injected clock/transport
+                configuration fails the coupling or coherence assertion (WO-023 §4).
             ConnectionError: if the socket cannot be opened or drops.
         """
         import asyncio
@@ -2353,6 +2443,11 @@ class KrakenV2BookAdapter:
                 "only) set _persistence_optional=True to acknowledge running without a durable "
                 "ledger. Refusing to run a silently-unpersisted live capture."
             )
+
+        # WO-023 §2 (RULINGS D34-2/D34-3): the PRE-CONNECTION clock/transport gate. Same placement
+        # discipline as GAP_PERSIST_UNCONFIGURED above — it refuses BEFORE any connection attempt,
+        # so a fake clock can never drive a real socket even for one frame.
+        self._assert_clock_transport_gate(incoherent_clocks_allowed)
 
         self._raw_received = 0
         self._market_states_emitted = 0
@@ -2385,7 +2480,12 @@ class KrakenV2BookAdapter:
             lag_task = asyncio.create_task(self._sample_event_loop_lag(self._lag_record))
             pong_task = asyncio.create_task(self._observe_protocol_pong(self._pong_record))
 
-            deadline = time.time() + duration_seconds
+            # WO-023 §2 (RULING D34-1): a duration is an INTERVAL; D25 puts intervals on the
+            # MONOTONIC clock. The deadline therefore runs on _monotonic_clock (default
+            # time.monotonic), NOT on _wall_clock — which is the suspend detector's wall and can
+            # jump (line 1136). This keeps the capture window immune to a wall-clock jump and makes
+            # the deadline deterministically driveable through the injected clock.
+            deadline = self._monotonic_clock() + duration_seconds
             # WO-014b-2 §1.1/§1.2 keepalive clocks (monotonic). last_frame is refreshed by
             # ANY received frame (book, heartbeat, or pong); last_ping paces the app ping.
             last_frame = time.monotonic()
@@ -2431,7 +2531,7 @@ class KrakenV2BookAdapter:
                 "venue": self.venue_name,
                 "mode": self._mode,
             })
-            while time.time() < deadline:
+            while self._monotonic_clock() < deadline:   # WO-023 §2 (D34-1): deadline on monotonic
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
                 # step below consumes it in the SAME iteration. THRESHOLD: zero-iteration
@@ -2557,7 +2657,14 @@ class KrakenV2BookAdapter:
                         continue
                     last_ping = time.monotonic()
 
-                remaining = deadline - time.time()
+                # WO-023 §2 (D34-1) — CODE-WINS FINDING (Checkpoint A): the §1 enumeration named
+                # only two deadline lines (2388 set, 2434 guard), but `deadline` has a THIRD
+                # consumer HERE. `deadline` is now a MONOTONIC value; subtracting wall-clock
+                # time.time() mixed the two clocks (monotonic minus epoch = a huge negative
+                # `remaining`) -> immediate break -> raw=0 frames. A deadline is coherent only when
+                # every consumer reads the SAME clock, so this third site routes through
+                # _monotonic_clock too — the forced completion of "the deadline is on monotonic".
+                remaining = deadline - self._monotonic_clock()
                 if remaining <= 0:
                     break
                 # Bound recv so we wake to re-check absence/ping/deadline before either

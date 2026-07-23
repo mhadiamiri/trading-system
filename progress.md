@@ -38,9 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-23 (WO-023 IN PROGRESS at `86e2a33` — wall-clock race audit committed; foundation STOPPED at a propose-and-report seam awaiting a lead decision)
-**Current Phase**: **WO-023 — wall-clock race fix, mid-flight.** WO-021+WO-022 closed the CI arc (CI green both legs at `d9bcd74`). WO-023 addresses the timing-race CLASS the flake exposed. §1 audit is committed standalone (`86e2a33`); the FOUNDATION (production clock seam + guard) is scoped to this session, the 30-test conversion to a fresh one. **Currently STOPPED at a propose-and-report seam** (see the WO-023 block below): the code investigation found the literal ruling ("route the deadline through `_wall_clock`") breaks the suspend test and mis-clocks an interval — awaiting the lead's confirmation to route the deadline through `_monotonic_clock` instead. **Nothing implemented yet; tree still green at `86e2a33`.** After the foundation: 30-test conversion → §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
-**Status**: HEAD `86e2a33` on master (pushed; local == remote). **215 tests green on BOTH interpreters, both orders** and **CI green both legs** as of `d9bcd74` (the WO-023 §1 commit `86e2a33` adds only an evidence file — no code change — so the 215/both-legs-green result stands). import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023** and **▶ WO-021/WO-022** blocks below to resume.
+**Last Updated**: 2026-07-23 (WO-023 §2 FOUNDATION COMPLETE — clock/transport seams + pre-connection gate landed green; foundation-only, 30-test conversion deferred)
+**Current Phase**: **WO-023 §2 FOUNDATION done; 30-test conversion is NEXT (fresh session).** The propose-seam was resolved (RULING D34-1: deadline→`_monotonic_clock`) and the foundation implemented: two injectable seams (`_monotonic_clock`, `_connect_fn`), the coherent `FakeClock` harness, the three-field pre-connection gate + `CLOCK_INJECTION_REFUSED`, its bite proof, and the one authorized test migration. **SHIP IMPACT: YES** (production). A Checkpoint-A finding surfaced (the WO named 2 deadline lines; the code has 3) and was resolved as the forced completion of D34-1. See the **▶ WO-023 §2 FOUNDATION COMPLETE** block below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
+**Status**: HEAD `__HEAD__` on master (pushed; local == remote). **216 tests green on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), both orders** (`-p no:randomly` and `--randomly-seed=20260723`), 0 failed/xfailed/xpassed. import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023 §2 FOUNDATION** and **▶ WO-021/WO-022** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
@@ -87,6 +87,46 @@ The code investigation surfaced two facts that adjust Ruling 1, so nothing was i
 
 **NEXT ACTION:** the lead confirms deadline→`_monotonic_clock` (then implement the foundation as scoped), OR insists on
 `_wall_clock` (then `test_host_suspend_recorded` must convert this session). Tree is GREEN at `86e2a33`; nothing implemented.
+
+---
+
+## ▶ WO-023 §2 FOUNDATION COMPLETE (AUTHORITATIVE) — 2026-07-23 — three-field pre-connection clock gate
+
+> The foundation the propose-seam above was waiting on: deadline→`_monotonic_clock` was confirmed (RULING D34-1) and
+> implemented, plus the `_connect_fn` transport seam, the coherent `FakeClock` harness, the pre-connection gate, and the
+> one authorized test migration. **SHIP IMPACT: YES** (production change, D34-authorized). Report:
+> `WO-023-FOUNDATION-REPORT.md`. Evidence: `evidence/WO-023-FOUNDATION/`. Decision logs:
+> `docs/decisions/2026-07-23-{a-guard-can-audit-the-object-model,a-ruling-about-a-seam-must-be-written-against-its-consumers,the-exception-must-be-requested-by-name}.md`.
+> **SCOPE WAS FOUNDATION ONLY** — the 30-test conversion and original WO-023 §3/§4/§5 are NOT begun; they go to a fresh session.
+
+- **Two injectable seams** in `KrakenV2BookAdapter.__init__`: `_monotonic_clock` (default `time.monotonic` — the DEADLINE
+  clock; a duration is an interval, D25) and `_connect_fn` (transport factory, LATE-bound: stored raw/None, resolved
+  `self._connect_fn or websockets.connect` at the ONE call site in `_connect`, so module-patching still works AND the gate
+  can name a default vs injected transport).
+- **CODE-WINS FINDING (Checkpoint A):** the WO named TWO deadline lines (2388 set, 2434 guard); the code has a THIRD —
+  `remaining = deadline - time.time()` (2593, feeds the recv-timeout). Routing only two left it mixing a monotonic deadline
+  with wall `time.time()` → huge negative remaining → immediate break → raw=0/0 gaps (6 transport tests failed). Routed all
+  three through `_monotonic_clock` as the forced completion of D34-1; reported, not reconciled silently. `_start_time`
+  (2359) is a wall provenance marker, not a deadline consumer — left untouched.
+- **The gate** (`_assert_clock_transport_gate`, pre-connection, after `GAP_PERSIST_UNCONFIGURED`): COUPLING (a non-default
+  clock requires a non-default transport) + COHERENCE (injected clocks must be the one-source `FakeClock` pair sharing a
+  `_coherence_token`, unless `incoherent_clocks_allowed=<reason>` is passed BY NAME — never inferred, D34-3). Refuses with
+  the declared `CLOCK_INJECTION_REFUSED`, payload naming COUPLING vs COHERENCE. New reason code declared in `decision.py`
+  (vocabulary 11/11: raised⇒declared, declared⇒producible, prefix-free).
+- **Bite proof** `tests/integration/test_clock_injection_gate.py` — three assertions in one test (refusal + preservation +
+  the hatch's own named/unnamed dual); four artifacts, sha256 exact-restore, two mutations (whole-gate → coupling fails;
+  coherence-only → coherence fails, coupling still passes). **One authorized test edit:** `test_host_suspend_recorded_…`
+  migrated to inject its transport and declare the incoherence by name (the SOLE enumerated incoherent customer).
+- **Hot-path re-baseline (§7):** deadline guard is hot-path by the rule's letter; PREDICTED below-floor, MEASURED
+  +0.196 ms (RATIO 0.10 vs 2.0 ms floor) → BELOW FLOOR / UNDETECTABLE, CONFIRMED. No `--write` (D31).
+- **ACCEPTANCE:** **216 passed, 0 failed/xfailed/xpassed on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), BOTH
+  orders** (`-p no:randomly` and `--randomly-seed=20260723`). lint-imports 6/6, contract 6/6, ruff clean, annotation scan 0,
+  preflight pass. Test-count arithmetic: 215 baseline + 1 (§5 test) + 0 (§6 edits in place) = **216**.
+
+**NEXT ACTION (fresh session):** the 30-test deterministic conversion (drive the gap cycle via the harness, not a wall-clock
+race), then original WO-023 §3 (corpus-era projection), §4 (the re-run-precedent standing rule), §5 (decision log). Then the
+taxonomy-migration WO → 008c → 24h corpus. **The re-run-precedent standing rule is NOT yet recorded** (it was original-WO
+§4, out of this foundation's scope).
 
 ---
 

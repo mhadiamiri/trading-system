@@ -1,0 +1,8 @@
+tests\test_data_adapters.py ...............                              [ 79%]
+tests\test_parse_path.py ................                                [ 86%]
+tests\test_reason_code_vocabulary.py ...........                         [ 91%]
+tests\test_redaction.py ....                                             [ 93%]
+tests\test_risk.py ..........                                            [ 98%]
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 215 passed in 246.09s (0:04:06) =======================

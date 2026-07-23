@@ -1,0 +1,6 @@
+tests\integration\test_clock_injection_gate.py .                         [ 94%]
+tests\integration\test_frozen_invariant.py ..                            [ 95%]
+tests\test_captured_frames_ground_truth.py ....                          [ 97%]
+tests\integration\test_preservation_guarantees.py .....                  [100%]
+
+======================= 216 passed in 245.33s (0:04:05) =======================

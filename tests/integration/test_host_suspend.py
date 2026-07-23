@@ -45,23 +45,34 @@ def test_host_suspend_is_the_fifth_ruled_cause():
 @pytest.mark.asyncio
 async def test_host_suspend_recorded_diagnostic_not_terminal(caplog):
     """A wall/monotonic divergence beyond the drift bound records a HOST_SUSPEND gap, reports
-    loudly, and DOES NOT terminate the capture."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True
-    adapter._heartbeat_absence_timeout = 100.0    # a live-but-quiet link stays up
-    adapter._app_ping_interval = 100.0
-    adapter._wall_clock = _JumpClock(jump_at_call=3, jump_by=120.0)   # 120s > 43s bound
+    loudly, and DOES NOT terminate the capture.
 
+    WO-023 §6 — THE SOLE ENUMERATED INCOHERENT CUSTOMER. This test injects a FAKE WALL that jumps
+    against the REAL monotonic clock — an INCOHERENT pair BY CONSTRUCTION, because the divergence
+    between the two clocks is the very thing under test: a coherent pair would advance both together
+    and there would be no suspend to detect. Under the WO-023 §4 gate that injection would otherwise
+    refuse twice over (a non-default clock with a default transport, and an unnamed incoherent pair),
+    so this test (a) injects its transport through connect_fn — giving the COUPLING assertion a
+    non-default transport to see — and (b) declares the incoherence BY NAME via
+    incoherent_clocks_allowed, the ONLY run in the project permitted to do so (RULING D34-3). Every
+    other incoherent injection refuses, pre-connection, with CLOCK_INJECTION_REFUSED."""
     # SNAPSHOT emits, then heartbeats keep the link alive so the loop iterates past the jump.
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    # WO-023 §6: transport injected through the connect_fn seam (no module-level patch), so the gate
+    # sees a non-default transport. The clock pair stays INCOHERENT (fake wall / real monotonic).
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True
+    adapter._heartbeat_absence_timeout = 100.0    # a live-but-quiet link stays up
+    adapter._app_ping_interval = 100.0
+    adapter._wall_clock = _JumpClock(jump_at_call=3, jump_by=120.0)   # 120s > 43s bound; real monotonic
 
     emitted = []
     with caplog.at_level(logging.ERROR):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(
+                duration_seconds=0.25, incoherent_clocks_allowed="suspend-detector-test"):
+            emitted.append(state)
 
     ledger = adapter.get_gap_ledger()
     suspends = [g for g in ledger.gaps if g.cause == "HOST_SUSPEND"]
