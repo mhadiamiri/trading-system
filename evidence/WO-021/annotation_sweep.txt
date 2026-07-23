@@ -1,0 +1,127 @@
+WO-021 §1 — ANNOTATION-NAME SWEEP (the 3.11 denominator)
+Baseline a869124 (== cceb156 code + progress.md docs). NO VENUE CONNECTION.
+Two complementary instruments; the sweep is committed BEFORE any fix (named seam).
+================================================================================
+
+### INSTRUMENT 1 — CI-faithful 3.11.15 clean venv, 'pytest tests/ --collect-only'
+(uv --seed venv on CPython 3.11.15; CI install sequence; git archive HEAD)
+--- summary ---
+!!!!!!!!!!!!!!!!!! Interrupted: 31 errors during collection !!!!!!!!!!!!!!!!!!!
+=================== 67 tests collected, 31 errors in 11.62s ===================
+
+--- unique NameError root cause (all 31 errors) ---
+E   NameError: name 'AsyncIterator' is not defined
+ERROR tests/integration/test_backoff_breaker.py - NameError: name 'AsyncItera...
+ERROR tests/integration/test_backtest.py - NameError: name 'AsyncIterator' is...
+ERROR tests/integration/test_checksum_capture_replay.py - NameError: name 'As...
+ERROR tests/integration/test_checksum_sentinel.py - NameError: name 'AsyncIte...
+ERROR tests/integration/test_cost_bite_proof.py - NameError: name 'AsyncItera...
+ERROR tests/integration/test_failure_cap.py - NameError: name 'AsyncIterator'...
+ERROR tests/integration/test_failure_capture.py - NameError: name 'AsyncItera...
+ERROR tests/integration/test_full_cycle_visible.py - NameError: name 'AsyncIt...
+ERROR tests/integration/test_gap_recording.py - NameError: name 'AsyncIterato...
+ERROR tests/integration/test_host_suspend.py - NameError: name 'AsyncIterator...
+ERROR tests/integration/test_keepalive.py - NameError: name 'AsyncIterator' i...
+ERROR tests/integration/test_lag_sampler.py - NameError: name 'AsyncIterator'...
+ERROR tests/integration/test_ledger_persistence.py - NameError: name 'AsyncIt...
+ERROR tests/integration/test_live_capture.py - NameError: name 'AsyncIterator...
+ERROR tests/integration/test_live_loop.py - NameError: name 'AsyncIterator' i...
+ERROR tests/integration/test_mean_cycle_baseline_gate.py - NameError: name 'A...
+ERROR tests/integration/test_no_silent_fallback.py - NameError: name 'AsyncIt...
+ERROR tests/integration/test_pong_observer.py - NameError: name 'AsyncIterato...
+ERROR tests/integration/test_preservation_guarantees.py - NameError: name 'As...
+ERROR tests/integration/test_protocol_ping.py - NameError: name 'AsyncIterato...
+ERROR tests/integration/test_reason_code_emission.py - NameError: name 'Async...
+ERROR tests/integration/test_reconnect_to_effect.py - NameError: name 'AsyncI...
+ERROR tests/integration/test_snapshot_recovery.py - NameError: name 'AsyncIte...
+ERROR tests/integration/test_throughput.py - NameError: name 'AsyncIterator' ...
+ERROR tests/integration/test_venue_close_path.py - NameError: name 'AsyncIter...
+ERROR tests/integration/test_venue_mode_observability.py - NameError: name 'A...
+ERROR tests/integration/test_wire_string_retention.py - NameError: name 'Asyn...
+ERROR tests/test_captured_frames_a3_raw_text.py - NameError: name 'AsyncItera...
+ERROR tests/test_captured_frames_ground_truth.py - NameError: name 'AsyncIter...
+ERROR tests/test_data_adapters.py - NameError: name 'AsyncIterator' is not de...
+ERROR tests/test_parse_path.py - NameError: name 'AsyncIterator' is not defined
+
+--- the annotation site every error traces to ---
+src\trading\data\adapters\kraken_v2_book.py:2300: in KrakenV2BookAdapter
+src\trading\data\adapters\kraken_v2_book.py:777: in <module>
+
+--- the 31 failing test modules (each imports the broken module) ---
+ERROR tests/integration/test_backoff_breaker.py
+ERROR tests/integration/test_backtest.py
+ERROR tests/integration/test_checksum_capture_replay.py
+ERROR tests/integration/test_checksum_sentinel.py
+ERROR tests/integration/test_cost_bite_proof.py
+ERROR tests/integration/test_failure_cap.py
+ERROR tests/integration/test_failure_capture.py
+ERROR tests/integration/test_full_cycle_visible.py
+ERROR tests/integration/test_gap_recording.py
+ERROR tests/integration/test_host_suspend.py
+ERROR tests/integration/test_keepalive.py
+ERROR tests/integration/test_lag_sampler.py
+ERROR tests/integration/test_ledger_persistence.py
+ERROR tests/integration/test_live_capture.py
+ERROR tests/integration/test_live_loop.py
+ERROR tests/integration/test_mean_cycle_baseline_gate.py
+ERROR tests/integration/test_no_silent_fallback.py
+ERROR tests/integration/test_pong_observer.py
+ERROR tests/integration/test_preservation_guarantees.py
+ERROR tests/integration/test_protocol_ping.py
+ERROR tests/integration/test_reason_code_emission.py
+ERROR tests/integration/test_reconnect_to_effect.py
+ERROR tests/integration/test_snapshot_recovery.py
+ERROR tests/integration/test_throughput.py
+ERROR tests/integration/test_venue_close_path.py
+ERROR tests/integration/test_venue_mode_observability.py
+ERROR tests/integration/test_wire_string_retention.py
+ERROR tests/test_captured_frames_a3_raw_text.py
+ERROR tests/test_captured_frames_ground_truth.py
+ERROR tests/test_data_adapters.py
+ERROR tests/test_parse_path.py
+
+DECLARED LIMIT of instrument 1 (3.11 collection), in the standing form:
+  CAUGHT: the FIRST unimported annotation name in each class/module that some test imports
+          (here kraken_v2_book.py:2300, the first annotated method of KrakenV2BookAdapter).
+  NOT CAUGHT: any LATER eager annotation in the SAME class/module — the class body aborts at
+          the first NameError, so line 2718 (also AsyncIterator) NEVER appears in this run;
+          and any module NO test imports is never evaluated at all.
+  UNCAUGHT CASE: a second bad annotation after line 2300 stays invisible until 2300 is fixed
+          (fix-recollect-fix would be needed) — which is exactly why 'eager evaluation
+          enumerates the complete set in one run' does NOT hold, and why instrument 2 exists.
+
+### INSTRUMENT 2 — static AST denominator (tools/annotation_name_scan.py)
+Reads EVERY src module; flags every name in an EAGER-evaluated annotation position (func
+arg/return, module/class AnnAssign) that is not imported/defined at module scope and not a
+builtin — i.e. every name that WOULD NameError on 3.11, whether or not collection reached it.
+--- output ---
+WO-021 §1 — STATIC ANNOTATION-NAME DENOMINATOR (complements 3.11 collection)
+==============================================================================
+src modules scanned: 39
+modules with `from __future__ import annotations` (deferred, not flagged): ['src/trading/data/adapters/registry.py']
+modules with `from x import *` (UNSCANNABLE — declared limit): none
+
+NAMES USED IN AN EAGER ANNOTATION BUT NOT IMPORTED/DEFINED (would NameError on 3.11): 2
+  src/trading/data/adapters/kraken_v2_book.py:2300   AsyncIterator
+  src/trading/data/adapters/kraken_v2_book.py:2718   AsyncIterator
+
+by name:
+  AsyncIterator: 2
+
+DECLARED LIMIT of instrument 2 (static scan), standing form:
+  CAUGHT: every unbound name in an eager annotation across all 39 src modules (both 2300 AND
+          2718 — it does NOT short-circuit).
+  NOT CAUGHT: (a) 'from x import *' modules — resolution unknown (reported UNSCANNABLE; NONE
+          here). (b) function-LOCAL variable annotations — Python never evaluates them, so not
+          a NameError risk (correctly excluded). (c) forward-order use before definition —
+          treated as bound (would be caught by instrument 1 anyway).
+  UNCAUGHT CASE: a wildcard-import module hiding an unbound annotation name (none exist here).
+
+### RECONCILIATION — THE COMPLETE DENOMINATOR
+  Instrument 1 (3.11 collection) reported 1 site (2300), masking 2718.
+  Instrument 2 (static scan) reported BOTH: 2300 AND 2718 — 2 instances, both AsyncIterator,
+  both in src/trading/data/adapters/kraken_v2_book.py. No other name, no other module.
+  => COMPLETE MEASURED SET = 2. It equals the two we tripped over — but that equality is now
+     MEASURED, not assumed; instrument 1 alone would have under-reported it as 1.
+  Already deferred (report-only, §2): src/trading/data/adapters/registry.py has
+     'from __future__ import annotations' — left untouched, no __future__ import added anywhere.
