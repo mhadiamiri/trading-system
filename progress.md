@@ -101,6 +101,27 @@ continue to the taxonomy-migration WO → 008c → 24h corpus.
 
 ---
 
+## ▶ CORPUS PRECONDITIONS (AUTHORITATIVE, updated WO-022 §4) — now COMPLETE (six)
+
+> Recorded, NOT implemented. Hard specification for the 24-hour corpus WO and its reader WO.
+
+The corpus precondition list now reads complete — **six items**:
+1. **Fingerprinted load-representative baseline on the capture host** (WO-016 D28/D29).
+2. **Verified no-sleep host** (HOST_SUSPEND window-invalidation; WO-015).
+3. **~5.3 GB/24h budget.**
+4. **Parquet policy.**
+5. **Zero-duration-gap reader requirement** (WO-022 §4) — HARD SPEC:
+   **A ZERO-DURATION GAP IS A REAL GAP AND TRIGGERS DEFAULT-DENY.** Overlap tests use INCLUSIVE bounds;
+   zero-duration entries are NEVER filtered as noise. A reader that launders an honest ledger is
+   default-deny's failure mode arriving one layer downstream. **When the reader is built, its bite proof
+   includes a zero-duration-gap fixture: request a window spanning it without acknowledgment, watch the
+   refusal.**
+6. **Gap-duration resolution limit** (WO-022 §3.2) — declared in the `GapLedger` docstring: gaps shorter
+   than the host's monotonic tick record duration zero (a real gap, unmeasured width); total gap time
+   under-estimates by ≤ one tick per gap; matters most on the Windows corpus host (coarser tick).
+
+---
+
 ## ▶ WO-018 COMPLETE & CLOSED (AUTHORITATIVE) — 2026-07-22 — event-type governance + raised⇒declared hatch
 
 > Event-Type Governance + closing the `raised ⇒ declared` escape hatch. **CLOSED by the project lead at

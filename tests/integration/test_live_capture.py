@@ -56,9 +56,11 @@ def test_runner_refuses_unconfigured_persistence():
 
 # ── END-TO-END WIRING (simulated transport) ───────────────────────────────────────
 @pytest.mark.asyncio
-async def test_runner_drives_instrumented_transport_end_to_end(tmp_path):
+async def test_runner_drives_instrumented_transport_end_to_end(tmp_path, injected_baseline):
     """The runner drives get_live_market_data (the instrumented transport the factory path never
-    did), through the paper loop, persisting the gap ledger and reporting the per-minute series."""
+    did), through the paper loop, persisting the gap ledger and reporting the per-minute series.
+    Baseline INJECTED (WO-022 §1) so this is host-independent; the no-baseline refusal is proved
+    separately (test_runner_refuses_host_with_no_baseline)."""
     persist = tmp_path / "gap_ledger.jsonl"
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
     runner = LiveCaptureRunner(
@@ -93,7 +95,7 @@ async def test_runner_drives_instrumented_transport_end_to_end(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_runner_persistence_is_not_optional_on_the_adapter(tmp_path):
+async def test_runner_persistence_is_not_optional_on_the_adapter(tmp_path, injected_baseline):
     """The runner configures the adapter's persistence path, so the adapter's own
     GAP_PERSIST_UNCONFIGURED refusal is satisfied by configuration, not by opting out."""
     persist = tmp_path / "g.jsonl"
@@ -109,7 +111,7 @@ async def test_runner_persistence_is_not_optional_on_the_adapter(tmp_path):
 
 # ── OWED §2 BITE PROOFS ───────────────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_short_bounded_run_completes_with_readable_artifacts(tmp_path):
+async def test_short_bounded_run_completes_with_readable_artifacts(tmp_path, injected_baseline):
     """OWED (1): a short bounded run COMPLETES and its artifacts EXIST AND ARE READABLE (0.1i) —
     the gap-ledger JSONL (run_start..run_end) and the per-minute emitted series — not merely that
     a method ran."""
@@ -167,7 +169,7 @@ async def test_clean_deadline_close_does_not_reconnect_dual():
 
 
 @pytest.mark.asyncio
-async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path):
+async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path, injected_baseline):
     """OWED (3): a persistent reopen failure trips the breaker; the RUNNER SURFACES the
     termination (forensic tail + retained partial capture), not a crash."""
     adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
@@ -192,7 +194,7 @@ async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_runner_resolves_live_adapter_from_data_source_via_factory(tmp_path):
+async def test_runner_resolves_live_adapter_from_data_source_via_factory(tmp_path, injected_baseline):
     """PRODUCTION path (no injected adapter): the runner resolves the LIVE adapter FROM DATA_SOURCE
     through the factory/registry — the sole adapter-resolution path (Principle IV/VII). It never
     imports a concrete adapter. data_source is the config value ('kraken_v2' here)."""
@@ -208,7 +210,7 @@ async def test_runner_resolves_live_adapter_from_data_source_via_factory(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_live_capture_refuses_non_live_capable_data_source(tmp_path):
+async def test_live_capture_refuses_non_live_capable_data_source(tmp_path, injected_baseline):
     """WO-015 review: DATA_SOURCE naming a NON-live-capable adapter REFUSES specifically and
     BEFORE opening any connection — never connects to the wrong venue, never a cryptic TypeError."""
     persist = tmp_path / "g.jsonl"

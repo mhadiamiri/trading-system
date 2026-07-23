@@ -22,11 +22,19 @@ def test_fingerprint_is_hashed_and_deterministic():
     assert host_baseline.fingerprint_key(fp) == host_baseline.fingerprint_key(fp)   # deterministic
 
 
-def test_this_host_has_a_committed_baseline():
+def test_this_host_resolves_its_injected_baseline(injected_baseline):
+    """WO-022 §1: with a baseline INJECTED for this host (structural DI — no ambient/production store
+    read), load_baseline() resolves it, so the runner has a per-host reference to gate on. The
+    precondition 'a baseline exists for this host' is now CONSTRUCTED by the test, not supplied by the
+    dev machine's ambient config — the 0.1h-one-level-out defect the matrix exposed (it failed
+    identically on both Linux CI legs, i.e. it was never about the interpreter)."""
     rec = host_baseline.load_baseline()
-    assert rec is not None, "this host must have a frozen baseline in config/mean_cycle_baselines.json"
+    assert rec is not None
     assert rec["mean_cycle_seconds"] > 0
     assert "fingerprint" in rec and "derivation" in rec
+    # It is the SYNTHETIC injected record, not the ambient production store (proves the DI took).
+    assert rec == injected_baseline
+    assert rec["derivation"].startswith("SYNTHETIC WO-022 TEST FIXTURE")
 
 
 def test_runner_refuses_host_with_no_baseline(tmp_path, monkeypatch):
@@ -42,23 +50,28 @@ def test_runner_refuses_host_with_no_baseline(tmp_path, monkeypatch):
                           trading_env="paper", data_source="kraken_v2")
 
 
-def test_this_host_active_ledger_is_full_loop_with_the_adapter_only_ledger_closed():
-    """WO-013 item 1: the ACTIVE ledger is the full-loop (widened) instrument, opened at entry zero.
-    The adapter-only ledger CLOSED into closed_instrument_ledgers — retained (valid for what it
-    measured), never invalidated — and it carries the WO-017 re-baseline history (0.107923 with its
-    superseded 0.108886). The sixth scope dimension (instrument) and fifth (resolution) are present."""
+def test_active_ledger_schema_is_full_loop_with_the_adapter_only_ledger_closed(injected_baseline):
+    """WO-013 item 1 SCHEMA, verified via an INJECTED synthetic record (WO-022 §1 — no production
+    store read): load_baseline round-trips the ACTIVE full-loop ledger with the adapter-only ledger
+    CLOSED into closed_instrument_ledgers, retaining its own superseded history. The numbers here are
+    the fixture's synthetic sentinels, referenced from `injected_baseline` (not hard-coded), so this
+    guards the STRUCTURE through a real JSON round-trip; the dev host's real establishment figures are
+    config, validated at establishment, and are deliberately NOT asserted from an ambient store here.
+    The instrument-change close/entry-zero BEHAVIOR itself is proved by
+    test_save_baseline_closes_prior_ledger_on_instrument_change."""
     rec = host_baseline.load_baseline()
     assert rec["instrument"] == "full-loop"
-    assert rec["mean_cycle_seconds"] == 0.108717           # loop-boundary entry zero (median of 9)
+    assert rec["mean_cycle_seconds"] == injected_baseline["mean_cycle_seconds"]
     assert "superseded" not in rec, "entry zero: no cross-instrument history inherited"
     assert "instrument" in rec["scope"] and "resolution" in rec["scope"] and "load_work" in rec["scope"]
 
     closed = rec["closed_instrument_ledgers"]
     assert closed and closed[0]["instrument"] == "adapter-only"
-    assert closed[0]["mean_cycle_seconds"] == 0.107923     # the adapter-only ledger's last active figure
+    assert closed[0]["mean_cycle_seconds"] == injected_baseline["closed_instrument_ledgers"][0]["mean_cycle_seconds"]
     assert closed[0]["ledger_closed_date"]                 # closed, not invalidated
-    # its own WO-017 history is retained inside the closed ledger
-    assert closed[0]["superseded"][0]["mean_cycle_seconds"] == 0.108886
+    # its own history is retained inside the closed ledger
+    assert closed[0]["superseded"][0]["mean_cycle_seconds"] == \
+        injected_baseline["closed_instrument_ledgers"][0]["superseded"][0]["mean_cycle_seconds"]
 
 
 def test_save_baseline_never_overwrites_a_differing_figure(tmp_path, monkeypatch):

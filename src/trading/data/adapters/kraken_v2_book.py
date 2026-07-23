@@ -348,6 +348,21 @@ class GapLedger:
     maintenance / network events) tolerates seconds of error. A per-record wall timestamp would
     instead import NTP steps into the sub-second correlation §A.2 protects; the single anchor is
     strictly better and the drift is its declared cost.
+
+    DECLARED LIMIT — GAP-DURATION RESOLUTION (WO-022 §3.2, standing form). All bounds are
+    time.monotonic(), whose RESOLUTION is host-dependent (coarse on Windows: two calls close in time
+    can return the SAME value). The same tick that can make two gaps share an open timestamp (WO-022 §2)
+    can make ONE gap share its own open and close: duration_s == 0, a real gap with no measured width.
+      - CAUGHT: gaps longer than the host's monotonic tick — recorded with accurate duration.
+      - NOT CAUGHT: a gap shorter than one tick records duration ZERO (it is still a REAL gap; only its
+        width is unmeasured). Overlap/continuity is by INCLUSIVE interval bounds, not by width, so a
+        zero-width gap still intersects a query spanning its instant and is never filtered as noise.
+      - THE UNCAUGHT CASE LOOKS LIKE: total gap time UNDER-estimates by up to one tick per gap —
+        negligible at observed reconnect rates (a handful of gaps/hour), but it is a floor on
+        duration precision, not zero.
+      - SCOPE: this matters most on the CORPUS HOST — the Windows machine with the coarser tick — which
+        is why this is a declaration, not pedantry. A default-deny reader MUST treat a zero-duration
+        gap as a real gap (see progress.md corpus preconditions).
     """
 
     run_wall_anchor: str                     # ISO-8601 UTC, captured ONCE at capture start

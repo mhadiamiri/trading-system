@@ -266,9 +266,14 @@ async def test_overlapping_gaps_union_and_collective_close():
     assert checksum_gap.resumed and venue_gap.resumed
     assert checksum_gap.close_monotonic == venue_gap.close_monotonic
     close = checksum_gap.close_monotonic
-    # OVERLAP (not disjoint): both windows are open together — max(opens) < the shared close,
-    # so [t0,t1] queries in that span intersect BOTH via the union test.
-    assert max(checksum_gap.open_monotonic, venue_gap.open_monotonic) < close
+    # OVERLAP (not disjoint): both windows are open together up to the shared close, so [t0,t1]
+    # queries in that span intersect BOTH via the union test. `<=`, NOT `<` (WO-022 §2): the host's
+    # monotonic clock RESOLUTION can collapse two opens (and the close) to one value — on a coarse
+    # tick max(opens) == close, a real but zero-width overlap. Per-occurrence IDENTITY is carried by
+    # `gap_id` (asserted distinct above), which is a per-run open-sequence counter — NOT by temporal
+    # separation, which no consumer requires (consumer enumeration: evidence/WO-021/gap_ordering_diagnosis.txt).
+    # Do NOT "tighten" this back to `<` — that reintroduces the Windows-only failure the matrix caught.
+    assert max(checksum_gap.open_monotonic, venue_gap.open_monotonic) <= close
     assert ledger.incomplete == []
 
 
