@@ -1,0 +1,10 @@
+WO-023 §2b — COUPLING keys on TRANSPORT IDENTITY: both directions
+==========================================================================
+DIRECTION 1 (module-patched FAKE transport + injected clock):
+  connect_count=1 (>=1 => it PROCEEDED, coupling PASSED), emitted=1
+  => coupling PASSES for a patched fake. VERDICT: PASS (proceeded, no COUPLING refusal)
+DIRECTION 2 (explicit connect_fn = genuine _REAL_CONNECT + injected clock):
+  raised: CLOCK_INJECTION_REFUSED: COUPLING
+  => VERDICT: REFUSES COUPLING (correct)
+==========================================================================
+BOTH DIRECTIONS CONFIRMED: patched fake -> passes; explicit genuine real -> refuses.

@@ -176,7 +176,18 @@ effective floor; (2) coverage — the instrument replays `process_raw_frame` + `
 
 **MEASUREMENT:** full-loop replay, 60 s, 1959/min (representative). mean_cycle **108.913 ms** vs stored
 **108.717 ms**, delta **+0.196 ms**, SIGNAL 0.196 / NOISE 2.000 / **RATIO 0.10 → BELOW FLOOR,
-UNDETECTABLE.** **CONFIRMED.** No `--write` (a below-floor change is not a legitimate re-baseline; D31).
+UNDETECTABLE.** ~~**CONFIRMED.**~~ No `--write` (a below-floor change is not a legitimate re-baseline; D31).
+
+> **CORRECTION — WO-023 §2b (2026-07-23).** The "CONFIRMED" above is PRESERVED (a mis-labelled verdict
+> is itself evidence) but is **wrong**. Corrected verdict:
+> **VERDICT: NOT COVERED — VOID.** Prediction (recorded first): BELOW FLOOR / UNDETECTABLE — neither
+> confirmed nor refuted. The re-baseline instrument replays `process_raw_frame` + `LiveTradingLoop`
+> and does **not** execute `get_live_market_data`'s while-loop where the changed per-iteration call
+> sits; the +0.196 ms (ratio 0.10) is a measurement of an **unaffected path** and carries no
+> information about this change. **NO INSTRUMENT IN THE PROJECT CURRENTLY OBSERVES THE CAPTURE LOOP'S
+> PER-ITERATION COST** — recorded as an instrument-coverage gap, not a performance result. An
+> instrument that does not cover the changed line cannot confirm a prediction about it (WO-008b-B
+> precedent: honest data over a `pass` stub was VOID, not PASS). Coverage gap RECORDED, not closed.
 
 ---
 

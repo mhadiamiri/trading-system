@@ -31,11 +31,23 @@ import logging
 import json
 import random
 
+import websockets
+
 from trading.data.market_state import MarketState
 from trading.logkit.redaction import redact
 # ^ WO-014c-2 §3: the MECHANICAL redaction module (WO-011 §6.2). data->logkit is an
 #   established dependency (factory.py, kraken_public.py import logkit.decision) and no
 #   import-linter contract forbids it. Failure captures are redacted BY DEFAULT.
+
+# WO-023 §2b (RULING D34-2, corrected): the GENUINE transport callable, captured at IMPORT — before
+# any test can monkeypatch `websockets.connect`. The pre-connection coupling gate compares the
+# resolved transport against THIS by IDENTITY (`resolved is _REAL_CONNECT`), NOT against the live
+# module attribute (which a module-patching test replaces, so a fake would read as real and refuse
+# the currently-green module-patching tests). The ruled invariant is "a REAL transport with a fake
+# clock refuses" — REAL is an identity fact about the callable, not the sentinel fact of whether
+# _connect_fn was injected. A transport that is non-default by CONFIG (connect_fn=websockets.connect
+# passed explicitly) but REAL by IDENTITY must still refuse; keying on the sentinel let it through.
+_REAL_CONNECT = websockets.connect
 
 
 logger = logging.getLogger(__name__)
@@ -2353,18 +2365,32 @@ class KrakenV2BookAdapter:
         Inspects the THREE constructor-injected fields (_wall_clock, _monotonic_clock, _connect_fn)
         and refuses, BEFORE any connection, a clock injection that violates either assertion:
 
-          (1) COUPLING — a NON-DEFAULT clock is permitted ONLY where the transport is ALSO
-              non-default. A fake clock against the default (real websockets) transport would drive
-              a LIVE socket off a simulated clock; refuse it. This assertion is only EXPRESSIBLE
-              because _connect_fn made the transport nameable (decision log: a guard can audit the
-              object model) — the injection sentinel `_connect_fn is None` means "the caller did not
-              name a transport, so assume the real one."
+          (1) COUPLING — a fake clock is permitted ONLY where the transport is NOT the REAL one.
+              The ruled invariant (D34, verbatim in the reason code's docstring) is "A REAL TRANSPORT
+              WITH A FAKE CLOCK REFUSES" — REAL is an IDENTITY fact about the resolved callable, not
+              the sentinel fact of whether _connect_fn was injected. So this test mirrors the
+              clock-side identity tests: resolve the transport late (exactly as _connect does), then
+              compare `resolved is _REAL_CONNECT` (the genuine callable captured at import). Keying on
+              `_connect_fn is None` would let `connect_fn=websockets.connect` (non-default by config,
+              REAL by identity) through — a fake clock on a real socket (WO-023 §2b correction).
+              _REAL_CONNECT is captured at import, NOT read from the live module attribute, because a
+              module-patching test replaces that attribute; comparing against the live attribute would
+              read a patched fake as real and refuse 13 currently-green tests.
 
-          (2) COHERENCE — injected clocks MUST be the coherent one-source pair (wall and monotonic
-              sharing a _coherence_token, per the FakeClock harness), UNLESS the run declares the
-              incoherence BY NAME via incoherent_clocks_allowed. The gate never INFERS the exception
-              from the injection pattern (RULING D34-3: inference is vigilance; every incoherent run
-              is greppable at its call site).
+          (2) COHERENCE — injected clocks MUST be the coherent one-source pair, UNLESS the run
+              declares the incoherence BY NAME via incoherent_clocks_allowed. The gate never INFERS
+              the exception from the injection pattern (RULING D34-3: inference is vigilance; every
+              incoherent run is greppable at its call site).
+
+              COHERENCE-TOKEN DECLARATION (WO-023 §2b): coherence is PROVED by a shared
+              `_coherence_token` attribute that the FakeClock harness stamps on BOTH its `wall` and
+              `monotonic` readers (the token IS the one FakeClock instance — the single source). The
+              gate reads the token; it does NOT infer coherence from the clocks' VALUES or behaviour.
+              A clock pair without a shared token is NOT coherent regardless of how it behaves — two
+              independently-constructed clocks that happen to agree numerically are still two sources.
+              This is deliberate: proving one source is the only alternative to inferring it, and
+              D34-3 refused inference. `_coherence_token` is a production-read attribute whose only
+              producer is the test fixture; that is accepted and declared here, not incidental.
 
         Refuses with CLOCK_INJECTION_REFUSED, the payload naming WHICH assertion failed. Default
         clocks (no injection) return immediately — the path every real run and every non-suspend
@@ -2377,12 +2403,15 @@ class KrakenV2BookAdapter:
         if not (wall_injected or mono_injected):
             return  # no injected clock — the default path (real runs + every non-suspend test)
 
-        # (1) COUPLING — a non-default clock requires a non-default transport.
-        if self._connect_fn is None:
+        # (1) COUPLING — test the TRANSPORT BY IDENTITY (symmetric with the clock-side identity tests
+        # above), NOT by injection status. Resolve late (unchanged from _connect), then compare
+        # against the genuine callable captured at import. A REAL transport with a fake clock refuses.
+        resolved = self._connect_fn or websockets.connect
+        if resolved is _REAL_CONNECT:
             raise ValueError(
-                "CLOCK_INJECTION_REFUSED: COUPLING — a non-default clock is permitted ONLY where "
-                "the transport is also non-default; a real transport with a fake clock refuses, "
-                "pre-connection. Inject the transport through connect_fn, or drop the clock."
+                "CLOCK_INJECTION_REFUSED: COUPLING — a fake clock is permitted ONLY where the "
+                "transport is not the REAL one; a REAL transport with a fake clock refuses, "
+                "pre-connection. Inject a non-real transport through connect_fn, or drop the clock."
             )
 
         # (2) COHERENCE — the injected clocks must be the one-source coherent pair (shared token),

@@ -51,3 +51,23 @@ is RATIO 0.10 against the 2.0 ms cycle floor, and the instrument does not execut
 changed line (get_live_market_data's while-loop) at all. No re-baseline is written: a
 below-floor change is not a legitimate re-baseline trigger (D31 — an honest below-floor
 ledger entry is the correct record). No --write.
+
+================================================================================
+CORRECTION — 2026-07-23 (WO-023 §2b): THE VERDICT ABOVE IS MIS-LABELLED.
+The original "CONFIRMED" text is PRESERVED above (the record of a mis-labelled verdict
+is itself evidence — same treatment as the progress.md dated correction). It is wrong:
+================================================================================
+VERDICT: NOT COVERED — VOID.
+Prediction (recorded first): BELOW FLOOR / UNDETECTABLE. Neither confirmed nor refuted.
+The re-baseline instrument replays process_raw_frame + LiveTradingLoop and does not execute
+get_live_market_data's while-loop, where the changed per-iteration call sits. The measured
+delta (+0.196 ms, ratio 0.10) is a measurement of an unaffected path and carries no
+information about this change.
+NO INSTRUMENT IN THE PROJECT CURRENTLY OBSERVES THE CAPTURE LOOP'S PER-ITERATION COST.
+Recorded as an instrument-coverage gap, not as a performance result.
+
+WHY THE ORIGINAL WAS WRONG: an instrument that does not cover the changed line cannot
+confirm a prediction about it, however honest the number and however correct the prediction
+may turn out to be. This is the WO-008b-B precedent exactly — sixty minutes of honest data
+measuring a `pass` stub was ruled VOID, not PASS, because a verdict must measure the real
+path. The coverage gap is RECORDED, not closed, in this WO (no new instrument was built).

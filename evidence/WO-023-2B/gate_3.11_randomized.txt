@@ -1,0 +1,4 @@
+tests\integration\test_wire_string_retention.py ...                      [ 99%]
+tests\integration\test_pong_observer.py ..                               [100%]
+
+======================= 216 passed in 244.75s (0:04:04) =======================

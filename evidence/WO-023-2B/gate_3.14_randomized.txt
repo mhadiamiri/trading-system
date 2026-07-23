@@ -1,0 +1,5 @@
+tests\integration\test_preservation_guarantees.py .....                  [ 97%]
+tests\integration\test_wire_string_retention.py ...                      [ 99%]
+tests\integration\test_pong_observer.py ..                               [100%]
+
+======================= 216 passed in 245.52s (0:04:05) =======================

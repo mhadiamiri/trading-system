@@ -130,6 +130,35 @@ taxonomy-migration WO → 008c → 24h corpus. **The re-run-precedent standing r
 
 ---
 
+## ▶ WO-023 §2b COMPLETE (AUTHORITATIVE) — 2026-07-23 — gate correctness (identity keying) + verdict correction
+
+> The lead ACCEPTED the foundation with two corrections, both landed BEFORE the 30-test conversion (the gate's keying
+> determines how all 30 tests construct adapters). Report: `WO-023-2B-REPORT.md`. Evidence: `evidence/WO-023-2B/`.
+> Decision log: `docs/decisions/2026-07-23-a-verdict-inherits-its-instrument-s-coverage.md`. **SHIP IMPACT: YES** (§1 is
+> the production gate). SCOPE §1+§2 only; the 30-test conversion is NOT begun.
+
+- **§1 — COUPLING now keys on TRANSPORT IDENTITY, not injection status.** The shipped gate keyed `self._connect_fn is not
+  None` = "an UNCONFIGURED transport with a fake clock refuses"; the ruled invariant is "a REAL transport with a fake clock
+  refuses." Gap: `connect_fn=websockets.connect` (non-default by CONFIG, REAL by IDENTITY) passed → a fake clock on a real
+  socket. Fix: capture `_REAL_CONNECT = websockets.connect` at IMPORT (module-level `import websockets`); coupling now
+  `resolved = self._connect_fn or websockets.connect; if resolved is _REAL_CONNECT: refuse`. Compared against the
+  import-captured reference, NOT the live attr (a module patch replaces the attr → would read a fake as real). Late binding,
+  coherence branch, clock-side identity tests all UNCHANGED. Both directions verified
+  (`evidence/WO-023-2B/identity_keying_both_directions.txt`): patched fake → passes; explicit genuine real → refuses.
+  `_coherence_token` now DECLARED in the gate docstring (coherence PROVED by shared token, never inferred from values).
+- **Bite proof re-run: 4 assertions, 3 mutations** (`evidence/WO-023-2B/bite_proof_clock_gate_3mutations.txt`). Assertion 4
+  (EXPLICIT-REAL-TRANSPORT REFUSAL) added to the EXISTING test (count stays 216). Mutation C reverts coupling to the
+  sentinel → assertion 4 fails while 1/2/3 pass (the discrimination). Real-transport assertions substitute a spy for
+  `_REAL_CONNECT` via patch.object → no genuine socket even under mutation (NO VENUE CONNECTION). sha256 exact-restore.
+- **§2 — §7 re-baseline verdict corrected: NOT COVERED / VOID, not CONFIRMED.** The instrument replays process_raw_frame +
+  LiveTradingLoop and does NOT execute get_live_market_data's while-loop where the changed line sits; +0.196 ms measures an
+  unaffected path (WO-008b-B `pass`-stub-VOID precedent). Original "CONFIRMED" text PRESERVED, correction APPENDED (in the
+  evidence file and the foundation report §7). No new instrument built — the per-iteration-cost coverage gap is RECORDED.
+- **ACCEPTANCE:** 216 passed, both interpreters, both orders (`-p no:randomly` and `--randomly-seed=20260724`). lint-imports
+  6/6, contract 6/6, ruff clean, annotation 0, preflight pass.
+
+---
+
 ## ▶ WO-019 + WO-020 COMPLETE (AUTHORITATIVE) — 2026-07-22 — CI failure ROOT-CAUSED + verification surface repaired
 
 > The CI-failure investigation that had been outstanding "since WO-009." Two WOs: WO-019 diagnosed it in a

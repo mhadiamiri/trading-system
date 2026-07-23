@@ -1,0 +1,5 @@
+tests\test_redaction.py ....                                             [ 93%]
+tests\test_risk.py ..........                                            [ 98%]
+tests\test_stub_lint.py ....                                             [100%]
+
+======================= 216 passed in 245.64s (0:04:05) =======================

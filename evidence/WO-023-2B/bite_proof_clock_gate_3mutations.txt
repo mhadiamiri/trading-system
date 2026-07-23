@@ -1,0 +1,113 @@
+================================================================================
+WO-023 §2b BITE PROOF — CLOCK/TRANSPORT GATE, 4 ASSERTIONS, 3 MUTATIONS (D34; S13/D37)
+guard: KrakenV2BookAdapter._assert_clock_transport_gate  (src/trading/data/adapters/kraken_v2_book.py)
+test : tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+python: 3.14.6
+================================================================================
+
+PRISTINE sha256(src/trading/data/adapters/kraken_v2_book.py) = 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+
+======================= ARTIFACT 1 — PASS on pristine code =====================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+=========== ARTIFACT 2 — MUTATION A: WHOLE GATE neutered (early return) =========
+  mutated sha256 = 80139ac07e982c646e067b2b8233c62e3eddbf33b4fd14027db6e3a9a7792001
+  EXPECT: assertion 1 (UNCONFIGURED-REAL/COUPLING) fails — 'DID NOT RAISE'.
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py F                         [100%]
+
+================================== FAILURES ===================================
+__________________________ test_clock_injection_gate __________________________
+tests\integration\test_clock_injection_gate.py:69: in test_clock_injection_gate
+    with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc1:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+============================== 1 failed in 0.09s ==============================
+  RESTORE sha256 = 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+  EXACT RESTORE (== pristine): YES
+  mutation markers remaining: 0
+
+=========== ARTIFACT 3 — MUTATION B: COHERENCE branch only neutered =============
+  mutated sha256 = 80927ab67ae573372e9998853576cc1ee4930c77df6b85a4b6b1eac5549e1df5
+  EXPECT: assertion 3b (COHERENCE) fails — 'DID NOT RAISE'; coupling assertions 1 & 4 unaffected.
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py F                         [100%]
+
+================================== FAILURES ===================================
+__________________________ test_clock_injection_gate __________________________
+tests\integration\test_clock_injection_gate.py:114: in test_clock_injection_gate
+    with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc3:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+============================== 1 failed in 0.09s ==============================
+  RESTORE sha256 = 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+  EXACT RESTORE (== pristine): YES
+  mutation markers remaining: 0
+
+=========== ARTIFACT 4 — MUTATION C: COUPLING reverted to SENTINEL keying =======
+  edit: 'if resolved is _REAL_CONNECT:' -> 'if self._connect_fn is None:' (the OLD, defective keying).
+  mutated sha256 = ded1eb904c09b1082052afcf161e0a2044de39c0e20d8abcef8cec43dd451405
+  EXPECT: assertion 4 (EXPLICIT-REAL, connect_fn non-default) fails — 'DID NOT RAISE';
+          assertions 1, 2, 3 STILL PASS (this is the point: the new assertion discriminates the
+          two keyings, and the old sentinel keying was permissive to an explicit real transport).
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py F                         [100%]
+
+================================== FAILURES ===================================
+__________________________ test_clock_injection_gate __________________________
+tests\integration\test_clock_injection_gate.py:133: in test_clock_injection_gate
+    with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc4:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+============================== 1 failed in 0.09s ==============================
+  RESTORE sha256 = 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+  EXACT RESTORE (== pristine): YES
+  mutation markers remaining: 0
+
+===================== ARTIFACT 5 — PASS after exact restore =====================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.02s ==============================
+
+===================== ARTIFACT 6 — sha256 exact-restore =========================
+  final sha256   = 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+  pristine sha256= 1a8cf00608e1eff173dd10c12a95d76950c95dbb0734bbec7a2c8316d2159691
+  IDENTICAL: YES
