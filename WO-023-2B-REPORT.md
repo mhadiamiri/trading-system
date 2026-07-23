@@ -110,7 +110,7 @@ new instrument built). Decision log added:
 - **Test count stays 216** (assertion 4 added to the existing test; no new test, no removed test).
 - Secret scan: clean (one production module import, one module-level capture, a gate rewording, and
   test/docs edits; no credentials).
-- **Commit / push / CI:** __COMMIT_CI__
+- **Commit / push / CI:** committed `fddf1cd` on master, pushed, local == remote. **CI run `30030741629` GREEN on BOTH legs** — test (3.11) success, test (3.14) success. No re-run needed.
 
 ---
 

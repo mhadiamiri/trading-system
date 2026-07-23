@@ -1,0 +1,7 @@
+✓ master CI · 30030741629
+✓ test (3.11) in 8m32s (ID 89286401601)
+✓ test (3.14) in 8m29s (ID 89286401712)
+test (3.11): .github#2
+test (3.14): .github#2
+
+CI run 30030741629 (commit fddf1cd, branch master, push): test (3.11) success + test (3.14) success.
