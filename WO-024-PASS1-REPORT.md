@@ -165,7 +165,7 @@ must be LOCAL and DIRECT*).
 - `lint-imports` 6/6 · `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 ·
   `preflight_path_check.py` pass · reason-code vocabulary 11 passed.
 - Ledger bite proof: four artifacts, sha256 exact-restore (above).
-- **Commit / push / CI:** __COMMIT_CI__
+- **Commit / push / CI:** batches `b8f18b3` (migration+ledger) + `959e832` (docs) on master, pushed, local == remote. **CI run `30043854493` GREEN on BOTH legs** — test (3.11) + test (3.14) success.
 
 ### Test-count arithmetic
 Migration is **+0** (swaps patch for `connect_fn`, adds/removes no test). The gate ledger adds **no

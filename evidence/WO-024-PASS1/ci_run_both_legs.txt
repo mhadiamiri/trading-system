@@ -1,0 +1,6 @@
+✓ master CI · 30043854493
+✓ test (3.14) in 8m32s (ID 89330054521)
+✓ test (3.11) in 8m32s (ID 89330054541)
+test (3.14): .github#2
+test (3.11): .github#2
+CI run 30043854493 (commit 959e832, push): test (3.11) success + test (3.14) success.
