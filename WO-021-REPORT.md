@@ -73,8 +73,19 @@ SYMPTOM SUPPRESSION IS REFUSED ON THE SAME GROUNDS AS TEST-SCOPE SYMPTOM SUPPRES
   3.14: 0 (one import line; no test added/removed).
 - **Real CI:** I initially stopped before push (0.2a). The lead's update then **accepted the in-scope work
   and ruled: push it** (the annotation fix is independent of both findings, correct, complete; 3.11 red on
-  the 8+1 out-of-scope failures is expected, not a regression — it is the next WO's work). **Pushed;
-  both-legs observation below.** __CI__
+  the 8+1 out-of-scope failures is expected, not a regression — it is the next WO's work). **Pushed
+  (`1ac936b`); real CI run `29979272148` observed, both legs:**
+  - **Verification steps GREEN on BOTH legs:** preflight ✓, `import-linter lint` ✓, and the new
+    **Annotation-name detector ✓** — the scan runs and passes in CI on 3.11 and 3.14.
+  - **3.14 leg:** 8 failed / 207 passed (det 241.95s; rand 240.73s, seed `1343253163`).
+  - **3.11 leg:** 8 failed / 207 passed (det 242.76s; rand 240.61s, seed `3203092373`).
+  - **All 8 failures on BOTH legs are `MEAN_CYCLE_BASELINE_HOST_MISMATCH`** (CI fingerprint =
+    Linux/`b553a51a…`, no match) — **confirming the prediction that the host-scoped baseline fails on
+    every CI host regardless of interpreter, 3.14 included.** The annotation fix works: pytest now gets
+    past collection (215 collected, 207 pass), failing only at runtime on the 8 baseline tests.
+  - **The monotonic gap-ordering test PASSES on CI (both legs)** — it failed only on the Windows dev host
+    (coarse tick); on Linux the clock is fine. That is exactly the §11 diagnosis: a Windows
+    clock-resolution artifact, not a 3.11 or matrix defect. So CI shows **8**, not 9.
 
 **THE 9 FAILURES ARE ALL OUT OF SCOPE — none is an annotation-name defect**
 (`evidence/WO-021/py311_full_suite_out_of_scope_failures.txt`). The matrix's strict leg did its job and
@@ -114,6 +125,24 @@ alter per-frame cost. (`get_live_market_data` is unchanged except that its retur
   WO-016 design consequence affecting BOTH CI legs) + 1 monotonic-timing test. **These need the lead's
   ruling** — how host-scoped baseline tests should behave off the dev host (skip-when-absent / xfail /
   establish a CI baseline / mark local-only), and the timing test — before this can close and CI can go green.
+
+### 11. Gap-ordering diagnosis (lead update §3 — report only, NOT fixed)
+`evidence/WO-021/gap_ordering_diagnosis.txt`. The failing assert (line 271):
+`max(open_a, open_b) < close` → on a coarse Windows monotonic tick both opens and the shared close
+collapse to `37750.5`, so `37750.5 < 37750.5` fails. **Consumer enumeration** (each with its ordering
+invariant): `duration_s` needs `close >= open` (tie-tolerant); `complete`/`incomplete`/`gaps_detected`
+need no order; the `gaps` **list order is append == gap_id order** (not a clock compare — a tie doesn't
+reorder it), and the failing test itself indexes `gaps[0]/gaps[1]` off that structural order; the
+default-deny corpus reader does **interval intersection / span overlap** (order-independent, tie-tolerant);
+persistence is per-event append; `test_host_suspend.py:74` already asserts `close >= open` (`>=`);
+`test_ledger_persistence` keys on `gap_id`. **`gap_id` is already a per-run open-sequence counter**
+(`gap_id=self._gap_seq; self._gap_seq+=1`).
+**Answer: (a) — the test encodes an invariant no consumer holds.** No consumer needs strict temporal
+separation; the design is tie-tolerant by construction ("union query, not containment"). The correct
+(unimplemented) fix is `<=`, relying on the already-asserted distinct `gap_ids` for identity. **(b) is
+unnecessary** — the per-process sequence counter it proposes already exists as `gap_id`; therefore **no
+amendment to D25's clock doctrine** is needed. This is a **production** clock-resolution question (equally
+present on 3.14 and the corpus host), not a matrix artifact. Not implemented, per the ruling.
 
 ---
 **STATUS per the lead's update:** in-scope annotation work pushed (approved); the annotation scan wired

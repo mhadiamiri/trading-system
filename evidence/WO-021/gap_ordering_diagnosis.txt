@@ -1,0 +1,66 @@
+WO-021 (lead update §3) — GAP-ORDERING DIAGNOSIS (report only; NO fix implemented)
+================================================================================
+The failing test: tests/integration/test_gap_recording.py::test_overlapping_gaps_union_and_collective_close
+The failing line (271): assert max(checksum_gap.open_monotonic, venue_gap.open_monotonic) < close
+On a coarse Windows monotonic tick both opens AND the shared close collapse to 37750.5, so the
+STRICT inequality 37750.5 < 37750.5 is False. This is a PRODUCTION question (clock resolution
+surfacing on 3.11, present equally on 3.14 and the corpus host), not a matrix artifact.
+
+QUESTION (ruled frame): enumerate the gap ledger's CONSUMERS; per consumer, which ordering
+invariant does it require? Then: (a) the test encodes an invariant nobody holds -> tie-tolerant
+assertion; or (b) a consumer genuinely relies on STRICT order -> add a sequence-counter tiebreaker.
+
+CONSUMER ENUMERATION (who reads GapLedger / GapRecord, and the ordering invariant each needs)
+--------------------------------------------------------------------------------
+1. GapRecord.duration_s  (close_monotonic - open_monotonic)
+     Needs: close >= open (non-negative). TIE-TOLERANT — open==close is a zero-duration gap, fine.
+2. GapRecord.complete / GapLedger.incomplete  (resumed or terminal; filter not-complete)
+     Needs: nothing about ordering.
+3. GapLedger.gaps_detected  (len(gaps))
+     Needs: nothing about ordering.
+4. GapLedger.gaps LIST ORDER
+     Built by append at _open_gap (line 1444), in OPEN order == gap_id order. Consumers that index
+     gaps[0]/gaps[1] (INCLUDING the failing test, line 259) rely on this STRUCTURAL append order,
+     NOT on comparing open_monotonic. A clock tie does NOT reorder the list. TIE-TOLERANT.
+5. Default-deny corpus reader (a later WO; GapRecord docstring l.296-299, GapLedger l.336, get_gap_ledger l.2864)
+     Does INTERVAL INTERSECTION / SPAN OVERLAP over half-open [open, close), unclosed == +inf.
+     Union/intersection are symmetric and ORDER-INDEPENDENT; a [t0,t1] query against half-open
+     intervals is well-defined regardless of ties. It needs the ledger to hold EVERY gap
+     (completeness), NOT any strict ordering of opens. TIE-TOLERANT.
+6. Persistence JSONL (_gap_record_to_dict / _persist_gap_event)
+     Per-event append ("open"/"close" lines). No cross-gap ordering invariant.
+7. Existing tests as consumers:
+     - test_host_suspend.py:74 ALREADY asserts `close_monotonic >= open_monotonic` (`>=`, tie-tolerant).
+     - test_ledger_persistence.py:73/108 key on gap_id (`gap_id == 0`), NOT on open_monotonic compares.
+8. gap_id itself  (GapRecord.gap_id, assigned `gap_id=self._gap_seq; self._gap_seq += 1` at _open_gap)
+     A PER-RUN OPEN-SEQUENCE COUNTER — a per-process monotonic sequence, incremented once per open.
+     It ALREADY provides TOTAL ORDER BY CONSTRUCTION, independent of the clock. The failing test
+     itself asserts the two gap_ids are DISTINCT (line 263).
+
+ANSWER: (a) — THE TEST ENCODES AN INVARIANT NOBODY HOLDS.
+--------------------------------------------------------------------------------
+No consumer requires strict temporal separation of opens. Every consumer is tie-tolerant:
+duration uses `>=`, completeness/counters ignore order, list order is append/gap_id (not a clock
+compare), and the default-deny reader's union/intersection is order-independent by design
+(WO-014c-2 was built as "union query, not containment"). The strict `<` at line 271 is the test
+asserting a property the schema never promised — the union/collective-close BEHAVIOR it means to
+verify (two overlapping gaps, distinct gap_ids, one shared close) is fully present at a tie.
+
+The correct fix (NOT implemented, per the ruling): make the assertion tie-tolerant —
+    assert max(checksum_gap.open_monotonic, venue_gap.open_monotonic) <= close
+relying on the already-asserted DISTINCT gap_ids (line 263) for per-occurrence identity. This
+asserts exactly what the design guarantees: the windows are open together (possibly to a
+zero-width limit under clock resolution) and both close collectively at one instant.
+
+WHY (b) IS UNNECESSARY — and the D25 consequence:
+--------------------------------------------------------------------------------
+Option (b) proposes adding a per-process monotonic sequence counter as a tiebreaker. That counter
+ALREADY EXISTS: gap_id IS `self._gap_seq`, assigned in open order, incremented per open. Total
+order by construction is already present; nothing needs to be added, and the ledger list is
+already in that order. Because the answer is (a), there is NO amendment to D25's clock doctrine
+(monotonic = ORDERING clock, wall = LOCATION): open_monotonic remains the timing bound; per-
+occurrence order remains gap_id (which is an identity counter, not a clock, and predates this WO).
+If a FUTURE consumer ever needs strict order it should read gap_id, not hope the clock resolves —
+but no such consumer exists today, so this stays a note, not a change.
+
+DO NOT IMPLEMENT (per the ruling). Reported for the lead's decision.
