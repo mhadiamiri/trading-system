@@ -1,0 +1,8 @@
+=== ledger key lines ===
+REFUSED_COUPLING (excl. guard test): 0
+REFUSED_COHERENCE (excl. guard test): 0
+PROCEED_DECLARED (excl. guard test): 1  -> ['tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal']
+tests\integration\test_failure_cap.py ...                                [ 99%]
+tests\integration\test_snapshot_recovery.py .                            [100%]
+
+======================= 216 passed in 245.70s (0:04:05) =======================

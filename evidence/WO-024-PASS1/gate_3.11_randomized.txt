@@ -1,0 +1,4 @@
+tests\integration\test_failure_cap.py ...                                [ 99%]
+tests\integration\test_snapshot_recovery.py .                            [100%]
+
+======================= 216 passed in 245.34s (0:04:05) =======================

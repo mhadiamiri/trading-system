@@ -1148,6 +1148,23 @@ class KrakenV2BookAdapter:
         self._mean_cycle_baseline_s = self.MEAN_CYCLE_BASELINE_SECONDS
         # WO-015 addendum A: host-suspend detection threshold (instance-overridable for tests).
         self._host_suspend_divergence = self.HOST_SUSPEND_DIVERGENCE_SECONDS
+        # ── WO-024 §4.1 (RULING D35-2) — THE THREE-SEAM CONVENTION DECLARATION ──────────────────
+        # The three injectable seams below use THREE DELIBERATELY DIFFERENT default conventions.
+        # This asymmetry is NOT untidiness to be normalized — it CARRIES SEMANTICS:
+        #   _wall_clock       default raw None    ; resolved late (`or time.time`)      ; injected? `is not None`
+        #   _monotonic_clock  default EAGER time.monotonic ; called directly            ; injected? `is not time.monotonic`
+        #   _connect_fn       default raw None    ; resolved late (`or websockets.connect`); injected? gate: `resolved is _REAL_CONNECT`
+        # WHY _monotonic_clock is EAGER and this is LOAD-BEARING: the suspend test injects a fake
+        # wall against the REAL monotonic. Because the default monotonic is eagerly resolved to
+        # `time.monotonic`, the real monotonic reads as NOT injected (`is time.monotonic`), so the
+        # gate's coherence evaluates False (only one clock is "injected"), and the named exception
+        # (`incoherent_clocks_allowed`) becomes REQUIRED — which is exactly the mechanism that keeps
+        # the sole incoherent customer greppable (D34-3). Resolve it lazily instead and the real
+        # monotonic would read as "injected", coherence would spuriously pass, and the named
+        # exception would not fire. DO NOT "tidy" this to match the None-default seams.
+        # DOCTRINE: convention asymmetry that carries semantics is ARCHITECTURE, not untidiness;
+        # normalize only what is provably decorative.
+        # ─────────────────────────────────────────────────────────────────────────────────────────
         # Injectable wall clock (test seam, like _reconnect_sleep); defaults to time.time. Used
         # ONLY for the suspend detector's wall sampling, so a test can simulate a wall jump
         # (a suspend) without touching the deadline. NOT used for the deadline/start_time.
@@ -1163,11 +1180,14 @@ class KrakenV2BookAdapter:
         # _connect() (LATE binding). Two reasons (Checkpoint B): (1) existing tests monkeypatch
         # websockets.connect AFTER constructing the adapter, so a default resolved here at __init__
         # time would capture the UNPATCHED callable and the patch would never take — late resolution
-        # honours the module patch, keeping the suite green; (2) the pre-connection gate (§4) must be
-        # able to NAME whether the caller injected a transport, and keying on `self._connect_fn is
-        # None` (the injection sentinel) gives it exactly that. A module-level patch with NO injected
-        # clock is still a DEFAULT transport to the gate — the "real transport" case that, paired with
-        # a fake clock, must refuse. So the object can finally name its own transport (decision log 1).
+        # honours the module patch, keeping the suite green; (2) the pre-connection gate must be able
+        # to NAME whether the transport is REAL. WO-023 §2b corrected this to test by IDENTITY: the
+        # gate resolves late (`resolved = self._connect_fn or websockets.connect`) and compares
+        # `resolved is _REAL_CONNECT` (the import-time capture), NOT the `is None` sentinel — so a
+        # transport that is non-default by CONFIG but REAL by identity is still refused with a fake
+        # clock. A module-level patch with NO injected clock is still handled by the gate's early
+        # return (no clock → return), so those tests proceed. So the object can finally name its own
+        # transport (decision log 1). See the D35-2 convention block above for the seam summary.
         self._connect_fn = connect_fn
         logger.info(
             "[kraken_v2_book] adapter initialised mode=%s venue=%s",
@@ -2376,6 +2396,16 @@ class KrakenV2BookAdapter:
               _REAL_CONNECT is captured at import, NOT read from the live module attribute, because a
               module-patching test replaces that attribute; comparing against the live attribute would
               read a patched fake as real and refuse 13 currently-green tests.
+
+              DECLARED LIMIT (WO-024 §4.2, RULING D35-3): the coupling check refuses the real transport
+              BY IDENTITY (`resolved is _REAL_CONNECT`). A hand-written WRAPPER that merely DELEGATES to
+              websockets.connect is a DIFFERENT object — not identical to _REAL_CONNECT — and would NOT
+              be refused. Defeating the guard therefore requires DELIBERATELY constructing a bypass
+              (wrapping the real transport and injecting the wrapper alongside a fake clock). This is
+              intentional: the guard contract throughout this project is THE ACCIDENTAL CASE REFUSES;
+              THE ADVERSARIAL INSIDER IS OUT OF SCOPE. The tell is greppable — any wrapper around the
+              real transport appearing in the tree is a DELIBERATE ACT, and under the 0.1a standing
+              rules it is a STOP-AND-ASK event, not something the identity check is expected to catch.
 
           (2) COHERENCE — injected clocks MUST be the coherent one-source pair, UNLESS the run
               declares the incoherence BY NAME via incoherent_clocks_allowed. The gate never INFERS

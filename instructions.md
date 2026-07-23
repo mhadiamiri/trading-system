@@ -1,127 +1,194 @@
-# WO-023 §2c — THE COUPLING BRANCH'S PRESERVATION DUAL (the production path)
+# WO-024 PASS ONE — TRANSPORT MIGRATION (mechanical, no clocks)
 
-BASE: HEAD `fddf1cd` on master (local == remote). 216 passed both orders both interpreters,
-CI green both legs (run 30030741629).
+**START THIS IN A FRESH CLAUDE CODE SESSION.** Ruled by D34/D35. Do not continue an existing one.
 
-WO-023 §2b is ACCEPTED on mechanism: the identity keying is correct, the both-direction
-verification is correct, Mutation C is a genuine discrimination proof, and the §7 VOID
-correction is correct. This WO closes ONE gap the §2b report surfaced.
-
-SCOPE: §1 and §2 ONLY. Commit green, STOP. Do not begin the 30-test conversion.
-SHIP IMPACT: possibly (§1 may reveal a production-path defect; §2 is tests+evidence only).
+BASE: HEAD `9175969` on master (local == remote). 216 passed both orders, both interpreters.
+CI green both legs (run 30036599896). import-linter 6/6, contract 6/6, ruff clean, annotation 0.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
-0.1 No discretion. Code wins; if code and this order disagree, STOP and report.
+0.1 **No discretion.** Where this order and the code disagree, the CODE WINS: STOP and report.
+    Do not reconcile silently. This rule has fired three times in this WO family and was right
+    every time.
 0.2 No monkeypatching to make a guard pass.
-0.3 Fail-then-pass bite proof, four artifacts, sha256 exact-restore.
-0.4 Preservation duals mandatory.
-0.5 Report every attempt.
-0.6 **AUTO MODE OFF** for any edit to `kraken_v2_book.py`.
-0.7 Report your context % as READ FROM `/context`, not estimated.
+0.3 Every guard gets a fail-then-pass bite proof: four artifacts, `sha256` exact-restore.
+0.4 Preservation duals mandatory, and **local and direct** — never relying on a neighbouring
+    branch to pin a behaviour (ratified doctrine; see §6).
+0.5 Report every attempt, including failed and retried ones.
+0.6 **AUTO MODE OFF** for every edit to `src/trading/data/adapters/kraken_v2_book.py`.
+0.7 If you reach ~70% context, STOP at a clean seam, commit what is green, report. You cannot
+    read `/context` yourself — ask the user for a reading rather than estimating.
 
 ---
 
-## §1 FIRST ACTION — PASTE THE GATE, DO NOT DESCRIBE IT
+## §0.5 CONTEXT YOU DO NOT HAVE (fresh session briefing)
 
-Before editing anything, paste `_assert_clock_transport_gate` **in full, verbatim, with line
-numbers**, from its `def` line to its last line, plus the call site in `get_live_market_data`.
+A pre-connection **clock/transport gate** now exists in `kraken_v2_book.py`
+(`_assert_clock_transport_gate`, called from `get_live_market_data` immediately after the
+`GAP_PERSIST_UNCONFIGURED` refusal). It enforces:
 
-The §2b report's excerpt showed:
+- **COUPLING** — a fake clock is permitted ONLY where the transport is not the real one.
+  The transport is tested **by identity** against `_REAL_CONNECT`, a module-level capture of
+  `websockets.connect` taken at import.
+- **COHERENCE** — injected clocks must be the one-source coherent pair (shared
+  `_coherence_token`, stamped by the `FakeClock` harness), unless the run passes
+  `incoherent_clocks_allowed="<reason>"` explicitly. The gate NEVER infers the exception.
+- **Early return** — if no clock is injected, the gate returns immediately. This is the path
+  every real run and every non-suspend test takes today.
 
-    resolved = self._connect_fn or websockets.connect
-    if resolved is _REAL_CONNECT:
-        raise ValueError("CLOCK_INJECTION_REFUSED: COUPLING — …")
+The three seams have **three deliberately different conventions** (D35-2: this asymmetry carries
+semantics and is NOT to be normalized):
 
-with NO `clock_injected` precondition, though the WO specified
-`if clock_injected and resolved is _REAL_CONNECT`. Read literally, that refuses EVERY REAL RUN:
-a default-constructed adapter has `_connect_fn is None`, so `resolved is _REAL_CONNECT`, so
-`get_live_market_data` raises before connecting — the 24-hour corpus capture would refuse to
-start. The foundation's §4.2 early return ("no injected clock → return immediately") probably
-sits above it and makes this safe.
+| Seam | Default | Convention | Resolved | "Injected?" test |
+|---|---|---|---|---|
+| `_wall_clock` | `None` | raw None | late (`or time.time`) | `is not None` |
+| `_monotonic_clock` | `monotonic_clock or time.monotonic` | eagerly resolved | direct call | `is not time.monotonic` |
+| `_connect_fn` | `None` | raw None | late (`or websockets.connect`) | `resolved is _REAL_CONNECT` |
 
-**Do not tell me which it is. Show me the code.** Then state explicitly: is the coupling branch
-reachable when NO clock is injected — yes or no?
+`_monotonic_clock`'s eager resolution is **load-bearing**: the suspend test injects a fake wall
+against the REAL monotonic, the real monotonic reads as not-injected, coherence evaluates False,
+and the named exception becomes required. Do not "tidy" this.
 
-If the precondition is genuinely absent and the early return does not cover it, that is a
-SHIPPED PRODUCTION DEFECT on the live path: STOP, report, and wait. Do not fix it in the same
-breath as discovering it.
-
----
-
-## §2 THE MISSING PRESERVATION DUAL — REAL TRANSPORT, NO CLOCK, MUST PROCEED
-
-### Why this is the gap
-Every existing test that injects no clock ALSO module-patches the transport, so `resolved` is a
-fake and `is not _REAL_CONNECT` — those tests pass **whether or not the precondition exists**.
-Assertion 2's preservation half is *fake transport + fake clock*. Mutation A neutered the whole
-gate, which cannot detect a missing precondition INSIDE it.
-
-So the single case that discriminates — **real transport + no clock injected → PROCEEDS** — is
-the production path, and no test in 216 exercises it. Assertion 1 proves the gate refuses the
-hazard; nothing proves it permits the real run. That is the coupling branch's preservation dual
-(D37/S13), and it is the half that carries the corpus.
-
-### Assertion 5 — add to the EXISTING test (count stays 216)
-`tests/integration/test_clock_injection_gate.py::test_clock_injection_gate` gains:
-
-5. **DEFAULT-PATH PRESERVATION** — no clock injected (`_wall_clock` default, `_monotonic_clock`
-   default), `connect_fn=None`, and the transport resolving to a callable that IS identical to
-   `_REAL_CONNECT` → the gate **PROCEEDS**: no refusal raised, the transport IS invoked
-   (`connect_count == 1`), and the run reaches the same successful end state assertion 2 checks.
-
-Construct it with the mechanism assertion 4 already established: patch BOTH `_REAL_CONNECT` and
-`websockets.connect` to ONE captured bound method of a self-terminating spy, so the gate performs
-its genuine `is` comparison and resolves TRUE, against a safe stand-in. **NO GENUINE SOCKET.**
-Observe the bound-method identity pitfall already reported in §2b — one captured bound method
-shared by both patches.
-
-This is the inverse of assertion 4 and must be adjacent to it in the test, with a comment naming
-the pair: assertion 4 = real transport WITH a clock refuses; assertion 5 = real transport WITHOUT
-a clock proceeds. Together they prove the coupling branch is conditioned on clock injection and
-not on transport identity alone.
-
-### Mutation D — the bite
-Re-run the bite proof with a FOURTH mutation: **delete the `clock_injected` precondition** (or
-the early return, whichever actually guards the branch — state which you mutated and why it is
-the correct target). Assertion 5 must FAIL. Assertions 1–4 must still pass, proving the mutation
-is discriminated by the new assertion alone.
-
-Full four-artifact protocol, sha256 exact-restore, all mutations A/B/C/D.
-
-### Report explicitly
-State whether Mutation D, before this WO, would have been caught by ANY of the 216 tests. If the
-answer is no — say so plainly. That is the finding, and it is the point of the section.
+**WHY PASS ONE EXISTS.** The 30-test deterministic conversion needs each test to inject a clock.
+Because `_connect_fn` defaults to raw `None`, any test that module-patches `websockets.connect`
+reads as a DEFAULT (real) transport to the gate — so injecting a clock into it would refuse on
+COUPLING. Every such test must migrate its transport to constructor injection FIRST. D35-1 split
+the work: **this pass migrates transport ONLY, injects NO clocks, and must change no behaviour.**
 
 ---
 
-## §3 TWO CONSISTENCY CHECKS (report answers; change nothing without reporting first)
+## §1 ENUMERATE THE POPULATION BEFORE EDITING ANYTHING
 
-3.1 The gate raises `ValueError`. Confirm this matches the exception TYPE used by
-    `GAP_PERSIST_UNCONFIGURED`, the refusal this gate was placed alongside for consistency. If
-    they differ, report the difference and STOP — do not unify them in this WO.
-3.2 Confirm the three seams' default conventions and state them in one table: `_wall_clock`
-    (raw `None`?), `_monotonic_clock` (eagerly resolved to `time.monotonic`?), `_connect_fn`
-    (raw `None`, resolved late?). Three fields with three different default conventions is a
-    construction hazard for the 30-test conversion. Do not change them here — record them, so
-    the conversion WO can be written against the real conventions rather than an assumed
-    symmetry.
+Grep the whole test tree for module-level patching of the transport — every form:
+`patch("websockets.connect", …)`, `patch.object(websockets, "connect", …)`, monkeypatch
+equivalents, fixture-level patches, and any indirection through a helper.
+
+Produce a table BEFORE any edit: file, test name (or fixture), patch form, and whether the
+adapter is constructed before or after the patch. State the COUNT.
+
+Prior soundings put this near 13, but that number is from a partial grep and is NOT authoritative.
+**The grep is authoritative.** If the count differs from 13, that is expected — report the real
+number. If any patch site is NOT reachable by constructor injection (e.g. the adapter is
+constructed inside library code you do not control), **STOP and report** — that is a
+seam-completeness finding, not something to work around.
 
 ---
 
-## §4 ACCEPTANCE
+## §2 THE MIGRATION — MECHANICAL, BEHAVIOUR-PRESERVING
+
+For each site in the §1 table: replace module-level patching with constructor injection,
+`connect_fn=<the same fake callable>`. Nothing else changes — no clocks, no assertions, no
+timings, no fixtures rewritten.
+
+Constraints:
+- **Do not inject any clock.** Not one. Pass one is transport-only; a clock in pass one
+  invalidates the acceptance criterion.
+- **Do not touch** `tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal`
+  — already migrated in the foundation and already declares its exception.
+- Reconnection tests: `self._connect_fn` persists across `_connect` calls, so a factory injected
+  once serves every reconnect. Verify this explicitly for each reconnect test rather than
+  assuming it.
+- Bound-method identity pitfall (hit twice already): `spy.connect` yields a NEW object per
+  attribute access. Where identity matters, capture ONE bound method and reuse it.
+- If any single migration needs anything beyond swapping the patch for `connect_fn=`,
+  **STOP and report** before doing it.
+
+Migrate in small committed-green batches if the population is large. State your batching.
+
+---
+
+## §3 THE FALSIFIABLE ACCEPTANCE CRITERION — THE GATE MUST NEVER REFUSE
+
+D35-1 adopted the split specifically because pass one has a complete, falsifiable criterion:
+**216 green unchanged AND the gate never fires.** "Never fires" must be MEASURED, not reasoned.
+
+Build a **gate ledger**: an autouse session-scoped test hook that wraps
+`_assert_clock_transport_gate` and records, for every invocation across the whole suite:
+- test nodeid,
+- outcome: `EARLY_RETURN` (no clock) / `PROCEED_DECLARED` (incoherent, named exception) /
+  `REFUSED_COUPLING` / `REFUSED_COHERENCE`.
+
+Write the ledger to `evidence/WO-024-PASS1/gate_ledger.txt` and assert at session end:
+**`REFUSED_COUPLING == 0` and `REFUSED_COHERENCE == 0`.**
+
+Expected shape after migration: every live-capture test `EARLY_RETURN`; exactly ONE
+`PROCEED_DECLARED` (the suspend test); zero refusals. Report the actual counts. **Any refusal
+during pass one is BY DEFINITION A FINDING, not friction — STOP and report it.**
+
+**Bite proof for the ledger assertion** (0.3, four artifacts, sha256): mutate ONE migrated test
+to re-introduce module patching AND inject a clock → the gate refuses on COUPLING → the ledger
+assertion FAILS. Restore, sha256 == pristine, passes. A ledger that cannot fail proves nothing.
+
+The ledger is a pass-one instrument. State in the report whether it should persist into pass two
+(Ops's view: yes — it becomes the conversion's live safety net) but do not decide that here.
+
+---
+
+## §4 TWO DECLARATIONS IN PRODUCTION (docs-only; D35-2 and D35-3)
+
+Production edits in this WO are **comments and docstrings only**. No logic changes.
+
+4.1 **The convention declaration** (D35-2). A short comment block at the three seam definitions
+    in `__init__` stating each convention and WHY it differs — explicitly recording that
+    `_monotonic_clock`'s eager resolution is load-bearing for the named-exception mechanics
+    (real monotonic reads as not-injected → coherence False → exception required by name).
+    Doctrine line to include: **convention asymmetry that carries semantics is architecture, not
+    untidiness; normalize only what is provably decorative.**
+
+4.2 **The declared limit of the coupling check** (D35-3). In the gate docstring: the gate refuses
+    the real transport BY IDENTITY, so a hand-written wrapper that delegates to
+    `websockets.connect` is not identical to it and would not be refused. State that this
+    requires deliberately constructing a bypass, that the guard contract throughout this project
+    is *the accidental case refuses; the adversarial insider is out of scope*, and name the tell:
+    **any wrapper around the real transport appearing in the tree is a deliberate act, greppable,
+    and a STOP-and-ask event under the 0.1a standing rules.**
+
+---
+
+## §5 SCOPE FENCE
+- **NO clock injection.** That is pass two.
+- **NO taxonomy migration, NO 008c, NO capture-loop instrument, NO corpus.**
+- **NO normalizing the three seam conventions** (D35-2 ruled: leave them).
+- **NO chasing the wrapper bypass** (D35-3 ruled: declare it).
+
+---
+
+## §6 DECISION LOG — ONE ENTRY, RATIFIED VERBATIM
+
+`docs/decisions/2026-07-24-incidental-coverage-is-not-coverage.md`:
+
+> A guard branch can be pinned only incidentally by a neighbouring branch — incidental coverage
+> is coverage until the neighbour changes, and then it is nothing, silently.
+
+Specimen: WO-023 §2c Mutation D (deleting the gate's early return) was caught by six unrelated
+tests through the COHERENCE branch and by zero tests through COUPLING; the coupling branch's
+preservation of the production path was pinned only by its neighbour. Standing consequence,
+joining the S13 family as its coverage-topology corollary: **a branch's preservation dual must be
+local and direct.**
+
+---
+
+## §7 ACCEPTANCE — ALL MUST HOLD BEFORE COMMIT
 - `pytest tests/ -p no:randomly -rX` → **216 passed**, 0 failed / 0 xfailed / 0 xpassed
-- `pytest tests/ --randomly-seed=20260725 -rX` → same
+- `pytest tests/ --randomly-seed=20260726 -rX` → same
 - BOTH interpreters (3.11 strict, 3.14 dev)
+- **Gate ledger: 0 REFUSED_COUPLING, 0 REFUSED_COHERENCE, exactly 1 PROCEED_DECLARED**
+- Ledger bite proof: four artifacts, sha256 exact-restore
 - `lint-imports` 6/6 · `contract_count_check.py` 6/6 · `ruff check .` clean ·
   `annotation_name_scan.py` 0 · `preflight_path_check.py` pass
-- Bite proof: **5 assertions, 4 mutations**, sha256 exact-restore
+- Test count: state it explicitly with arithmetic. Migration alone is +0; the ledger may add
+  nothing or one session-level check — say which.
 - Commit, push, local == remote, CI green BOTH legs via `gh run view`
-- Append a §2c block to `progress.md`; do not rewrite existing content
+- Append a WO-024 pass-one block to `progress.md`; do not rewrite existing content
 
-Report `WO-023-2C-REPORT.md`: the verbatim gate paste from §1, the yes/no reachability answer,
-assertion 5, the four-mutation bite proof verbatim, the "would 216 have caught Mutation D"
-answer, the two §3 tables, `/context` reading, and any point you STOPPED.
+---
 
-**THEN STOP.** The 30-test conversion is NOT begun.
+## §8 REPORT — `WO-024-PASS1-REPORT.md`
+Must contain: the §1 population table with the real count and how it differs from 13; the
+per-site migration list; the explicit reconnect-persistence verification; the gate ledger counts
+and its file; the ledger bite proof verbatim with sha256 lines; both declaration texts as
+committed; the §7 gate output pasted verbatim; the test-count arithmetic; your ledger-persistence
+recommendation for pass two; every attempt including failures; and any point you STOPPED.
+
+**THEN STOP.** Pass two (clock injection) is NOT begun.

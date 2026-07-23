@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-23 (WO-023 §2c COMPLETE — coupling preservation dual + a code-wins finding; 30-test conversion is NEXT)
+**Last Updated**: 2026-07-24 (WO-024 PASS ONE COMPLETE — transport migration to connect_fn + gate ledger; pass two = clock injection is NEXT)
+**WO-024 Pass One**: HEAD `__HEAD_P1__` — migrated 34 transport-patch sites to `connect_fn=` (32 tests), added the session-scoped GATE LEDGER (0 refusals asserted), two docs-only D35 declarations. 216 green both interpreters both orders (seed 20260726), gate ledger clean, CI __P1_CI__. Seam finding: `connect_fn` doesn't thread through LiveCaptureRunner/registry (2 adapter=None tests left, ruled). **Pass two (clock injection into the 30 races) is NEXT.** See the **▶ WO-024 PASS ONE** block below.
 **Current Phase**: **WO-023 §2c done; 30-test conversion is NEXT (fresh session).** Foundation (§2) shipped the seams + gate; §2b corrected the coupling keying (identity, not injection status) + the §7 VOID verdict; §2c added the coupling branch's PRESERVATION dual (assertion 5: real transport + no clock → proceeds) and found — against the WO's expectation — that Mutation D was ALREADY caught by existing no-clock live tests via the coherence branch (0.1 finding). §2c is TESTS+DOCS ONLY (no production defect; gate byte-unchanged). See the **▶ WO-023 §2c / §2b / §2 FOUNDATION** blocks below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
 **Status**: HEAD `9175969` on master (pushed; local == remote). **216 tests green on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), both orders** (`-p no:randomly` and `--randomly-seed=20260725`), 0 failed/xfailed/xpassed. import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. (Foundation `fbdaf58` CI run `30026635375`; §2b `fddf1cd` CI run `30030741629`; §2c `9175969` CI run `30036599896` — all green both legs.) `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023 §2 FOUNDATION** and **▶ WO-021/WO-022** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
@@ -183,6 +184,38 @@ taxonomy-migration WO → 008c → 24h corpus. **The re-run-precedent standing r
   eager `time.monotonic`, `_connect_fn` raw None (late) — each detected differently by the gate. Recorded, not changed.
 - **ACCEPTANCE:** 216 passed, both interpreters, both orders (`-p no:randomly` and `--randomly-seed=20260725`). lint-imports
   6/6, contract 6/6, ruff clean, annotation 0, preflight pass.
+
+---
+
+## ▶ WO-024 PASS ONE COMPLETE (AUTHORITATIVE) — 2026-07-24 — transport migration + gate ledger (D34/D35)
+
+> The 30-test conversion's PREPARATION: migrate every test that module-patches the transport to constructor injection
+> (`connect_fn=`), so pass two can inject clocks without the gate refusing on a default-transport read. **NO CLOCKS injected**
+> (that is pass two). Report: `WO-024-PASS1-REPORT.md`. Evidence: `evidence/WO-024-PASS1/`. Decision log:
+> `docs/decisions/2026-07-24-incidental-coverage-is-not-coverage.md`. Ran in THIS session by user override of the WO's
+> fresh-session directive (disclosed).
+
+- **§1 population (grep authoritative):** 38 patch sites / 35 tests / 14 files (vs the "~13" sounding — that was the file
+  count; real site pop is ~3×). Migrated **34 sites / 32 tests / 13 files**. Excluded: `test_clock_injection_gate` (the
+  guard's OWN identity mechanism, 2 sites); `test_host_suspend_recorded` (already migrated).
+- **SEAM FINDING (§1 STOP, ruled):** `connect_fn` does NOT thread through `LiveCaptureRunner`→`create_live_capture_feed`
+  →`registry.create`, so the two `adapter=None` registry-resolution tests (test_live_capture `test_runner_resolves_…`,
+  `test_…_refuses_non_live_capable_…`) are NOT test-side injectable. Ruled: leave them (harmless in pass one — early-return /
+  refuse-before-gate). Threading the seam is a separate WO if pass two needs it.
+- **§3 GATE LEDGER (conftest.py, session-scoped):** wraps `_assert_clock_transport_gate`, DELEGATES to the real gate, records
+  every outcome, and asserts ZERO refusals suite-wide (excl. the guard's own test). Measured: 34 EARLY_RETURN, 1
+  PROCEED_DECLARED (suspend, sole), 0 REFUSED_COUPLING, 0 REFUSED_COHERENCE. Bite-proved (4 artifacts, sha256): a migrated
+  test mutated to re-add a patch + inject a clock → gate fires → the ledger teardown assertion FAILS ("GATE FIRED").
+- **0.1 FINDING:** the WO's bite recipe says module-patch+clock → COUPLING; under §2b identity keying it fires COHERENCE (a
+  module-patched transport is a fake, not `_REAL_CONNECT`; COUPLING needs the genuine real transport). Reported (code wins).
+- **§4 (docs-only) two declarations in kraken_v2_book.py:** D35-2 the three-seam convention block (`_monotonic_clock`'s eager
+  resolution is load-bearing for the named-exception mechanics — do not normalize); D35-3 the coupling check's declared limit
+  (refuses the real transport BY IDENTITY; a delegating wrapper is out of scope — the accidental case refuses, the
+  adversarial insider is a STOP-and-ask). Also reconciled a stale §2b-era `_connect_fn` sentinel-keying comment.
+- **ACCEPTANCE:** 216 passed, both interpreters, both orders (`-p no:randomly` and `--randomly-seed=20260726`), gate ledger
+  clean on every leg. lint-imports 6/6, contract 6/6, ruff clean, annotation 0, preflight pass. Count stays 216 (migration
+  +0; ledger adds a session-level check, not a test). **Pass two (clock injection) NOT begun.** Ledger-persistence
+  recommendation: keep it for pass two as the live safety net (invariant: 0 refusals; proceed-shape counts become diagnostics).
 
 ---
 

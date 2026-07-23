@@ -1,0 +1,77 @@
+================================================================================
+WO-024 PASS ONE §3 — GATE-LEDGER BITE PROOF (a ledger that cannot fail proves nothing)
+instrument: conftest.py::_gate_ledger_recorder (session-scoped) + _write_gate_ledger_and_assert
+mutated test: tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path
+python: 3.14.6
+================================================================================
+
+PRISTINE sha256(tests/integration/test_throughput.py) = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+
+======================= ARTIFACT 1 — PASS on pristine (ledger assertion holds) ===
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests\integration\test_throughput.py ..                                  [100%]
+
+============================== 2 passed in 0.13s ==============================
+
+=== ARTIFACT 2 — MUTATION: re-introduce module patching AND inject a clock ======
+  (per WO §3 recipe: drop connect_fn -> module-patch the transport; inject an incoherent wall
+   clock). 0.1 FINDING: under the identity keying WO-023 §2b installed, the module-patched
+   transport resolves to the PATCHED FAKE, which is NOT _REAL_CONNECT, so COUPLING does not
+   fire — the gate refuses on COHERENCE (incoherent clock). The WO's '-> COUPLING' assumes the
+   superseded sentinel model. Either way the gate FIRES and the ledger assertion FAILS.)
+mutation applied
+  mutated sha256 = 142f3d8768128bdccb7d87a5fcd48b9a3433fc842b2237daadd0486ed61afdc3
+  EXPECT: the mutated test FAILS (gate raises CLOCK_INJECTION_REFUSED) AND the session-end
+          gate-ledger teardown ERRORS with 'GATE FIRED during pass one'.
+conftest.py:136: in _gate_ledger_recorder
+    _write_gate_ledger_and_assert()
+conftest.py:184: in _write_gate_ledger_and_assert
+    assert not refused, (
+E   AssertionError: GATE FIRED during pass one (transport-only migration) � this is a FINDING, not friction. Refusals (excluding the guard's own test): [('tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path', 'REFUSED_COHERENCE')]. See C:\Projects\bot\trading-system\evidence\WO-024-PASS1\gate_ledger.txt.
+E   assert not [('tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path', 'REFUSED_COHERENCE')]
+================================== FAILURES ===================================
+______ test_receive_to_process_latency_recorded_through_production_path _______
+tests\integration\test_throughput.py:33: in test_receive_to_process_latency_recorded_through_production_path
+    async for _ in adapter.get_live_market_data(duration_seconds=0.1):
+src\trading\data\adapters\kraken_v2_book.py:2509: in get_live_market_data
+    self._assert_clock_transport_gate(incoherent_clocks_allowed)
+conftest.py:108: in _recording_gate
+    result = original(self, incoherent_clocks_allowed)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\trading\data\adapters\kraken_v2_book.py:2454: in _assert_clock_transport_gate
+    raise ValueError(
+E   ValueError: CLOCK_INJECTION_REFUSED: COHERENCE � injected clocks must be the coherent wall+monotonic pair from ONE source (D25: monotonic orders, wall locates). An incoherent pair is permitted ONLY when declared by name via incoherent_clocks_allowed=<reason>; the gate never infers it (RULING D34-3).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path
+ERROR tests/integration/test_throughput.py::test_message_rate_completeness_reports_silent_seconds
+==================== 1 failed, 1 passed, 1 error in 0.13s =====================
+
+  RESTORE sha256 = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  EXACT RESTORE (== pristine): YES
+
+======================= ARTIFACT 3 — PASS after exact restore ====================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests\integration\test_throughput.py ..                                  [100%]
+
+============================== 2 passed in 0.13s ==============================
+
+======================= ARTIFACT 4 — sha256 exact-restore ========================
+  final sha256   = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  pristine sha256= 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  IDENTICAL: YES
