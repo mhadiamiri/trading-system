@@ -18,6 +18,12 @@ Venue-Specific Details (must NOT leak above adapter):
 from datetime import datetime, UTC
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict
+# WO-021 §2: AsyncIterator is used in return annotations (get_live_market_data, get_market_data) and
+# was never imported. Python 3.11 evaluates annotations eagerly -> NameError at class definition
+# (masked on 3.14 by PEP 649). Targeted import from collections.abc (the canonical home since 3.9;
+# typing.AsyncIterator is the deprecated alias) — NOT `from __future__ import annotations`, which would
+# suppress the symptom project-wide and hide the next instance everywhere (WO-021 §2 ruling).
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 import enum
 import binascii

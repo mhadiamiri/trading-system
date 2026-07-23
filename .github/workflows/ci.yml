@@ -10,8 +10,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # WO-021 §3: TWO interpreters ON PURPOSE — do NOT collapse this to one leg and delete the detector.
+      #   3.11 = STRICT leg. It evaluates annotations EAGERLY, making it a PERMANENT DETECTOR for a whole
+      #     class of defect — a name used in an annotation but never imported — that the development host
+      #     (3.14, PEP 649 deferred annotations) is STRUCTURALLY BLIND TO. Standing instrumentation, not a
+      #     compatibility target. (This class hid the AsyncIterator NameError for ten work orders.)
+      #   3.14 = DEVELOPMENT leg. What local actually runs, so local-green and CI-green cannot diverge on
+      #     annotation semantics again.
+      #   Both legs run the full gate (preflight, import-linter lint, both pytest orders).
+      fail-fast: false  # run BOTH legs to completion so each reports independently (a detector must)
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.11", "3.14"]
 
     steps:
     - uses: actions/checkout@v3
@@ -39,6 +48,15 @@ jobs:
     # break. Bite-proved: evidence/WO-020/import_linter_step_bite_proof.txt.
     - name: Run import-linter (Constitutional Requirement IV)
       run: import-linter lint
+
+    # WO-021 (standing consequence): the annotation-name DETECTOR, paired with the strict 3.11 leg.
+    # The static scan sees the COMPLETE set of names used in an eager annotation but never imported
+    # (it does not abort at the first one, the way 3.11 collection does); the 3.11 leg then BEHAVIORALLY
+    # confirms any instance is real. It runs on BOTH legs on purpose — on the 3.14 leg it is the ONLY
+    # thing that can see this class (PEP 649 masks it from pytest there). Bite-proved:
+    # evidence/WO-021/annotation_scan_ci_step_bite_proof.txt. Exit 1 on any finding.
+    - name: Annotation-name detector (WO-021 — the class the 3.14 leg is structurally blind to)
+      run: python tools/annotation_name_scan.py
 
     # WO-020 §2: run BOTH orders like the local gate. Deterministic first (writes coverage), then the
     # randomized order — pytest-randomly prints "Using --randomly-seed=N", the visible proof it

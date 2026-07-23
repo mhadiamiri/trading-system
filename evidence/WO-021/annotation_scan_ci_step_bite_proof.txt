@@ -1,0 +1,30 @@
+WO-021 (standing consequence) — BITE PROOF: the annotation-name scan CI step FAILS on a real defect
+Doctrine: a step that has not been shown to FAIL has not been shown to RUN. Command = CI's exact line.
+Target of the injected defect: src/trading/data/market_state.py
+================================================================================
+--- sha256 BEFORE ---
+618f3558069c7a5f8eab5fd529008b07429e012f641fb9caaa38902211eabeb8 *src/trading/data/market_state.py
+
+=== ARTIFACT 1 — clean tree: 'python tools/annotation_name_scan.py' PASSES (exit 0) ===
+NAMES USED IN AN EAGER ANNOTATION BUT NOT IMPORTED/DEFINED (would NameError on 3.11): 0
+[exit: 0]
+
+>>> injected: def ... -> _WO021_CI_UNIMPORTED_NAME  (name never imported)
+
+=== ARTIFACT 2 — with the defect: the CI step FAILS (nonzero) and NAMES it ===
+NAMES USED IN AN EAGER ANNOTATION BUT NOT IMPORTED/DEFINED (would NameError on 3.11): 1
+  src/trading/data/market_state.py:102   _WO021_CI_UNIMPORTED_NAME
+  _WO021_CI_UNIMPORTED_NAME: 1
+[exit: 1]  (nonzero = the step fails, i.e. it runs)
+
+>>> RESTORE byte-exact
+--- sha256 AFTER ---
+618f3558069c7a5f8eab5fd529008b07429e012f641fb9caaa38902211eabeb8 *src/trading/data/market_state.py
+
+=== ARTIFACT 3 — restored: scan PASSES again (exit 0) ===
+NAMES USED IN AN EAGER ANNOTATION BUT NOT IMPORTED/DEFINED (would NameError on 3.11): 0
+[exit: 0]
+
+=== ARTIFACT 4 — exact restore: sha256 BEFORE == AFTER, git diff empty ===
+SHA256 MATCH (618f3558069c7a5f8eab5fd529008b07429e012f641fb9caaa38902211eabeb8)
+git diff EMPTY

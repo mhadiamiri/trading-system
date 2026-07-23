@@ -1,0 +1,32 @@
+WO-021 §4 — STRICT-LEG DETECTOR BITE PROOF
+Injected target: src/trading/data/market_state.py (imported during collection)
+3.11: Python 3.11.15   3.14: Python 3.14.6
+Both venvs point at the SAME scratch repo copy (already carrying the §2 fix).
+================================================================================
+--- sha256 BEFORE ---
+347a08c7775564812f8b9a77a212ba908aa1619753e7167f1f31bfb56b7ff9c6 *src/trading/data/market_state.py
+>>> injected: def ... -> _WO021_BITEPROOF_UNIMPORTED  (name never imported)
+
+=== ARTIFACT 1 — 3.11 STRICT leg: collect-only MUST FAIL with the real NameError ===
+collected 25 items / 39 errors
+E   NameError: name '_WO021_BITEPROOF_UNIMPORTED' is not defined
+E   NameError: name '_WO021_BITEPROOF_UNIMPORTED' is not defined
+E   NameError: name '_WO021_BITEPROOF_UNIMPORTED' is not defined
+[3.11 exit: 2]  (nonzero = detector fired)
+
+=== ARTIFACT 2 — 3.14 DEV leg: collect-only PASSES (masked by deferred annotations) ===
+======================== 215 tests collected in 2.55s =========================
+[3.14 exit: 0]  (0 = masked; THIS is why the matrix exists)
+
+>>> RESTORE byte-exact (cp backup)
+--- sha256 AFTER ---
+347a08c7775564812f8b9a77a212ba908aa1619753e7167f1f31bfb56b7ff9c6 *src/trading/data/market_state.py
+
+=== ARTIFACT 3 — both legs collect cleanly after restore ===
+3.11 restored: ======================== 215 tests collected in 0.20s =========================  [exit 0]
+3.14 restored: ======================== 215 tests collected in 0.13s =========================  [exit 0]
+
+=== ARTIFACT 4 — exact restore: sha256 BEFORE == AFTER ===
+BEFORE=347a08c7775564812f8b9a77a212ba908aa1619753e7167f1f31bfb56b7ff9c6
+AFTER =347a08c7775564812f8b9a77a212ba908aa1619753e7167f1f31bfb56b7ff9c6
+SHA256 MATCH — byte-exact restore

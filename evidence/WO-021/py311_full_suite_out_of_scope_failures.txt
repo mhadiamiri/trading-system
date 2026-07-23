@@ -1,0 +1,46 @@
+WO-021 §6 — 3.11 FULL SUITE: 9 FAILURES, ALL OUT OF SCOPE (annotation fix unmasked them)
+================================================================================
+After the §2 annotation fix, 3.11 COLLECTION passes (215 collected). But the full 3.11
+suite fails 9 tests. Isolated re-run (nothing else running) reproduces exactly 9 — REAL,
+not contention flakes. NONE is an annotation-name defect. Two root causes:
+
+3.14 both orders: 215/215 PASS. 3.11 deterministic: 9 failed / 206 passed (244.74s isolated).
+
+--- the 9 FAILED tests ---
+FAILED tests/integration/test_gap_recording.py::test_overlapping_gaps_union_and_collective_close
+FAILED tests/integration/test_live_capture.py::test_runner_drives_instrumented_transport_end_to_end
+FAILED tests/integration/test_live_capture.py::test_runner_persistence_is_not_optional_on_the_adapter
+FAILED tests/integration/test_live_capture.py::test_short_bounded_run_completes_with_readable_artifacts
+FAILED tests/integration/test_live_capture.py::test_breaker_trip_terminates_run_with_forensic_tail
+FAILED tests/integration/test_live_capture.py::test_runner_resolves_live_adapter_from_data_source_via_factory
+FAILED tests/integration/test_live_capture.py::test_live_capture_refuses_non_live_capable_data_source
+FAILED tests/integration/test_mean_cycle_baseline_gate.py::test_this_host_has_a_committed_baseline
+FAILED tests/integration/test_mean_cycle_baseline_gate.py::test_this_host_active_ledger_is_full_loop_with_the_adapter_only_ledger_closed
+
+ROOT CAUSE A (8 of 9) — HOST-SCOPED MEAN-CYCLE BASELINE (WO-016 D28/D29), NOT a 3.11 bug:
+  host_baseline fingerprint INCLUDES python_version (host_baseline.py:34). On 3.11 the
+  fingerprint is 6b34b1f1f7104301 {machine_id a28a45c1cac79570, python_version 3.11.15,
+  os 'Windows 10', cpu_arch AMD64}. config/mean_cycle_baselines.json contains ONE entry,
+  ba47c96a36f36642 {..., python_version 3.14.6, os 'Windows 11', ...}. No match on 3.11 ->
+  LiveCaptureRunner REFUSES to start (LiveCaptureError: MEAN_CYCLE_BASELINE_HOST_MISMATCH),
+  and test_this_host_has_a_committed_baseline HARD-ASSERTS rec is not None (no skip).
+  Failing: 6x test_live_capture.py (runner refuses) + 2x test_mean_cycle_baseline_gate.py.
+
+  *** THE SHARP CONSEQUENCE ***: the baseline is fingerprinted to the DEV MACHINE
+  (machine_id + python_version + os + cpu_arch). The GitHub CI ubuntu runner is a DIFFERENT
+  machine (Linux, different machine_id) on BOTH legs. So these 8 tests would fail on CI
+  REGARDLESS OF INTERPRETER — on the 3.14 leg too. 'CI green on both legs' is NOT achievable
+  as currently designed; the annotation fix merely UNMASKED it (before, CI never got past
+  collection, so these tests never RAN on CI). This is a WO-016 host-scoping design question,
+  not an annotation-name defect and not fixable within WO-021's scope.
+
+ROOT CAUSE B (1 of 9) — MONOTONIC-CLOCK TIMESTAMP COLLISION, 3.11-specific:
+  test_gap_recording.py::test_overlapping_gaps_union_and_collective_close
+  AssertionError: assert 37750.5 < 37750.5 — two GapRecords got the SAME open_monotonic
+  (gap_id 0 CHECKSUM_RESYNC and gap_id 1 VENUE_DISCONNECT both open_monotonic=37750.5).
+  The test asserts strict ordering; on 3.11 the two monotonic reads returned an identical
+  value (clock resolution / same-tick). Separate diagnosis; not annotation-related.
+
+IN-SCOPE STATUS (unaffected by the above): the annotation-name defect (denominator=2) IS
+fixed and verified — 3.14 both orders 215/215, 3.11 collection 215, static scan 0, §4 detector
+bite proof passes. The 9 failures are a SEPARATE class the matrix's strict leg surfaced.
