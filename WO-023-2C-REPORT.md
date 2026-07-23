@@ -160,7 +160,7 @@ sets `_monotonic_clock = time.monotonic` explicitly reads as NOT injected; one t
 - Bite proof: **5 assertions, 4 mutations, sha256 exact-restore** (above).
 - **Test count stays 216** (assertion 5 added to the existing test; no new/removed test).
 - **Ship impact:** tests + docs only — `kraken_v2_book.py` byte-unchanged (§1 found no defect).
-- **Commit / push / CI:** __COMMIT_CI__
+- **Commit / push / CI:** committed `9175969` on master, pushed, local == remote. **CI run `30036599896` GREEN on BOTH legs** — test (3.11) success, test (3.14) success.
 
 ---
 
