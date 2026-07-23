@@ -38,11 +38,55 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-23 (WO-021 + WO-022 done at `d9bcd74` — **CI IS GREEN ON BOTH LEGS (3.11 + 3.14)** for the first time; the WO-019→022 CI arc is CLOSED)
-**Current Phase**: **BETWEEN WOs — CI GREEN, both legs.** The long CI arc is done: WO-019 diagnosed, WO-020 repaired the verification surface, WO-021 fixed the `AsyncIterator` NameError + added the 3.11/3.14 matrix + annotation detector, WO-022 injected a synthetic baseline (8 tests) + fixed the gap-ordering assertion. **CI run `29981099178` (`d9bcd74`) is GREEN on BOTH legs.** Next by sequence: **the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.** (One KNOWN FLAKE to clean up first or in parallel — see the WO-021/022 block below: `test_ledger_persistence::test_gap_ledger_persisted_readable_from_disk`, a 0.25s-deadline timing race that failed once on Linux/3.11 CI and passed on re-run.)
-**Status**: HEAD `d9bcd74` on master (pushed; local == remote). **215 tests green on BOTH interpreters, both orders** — locally (3.14 working tree + Windows/3.11 clean venv, seed 20260722/20260723) AND on **CI both legs** (Linux 3.11 + 3.14, run `29981099178`, both jobs `success`). import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-021/WO-022** block below to resume.
+**Last Updated**: 2026-07-23 (WO-023 IN PROGRESS at `86e2a33` — wall-clock race audit committed; foundation STOPPED at a propose-and-report seam awaiting a lead decision)
+**Current Phase**: **WO-023 — wall-clock race fix, mid-flight.** WO-021+WO-022 closed the CI arc (CI green both legs at `d9bcd74`). WO-023 addresses the timing-race CLASS the flake exposed. §1 audit is committed standalone (`86e2a33`); the FOUNDATION (production clock seam + guard) is scoped to this session, the 30-test conversion to a fresh one. **Currently STOPPED at a propose-and-report seam** (see the WO-023 block below): the code investigation found the literal ruling ("route the deadline through `_wall_clock`") breaks the suspend test and mis-clocks an interval — awaiting the lead's confirmation to route the deadline through `_monotonic_clock` instead. **Nothing implemented yet; tree still green at `86e2a33`.** After the foundation: 30-test conversion → §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
+**Status**: HEAD `86e2a33` on master (pushed; local == remote). **215 tests green on BOTH interpreters, both orders** and **CI green both legs** as of `d9bcd74` (the WO-023 §1 commit `86e2a33` adds only an evidence file — no code change — so the 215/both-legs-green result stands). import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023** and **▶ WO-021/WO-022** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
+
+---
+
+## ▶ WO-023 IN PROGRESS (AUTHORITATIVE) — 2026-07-23 — wall-clock race audit + foundation (STOPPED at a propose seam)
+
+> Fixing the timing-race CLASS the WO-022 flake exposed. WO says: audit → deterministic driving via an
+> injectable clock → re-run precedent. Report: none yet (mid-flight). Audit: `evidence/WO-023/wall_clock_race_audit.txt`.
+
+**§1 AUDIT — DONE, committed standalone at `86e2a33` (the named seam).**
+- Enumerated every wall-clock-gated test (forms: `duration_seconds=`, real `asyncio/time.sleep`, `wait_for`,
+  monotonic/time compares, `_reconnect_sleep=None`, `starve_event_loop`) + declared the forms the search can't see.
+- **ROOT CAUSE:** `get_live_market_data` terminates only on `while time.time() < deadline` (kraken_v2_book.py:2434;
+  deadline set from raw `time.time()` at :2388). Tests drive it against a REAL clock, so every in-loop assertion
+  gambles on scheduler load.
+- **CLASSIFICATION:** **30 STRUCTURAL RACES, ALL corpus-critical** (gap ledger, reconnect, checksum, failure capture,
+  instruments) + **7 legitimate BOUNDS** (breaker-trip/crash/immediate-refuse self-terminate via the script).
+
+**LEAD'S RULINGS (in `instructions.md` update block):**
+- Ruling 1: OPTION (a) — route the deadline through the existing injectable clock. (b) [a 2nd termination path] rejected.
+- Ruling 2: fix ALL 30 at once (a subset creates a split deterministic/racy state).
+- Ruling 3 — THREE GUARDS: (1) live mode REFUSES a non-default clock with a declared code, PRE-CONNECTION; the ruled
+  invariant is **"a non-default clock is permitted ONLY where the transport is also non-default; a real transport +
+  fake clock refuses"**; (2) COHERENT wall+monotonic from one source (fixed offset; D25 preserved), coherence default /
+  divergence opt-in-and-named (the suspend test is the sole exception), and the same gate ALSO checks coherence; (3)
+  keep ONE short real-clock deadline test as a legitimate bound.
+- SCOPE: **FOUNDATION ONLY this session** (clock seam + coherent `FakeClock` + guard/declared-code + S13 bite proof +
+  hot-path re-baseline), commit green, STOP. The **30-test conversion + §3/§4/§5 go to a FRESH session**. SHIP IMPACT: YES.
+
+**▶ WHERE IT STOPPED — a propose-and-report seam (the lead required "propose the mechanism from the code first"):**
+The code investigation surfaced two facts that adjust Ruling 1, so nothing was implemented — reported for a decision:
+1. **Transport is NOT observable** (the lead's prior assumed it was): the clock is a field (`_wall_clock`), but the
+   transport is module-level `websockets.connect` (monkeypatched by tests). FIX: add a symmetric **`_connect_fn` seam**
+   (constructor-injected, default `websockets.connect`) so the guard can see "which transport" pre-connection.
+2. **Routing the deadline through `_wall_clock` breaks the suspend test AND violates D25.** `_wall_clock` is already
+   the SUSPEND detector's wall (line 1136: "NOT used for the deadline"); `test_host_suspend_recorded` injects it as a
+   `_JumpClock(jump_by=120s)`. Deadline-on-`_wall_clock` → the 120s jump exceeds the deadline and ends the run before
+   the suspend is detected → that test fails (so "215 unchanged" would not hold). Also, a 60-min deadline is an
+   INTERVAL → D25 puts intervals on MONOTONIC, not wall.
+   **PROPOSAL (awaiting confirmation):** route the deadline through a NEW **`_monotonic_clock` seam** (interval-correct
+   per D25). The suspend test injects only `_wall_clock` (fake wall, real monotonic — the enumerated incoherent
+   exception), so the deadline stays on monotonic and the suspend jump never touches it. Clean, no test broken.
+
+**NEXT ACTION:** the lead confirms deadline→`_monotonic_clock` (then implement the foundation as scoped), OR insists on
+`_wall_clock` (then `test_host_suspend_recorded` must convert this session). Tree is GREEN at `86e2a33`; nothing implemented.
 
 ---
 
