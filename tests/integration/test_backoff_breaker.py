@@ -45,8 +45,8 @@ def _bad_snapshot():
     return bad
 
 
-def _live_adapter():
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+def _live_adapter(connect_fn=None):
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep         # no real backoff waits
     adapter._reconnect_jitter = lambda: 1.0      # deterministic ladder delays
@@ -58,19 +58,17 @@ def _live_adapter():
 @pytest.mark.asyncio
 async def test_transient_reopen_failure_retries_under_backoff_then_emission_resumes():
     """(a) Two reopen failures -> backoff retries -> third reopen succeeds -> emission resumes."""
-    adapter = _live_adapter()
-
     socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]  # sync, then 5 real failures
     socket2 = [SNAPSHOT_FRAME]                                        # the reopen that succeeds
     # connect #1 = socket1 (initial); #2,#3 = refused reopens; #4 = socket2.
     factory = ScriptedConnectionFactory([socket1, REOPEN_FAILURE, REOPEN_FAILURE, socket2])
+    adapter = _live_adapter(connect_fn=factory.connect)
 
     # Short window: under keepalive a silent link reconnects rather than ending the run, so
     # the capture ends at its deadline (well under the default ping/absence thresholds).
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=0.1):
-            emitted.append(state)
+    async for state in adapter.get_live_market_data(duration_seconds=0.1):
+        emitted.append(state)
 
     # END STATE: emission resumed after the retried reconnect (not "retry was attempted").
     assert len(emitted) == 2, (
@@ -87,23 +85,22 @@ async def test_transient_reopen_failure_retries_under_backoff_then_emission_resu
 @pytest.mark.asyncio
 async def test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail():
     """(b) Reopen keeps failing -> circuit breaker trips -> loud failure + forensic tail + retained capture."""
-    adapter = _live_adapter()
+    socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]
+    # connect #1 = socket1; the rest are refused reopens. The breaker trips on TIME, not
+    # count, before exhausting these — plenty of failures so the trip, not the factory, ends it.
+    factory = ScriptedConnectionFactory([socket1] + [REOPEN_FAILURE] * 20)
+
+    adapter = _live_adapter(connect_fn=factory.connect)
     # The DURATION breaker trips on elapsed WALL-CLOCK, so this proof uses REAL (tiny) backoff
     # sleeps (not the no-op) and a small T: the streak crosses T=0.1s after a few ~0.01-0.04s
     # retries. Deterministic jitter (1.0, from _live_adapter) makes the ladder reproducible.
     adapter._reconnect_sleep = None            # real asyncio.sleep so wall-clock advances
     adapter._reconnect_max_failure_seconds = 0.1
 
-    socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]
-    # connect #1 = socket1; the rest are refused reopens. The breaker trips on TIME, not
-    # count, before exhausting these — plenty of failures so the trip, not the factory, ends it.
-    factory = ScriptedConnectionFactory([socket1] + [REOPEN_FAILURE] * 20)
-
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        with pytest.raises(CircuitBreakerTripped) as exc_info:
-            async for state in adapter.get_live_market_data(duration_seconds=30):
-                emitted.append(state)
+    with pytest.raises(CircuitBreakerTripped) as exc_info:
+        async for state in adapter.get_live_market_data(duration_seconds=30):
+            emitted.append(state)
 
     exc = exc_info.value
 

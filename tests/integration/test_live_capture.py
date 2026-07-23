@@ -62,19 +62,17 @@ async def test_runner_drives_instrumented_transport_end_to_end(tmp_path, injecte
     Baseline INJECTED (WO-022 §1) so this is host-independent; the no-baseline refusal is proved
     separately (test_runner_refuses_host_with_no_baseline)."""
     persist = tmp_path / "gap_ledger.jsonl"
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    # SNAPSHOT (emits) + a valid incremental (emits), then heartbeats keep the link alive.
+    factory = ScriptedConnectionFactory([
+        {"frames": [SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL], "on_drain": "heartbeat"},
+    ])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
     runner = LiveCaptureRunner(
         persist_path=persist, duration_seconds=0.25, trading_env="paper",
         adapter=adapter, loop=_paper_loop(),
     )
 
-    # SNAPSHOT (emits) + a valid incremental (emits), then heartbeats keep the link alive.
-    factory = ScriptedConnectionFactory([
-        {"frames": [SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL], "on_drain": "heartbeat"},
-    ])
-
-    with patch("websockets.connect", factory.connect):
-        result = await runner.run()
+    result = await runner.run()
 
     # Drove the INSTRUMENTED live transport (mainnet provenance, real connection object opened).
     assert result["venue_name"] == "kraken_mainnet"
@@ -99,12 +97,11 @@ async def test_runner_persistence_is_not_optional_on_the_adapter(tmp_path, injec
     """The runner configures the adapter's persistence path, so the adapter's own
     GAP_PERSIST_UNCONFIGURED refusal is satisfied by configuration, not by opting out."""
     persist = tmp_path / "g.jsonl"
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
     runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.15, trading_env="paper",
                                adapter=adapter, loop=_paper_loop())
-    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    with patch("websockets.connect", factory.connect):
-        await runner.run()
+    await runner.run()
     assert adapter._persistence_optional is False, "the adapter never opts out; it is configured"
     assert adapter._gap_persist_path == str(persist)
 
@@ -116,13 +113,12 @@ async def test_short_bounded_run_completes_with_readable_artifacts(tmp_path, inj
     the gap-ledger JSONL (run_start..run_end) and the per-minute emitted series — not merely that
     a method ran."""
     persist = tmp_path / "gap_ledger.jsonl"
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.2, trading_env="paper",
-                               adapter=adapter, loop=_paper_loop())
     conn = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL], "on_drain": "heartbeat"}])
-    with patch("websockets.connect", conn.connect):
-        result = await runner.run()
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=conn.connect)
+    runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.2, trading_env="paper",
+                               adapter=adapter, loop=_paper_loop())
+    result = await runner.run()
 
     # Artifacts readable from disk (not "a flush was called").
     assert persist.exists()
@@ -142,29 +138,27 @@ async def test_clean_deadline_close_does_not_reconnect_dual():
     (a) reaching the capture DEADLINE ends the run WITHOUT reconnecting;
     (b) an ABNORMAL mid-run disconnect DOES reconnect. Both halves, one test."""
     # ── (a) clean deadline close -> NO reconnect ──
-    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter_a._persistence_optional = True
     conn_a = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    with patch("websockets.connect", conn_a.connect):
-        async for _ in adapter_a.get_live_market_data(duration_seconds=0.15):
-            pass
+    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=conn_a.connect)
+    adapter_a._persistence_optional = True
+    async for _ in adapter_a.get_live_market_data(duration_seconds=0.15):
+        pass
     assert conn_a.connect_count == 1, "reaching the deadline must NOT reconnect (re-run stops at 60m)"
     assert adapter_a.capture_terminated is None
     assert [g for g in adapter_a.get_gap_ledger().gaps
             if g.cause in ("KEEPALIVE_RECONNECT", "VENUE_DISCONNECT")] == [], "no reconnect gap"
 
     # ── (b) abnormal mid-run disconnect -> DOES reconnect (the dual) ──
-    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter_b._persistence_optional = True
-    adapter_b._reconnect_sleep = _no_sleep
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     conn_b = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
-    with patch("websockets.connect", conn_b.connect):
-        async for _ in adapter_b.get_live_market_data(duration_seconds=0.25):
-            pass
+    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=conn_b.connect)
+    adapter_b._persistence_optional = True
+    adapter_b._reconnect_sleep = _no_sleep
+    async for _ in adapter_b.get_live_market_data(duration_seconds=0.25):
+        pass
     assert conn_b.connect_count == 2, "an abnormal disconnect MUST reconnect (not treated as a deadline)"
 
 
@@ -172,17 +166,16 @@ async def test_clean_deadline_close_does_not_reconnect_dual():
 async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path, injected_baseline):
     """OWED (3): a persistent reopen failure trips the breaker; the RUNNER SURFACES the
     termination (forensic tail + retained partial capture), not a crash."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._reconnect_sleep = None                 # real tiny sleeps so the DURATION breaker advances
-    adapter._reconnect_max_failure_seconds = 0.1
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     conn = ScriptedConnectionFactory(
         [{"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"}] + [REOPEN_FAILURE] * 20)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=conn.connect)
+    adapter._reconnect_sleep = None                 # real tiny sleeps so the DURATION breaker advances
+    adapter._reconnect_max_failure_seconds = 0.1
     runner = LiveCaptureRunner(persist_path=tmp_path / "g.jsonl", duration_seconds=30,
                                trading_env="paper", adapter=adapter, loop=_paper_loop())
 
-    with patch("websockets.connect", conn.connect):
-        result = await runner.run()   # must NOT raise — the runner surfaces the trip
+    result = await runner.run()   # must NOT raise — the runner surfaces the trip
 
     term = result["terminated"]
     assert term is not None, "the breaker trip must be surfaced by the runner, not crash"

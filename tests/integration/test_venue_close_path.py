@@ -36,20 +36,19 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
     """S13 dual: unexpected close -> reconnect; expected (clean) close -> clean shutdown, no reconnect."""
 
     # ── HALF 1: UNEXPECTED close (abnormal 1011) -> routes into recovery ──────────────
-    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter_a._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-    adapter_a._reconnect_sleep = _no_sleep
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     factory_a = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_a.connect)
+    adapter_a._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+    adapter_a._reconnect_sleep = _no_sleep
 
     emitted_a = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory_a.connect):
-            async for state in adapter_a.get_live_market_data(duration_seconds=0.25):
-                emitted_a.append(state)
+        async for state in adapter_a.get_live_market_data(duration_seconds=0.25):
+            emitted_a.append(state)
 
     assert factory_a.connect_count == 2, "an UNEXPECTED close must reconnect"
     assert factory_a.sockets[0].closed is True
@@ -58,9 +57,6 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
 
     # ── HALF 2: EXPECTED close (clean 1000) -> clean shutdown, NO reconnect ───────────
     caplog.clear()
-    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter_b._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-    adapter_b._reconnect_sleep = _no_sleep
     expected = ConnectionClosedOK(Close(1000, "normal closure"), None)
     # A clean close must NOT reconnect, so the second socket is a SPARE the correct code never
     # opens (connect_count stays 1). It exists only so that if the clean close WRONGLY
@@ -70,12 +66,14 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
         {"frames": [SNAPSHOT_FRAME, expected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_b.connect)
+    adapter_b._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+    adapter_b._reconnect_sleep = _no_sleep
 
     emitted_b = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory_b.connect):
-            async for state in adapter_b.get_live_market_data(duration_seconds=0.25):
-                emitted_b.append(state)
+        async for state in adapter_b.get_live_market_data(duration_seconds=0.25):
+            emitted_b.append(state)
 
     assert factory_b.connect_count == 1, "a CLEAN close must NOT reconnect"
     assert len(emitted_b) == 1, "only the pre-close snapshot emits; the run ends cleanly"

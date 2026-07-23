@@ -41,12 +41,6 @@ async def _no_sleep(_delay):
 @pytest.mark.asyncio
 async def test_heartbeat_absence_triggers_reconnect(caplog):
     """§1.1: a link that goes SILENT (no heartbeat/data/pong) is presumed dead -> reconnect."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-    adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
-    adapter._heartbeat_absence_timeout = 0.05   # declare dead after 50ms of silence
-    adapter._app_ping_interval = 100.0          # disable the app ping so §1.1 is isolated
-
     # Socket 1: one good snapshot (emits), then SILENT (on_drain="block") -> absence fires.
     # Socket 2: the reconnect target — a good snapshot, then heartbeats keep it alive so the
     # capture ends at its deadline instead of reconnecting again.
@@ -54,12 +48,16 @@ async def test_heartbeat_absence_triggers_reconnect(caplog):
         {"frames": [SNAPSHOT_FRAME], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+    adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
+    adapter._heartbeat_absence_timeout = 0.05   # declare dead after 50ms of silence
+    adapter._app_ping_interval = 100.0          # disable the app ping so §1.1 is isolated
 
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.25):
+            emitted.append(state)
 
     # END STATE: the silence was DETECTED and drove a real reconnect.
     assert "HEARTBEAT_ABSENCE" in caplog.text, "absence must be detected and logged with its code"
@@ -73,12 +71,6 @@ async def test_heartbeat_absence_triggers_reconnect(caplog):
 @pytest.mark.asyncio
 async def test_application_ping_pong_keeps_a_quiet_link_alive(caplog):
     """§1.2: on a data-quiet link, the app ping elicits pongs that keep it alive (no reconnect)."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-    adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
-    adapter._app_ping_interval = 0.02           # probe every 20ms
-    adapter._heartbeat_absence_timeout = 0.08   # WOULD trip in 80ms of true silence...
-
     # Socket 1: one good snapshot, then data-quiet but auto-PONGING. Absence (80ms) is well
     # inside the 250ms window, so WITHOUT the pong the link would be declared dead; the pong
     # refreshing the absence clock is therefore load-bearing. Socket 2 is a spare the passing
@@ -89,12 +81,16 @@ async def test_application_ping_pong_keeps_a_quiet_link_alive(caplog):
         {"frames": [SNAPSHOT_FRAME], "on_drain": "block", "auto_pong": True},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+    adapter._reconnect_sleep = _no_sleep        # backoff is instant (no real waits / hangs)
+    adapter._app_ping_interval = 0.02           # probe every 20ms
+    adapter._heartbeat_absence_timeout = 0.08   # WOULD trip in 80ms of true silence...
 
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.25):
+            emitted.append(state)
 
     socket = factory.sockets[0]
     pings = [m for m in socket.sent if m.get("method") == "ping"]

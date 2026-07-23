@@ -52,13 +52,12 @@ def _close_1011():
 @pytest.mark.asyncio
 async def test_protocol_ping_params_set_deliberately():
     """The deliberate protocol-ping config reaches websockets.connect (not the library defaults)."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.05):
-            pass
+    async for _ in adapter.get_live_market_data(duration_seconds=0.05):
+        pass
 
     kwargs = factory.connect_kwargs[0]
     assert kwargs["ping_interval"] == 20.0, "WS pings are still SENT (not silently disabled)"
@@ -76,10 +75,6 @@ async def test_protocol_level_close_recovers(caplog):
     not a capture-ending crash. Terminates in the observable end state: a fresh connection is
     opened and EMISSION RESUMES. This is the layer that actually threw the 1011.
     """
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-    adapter._reconnect_sleep = _no_sleep
-
     # Socket 1: a synchronized book (emits), then a PROTOCOL-LEVEL 1011 close on recv.
     socket1 = {"frames": [SNAPSHOT_FRAME, _close_1011()], "on_drain": "block"}
     # Socket 2: the reconnect target — a fresh snapshot, then heartbeats keep it alive so the
@@ -87,11 +82,14 @@ async def test_protocol_level_close_recovers(caplog):
     socket2 = {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}
     factory = ScriptedConnectionFactory([socket1, socket2])
 
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+    adapter._reconnect_sleep = _no_sleep
+
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.25):
+            emitted.append(state)
 
     # OBSERVABLE END STATE: the protocol-level close was recovered, not fatal.
     assert factory.connect_count == 2, "a protocol-level 1011 close must OPEN a fresh socket"

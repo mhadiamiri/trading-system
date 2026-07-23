@@ -28,8 +28,8 @@ async def _no_sleep(_delay):
     return None
 
 
-def _live_adapter():
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+def _live_adapter(connect_fn=None):
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
     adapter._heartbeat_absence_timeout = 100.0   # isolate the checksum failure, no reconnect
@@ -52,14 +52,13 @@ def _bad_snapshot(with_identifier=False):
 async def test_checksum_failure_capture_has_every_ruled_field():
     """Drive ONE real checksum failure through the live transport; assert the artifact carries
     every ruled field, populated, and is redacted."""
-    adapter = _live_adapter()
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, _bad_snapshot(with_identifier=True)], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
 
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.2):
-            pass
+    async for _ in adapter.get_live_market_data(duration_seconds=0.2):
+        pass
 
     caps = adapter.get_checksum_failure_captures()
     assert len(caps) >= 1, "a checksum failure must be captured"
@@ -102,17 +101,16 @@ async def test_checksum_failure_capture_has_every_ruled_field():
 async def test_every_checksum_failure_captured_not_positionally_sampled():
     """THREE distinct failures -> THREE captures. The count proves capture-on-every-occurrence,
     the property WO-008b-B's positional sampling did not have."""
-    adapter = _live_adapter()
     # SNAPSHOT (good) then three bad snapshots — each applies and fails its checksum. Three is
     # below the 5-failure reconnect threshold, so all three are same-socket failures.
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, _bad_snapshot(), _bad_snapshot(), _bad_snapshot()],
          "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
 
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.2):
-            pass
+    async for _ in adapter.get_live_market_data(duration_seconds=0.2):
+        pass
 
     caps = adapter.get_checksum_failure_captures()
     assert len(caps) == 3, f"every failure captured (not sampled); got {len(caps)}"

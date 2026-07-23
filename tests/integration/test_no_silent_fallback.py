@@ -29,17 +29,16 @@ class TestNoSilentFallback:
         It must not emit a single MarketState — emitting even one would mean
         fixture data had been presented as live.
         """
-        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-        adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-
         async def _boom(*args, **kwargs):
             raise OSError("simulated: connection refused")
 
+        adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=_boom)
+        adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+
         emitted = []
-        with patch("websockets.connect", _boom):
-            with pytest.raises(ConnectionError) as exc_info:
-                async for state in adapter.get_live_market_data(duration_seconds=5):
-                    emitted.append(state)
+        with pytest.raises(ConnectionError) as exc_info:
+            async for state in adapter.get_live_market_data(duration_seconds=5):
+                emitted.append(state)
 
         assert emitted == [], (
             "a failed connection emitted MarketStates — fixtures were replayed as live"

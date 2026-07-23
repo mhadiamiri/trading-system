@@ -38,8 +38,8 @@ async def _no_sleep(_delay):
     return None
 
 
-def _live_adapter():
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+def _live_adapter(connect_fn=None):
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
     adapter._reconnect_jitter = lambda: 1.0      # deterministic ladder delays
@@ -80,20 +80,18 @@ def _assert_core_fields(g):
 async def test_keepalive_reconnect_gap_recorded(caplog):
     """CAUSE 1: a silent link -> heartbeat absence -> reconnect -> a KEEPALIVE_RECONNECT gap
     that OPENS at the last frame and CLOSES at the post-reconnect validated emit."""
-    adapter = _live_adapter()
-    adapter._heartbeat_absence_timeout = 0.05   # dead after 50ms of silence
-    adapter._app_ping_interval = 100.0          # isolate §1.1
-
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME], "on_drain": "block"},        # emit, then SILENT -> absence
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},    # reconnect target: emit, stay alive
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._heartbeat_absence_timeout = 0.05   # dead after 50ms of silence
+    adapter._app_ping_interval = 100.0          # isolate §1.1
 
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.25):
+            emitted.append(state)
 
     ledger = adapter.get_gap_ledger()
     assert ledger is not None
@@ -115,18 +113,16 @@ async def test_keepalive_reconnect_gap_recorded(caplog):
 async def test_checksum_resync_gap_recorded():
     """CAUSE 2: a single checksum failure -> CHECKSUM_RESYNC gap on the SAME socket (no
     reconnect, so retry_ladder is empty) -> closed by the fresh snapshot."""
-    adapter = _live_adapter()
-    adapter._heartbeat_absence_timeout = 100.0
-    adapter._app_ping_interval = 100.0
-
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, _corrupted_update(), SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._heartbeat_absence_timeout = 100.0
+    adapter._app_ping_interval = 100.0
 
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=0.25):
-            emitted.append(state)
+    async for state in adapter.get_live_market_data(duration_seconds=0.25):
+        emitted.append(state)
 
     assert factory.connect_count == 1, "a single checksum failure resyncs on the SAME socket"
     ledger = adapter.get_gap_ledger()
@@ -143,20 +139,18 @@ async def test_checksum_resync_gap_recorded():
 async def test_breaker_retry_ladder_recorded_on_reconnect_gap():
     """CAUSE 3: BREAKER_RETRY_LADDER manifests as the retry_ladder FIELD (§1.1). Two failed
     reopens under backoff -> the triggering gap carries a 2-entry, well-formed ladder."""
-    adapter = _live_adapter()
-    adapter._heartbeat_absence_timeout = 100.0
-    adapter._app_ping_interval = 100.0
-
     socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]  # sync, then 5 real failures
     factory = ScriptedConnectionFactory(
         [socket1, REOPEN_FAILURE, REOPEN_FAILURE, [SNAPSHOT_FRAME]],
         on_drain="heartbeat",
     )
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._heartbeat_absence_timeout = 100.0
+    adapter._app_ping_interval = 100.0
 
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=0.25):
-            emitted.append(state)
+    async for state in adapter.get_live_market_data(duration_seconds=0.25):
+        emitted.append(state)
 
     assert factory.failed_attempts == 2, "the reopen failed twice before succeeding"
     ledger = adapter.get_gap_ledger()
@@ -175,18 +169,17 @@ async def test_breaker_retry_ladder_recorded_on_reconnect_gap():
 async def test_venue_disconnect_gap_recorded(caplog):
     """CAUSE 4c: an UNEXPECTED venue close -> VENUE_DISCONNECT gap routed into reconnect ->
     resumes on the fresh socket."""
-    adapter = _live_adapter()
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
 
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.25):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.25):
+            emitted.append(state)
 
     assert factory.connect_count == 2, "an unexpected close reconnects"
     ledger = adapter.get_gap_ledger()
@@ -203,19 +196,18 @@ async def test_terminal_venue_disconnect_breaker_gap_recorded():
     """CAUSE 4a: a venue close whose reopen never succeeds -> the breaker trips -> the
     VENUE_DISCONNECT gap is TERMINAL: never closes (+inf, default-deny), carries the retry
     ladder, and is COMPLETE (a known open-ended gap, not an integrity deficit)."""
-    adapter = _live_adapter()
-    adapter._reconnect_sleep = None                 # real tiny sleeps so the DURATION breaker advances
-    adapter._reconnect_max_failure_seconds = 0.1
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     factory = ScriptedConnectionFactory(
         [{"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"}] + [REOPEN_FAILURE] * 20,
     )
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._reconnect_sleep = None                 # real tiny sleeps so the DURATION breaker advances
+    adapter._reconnect_max_failure_seconds = 0.1
 
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        with pytest.raises(CircuitBreakerTripped):
-            async for state in adapter.get_live_market_data(duration_seconds=30):
-                emitted.append(state)
+    with pytest.raises(CircuitBreakerTripped):
+        async for state in adapter.get_live_market_data(duration_seconds=30):
+            emitted.append(state)
 
     ledger = adapter.get_gap_ledger()
     assert ledger.gaps_detected == 1
@@ -239,20 +231,19 @@ async def test_overlapping_gaps_union_and_collective_close():
     distinguished per-occurrence (gap_id), their no-emission windows OVERLAP (gaps are NOT
     disjoint — the union query, not containment, is what the reader needs), and BOTH close at
     the SAME instant (collective close — a child cannot close while its parent stays open)."""
-    adapter = _live_adapter()
-    adapter._heartbeat_absence_timeout = 100.0
-    adapter._app_ping_interval = 100.0
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
 
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, _corrupted_update(), unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._heartbeat_absence_timeout = 100.0
+    adapter._app_ping_interval = 100.0
 
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=0.25):
-            emitted.append(state)
+    async for state in adapter.get_live_market_data(duration_seconds=0.25):
+        emitted.append(state)
 
     ledger = adapter.get_gap_ledger()
     assert ledger.gaps_detected == 2, f"two overlapping gaps; got {ledger.gaps_detected}"
@@ -282,21 +273,19 @@ async def test_ledger_reports_incomplete_gap(caplog):
     """LEDGER COMPLETENESS: a checksum gap that opens but whose capture ENDS before a fresh
     snapshot validates is DETECTED-but-uncompleted. It is retained (open-ended, default-deny)
     and reported loudly as GAP_LEDGER_INCOMPLETE — never silently dropped."""
-    adapter = _live_adapter()
-    adapter._heartbeat_absence_timeout = 100.0   # do NOT let absence reconnect and close it
-    adapter._app_ping_interval = 100.0
-
     # SNAPSHOT emits; the corrupted update opens a checksum gap; then the link goes silent and
     # the capture reaches its deadline with the gap still open.
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, _corrupted_update()], "on_drain": "block"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._heartbeat_absence_timeout = 100.0   # do NOT let absence reconnect and close it
+    adapter._app_ping_interval = 100.0
 
     emitted = []
     with caplog.at_level(logging.INFO):
-        with patch("websockets.connect", factory.connect):
-            async for state in adapter.get_live_market_data(duration_seconds=0.15):
-                emitted.append(state)
+        async for state in adapter.get_live_market_data(duration_seconds=0.15):
+            emitted.append(state)
 
     ledger = adapter.get_gap_ledger()
     assert ledger.gaps_detected == 1

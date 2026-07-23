@@ -94,15 +94,14 @@ async def test_host_suspend_recorded_diagnostic_not_terminal(caplog):
 async def test_no_host_suspend_under_normal_timing():
     """Normal operation (no injected jump) records NO host-suspend gap — wall and monotonic
     track each other well within the drift bound."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
     adapter._persistence_optional = True
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0
-    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
 
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.2):
-            pass
+    async for _ in adapter.get_live_market_data(duration_seconds=0.2):
+        pass
 
     ledger = adapter.get_gap_ledger()
     assert [g for g in ledger.gaps if g.cause == "HOST_SUSPEND"] == []

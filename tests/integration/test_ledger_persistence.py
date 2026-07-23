@@ -29,8 +29,8 @@ async def _no_sleep(_delay):
     return None
 
 
-def _live_adapter(persist_path):
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+def _live_adapter(persist_path, connect_fn=None):
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
     adapter._reconnect_sleep = _no_sleep
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0
@@ -48,16 +48,15 @@ async def test_gap_ledger_persisted_readable_from_disk(tmp_path):
     """A clean capture with a real gap writes an append-only JSONL whose records are readable
     from disk with their fields — run_start, the gap open+resolved, and run_end."""
     path = tmp_path / "gap_ledger.jsonl"
-    adapter = _live_adapter(path)
     unexpected = ConnectionClosedError(Close(1011, "internal error"), None)
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(path, connect_fn=factory.connect)
 
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
-            pass
+    async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+        pass
 
     records = _read_jsonl(path)
     events = [r["event"] for r in records]
@@ -84,7 +83,6 @@ async def test_incremental_persist_survives_unhandled_exception_mid_capture(tmp_
     mid-capture. The gap's "open" record was written+fsync'd AT OPEN, so it is ON DISK despite
     the crash — durability does not depend on reaching a clean end."""
     path = tmp_path / "gap_ledger.jsonl"
-    adapter = _live_adapter(path)
     corrupted = copy.deepcopy(UPDATE_MODIFY_LEVEL)
     corrupted["data"][0]["bids"][0]["price"] = "45283.7"   # real checksum failure -> gap opens
     crash = RuntimeError("injected unhandled crash mid-capture")
@@ -93,11 +91,11 @@ async def test_incremental_persist_survives_unhandled_exception_mid_capture(tmp_
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, corrupted, crash], "on_drain": "block"},
     ])
+    adapter = _live_adapter(path, connect_fn=factory.connect)
 
-    with patch("websockets.connect", factory.connect):
-        with pytest.raises(RuntimeError, match="injected unhandled crash"):
-            async for _ in adapter.get_live_market_data(duration_seconds=0.25):
-                pass
+    with pytest.raises(RuntimeError, match="injected unhandled crash"):
+        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+            pass
 
     # OBSERVABLE END STATE: the gap open record is readable from the file, written incrementally
     # BEFORE the crash — not batched to a finalize that a real kill would never reach.
@@ -116,14 +114,13 @@ async def test_live_capture_refuses_when_persistence_unset():
     explicit opt-out REFUSES to run — an opt-in durability feature that silently no-ops when
     unset is the vigilance-enforced guarantee the persistence fix closed. Observable end state:
     it refuses BEFORE opening any connection."""
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
     # Unconfigured: no path AND not opted out (the real-run hazard).
     assert adapter._gap_persist_path is None and adapter._persistence_optional is False
-    factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
 
-    with patch("websockets.connect", factory.connect):
-        with pytest.raises(ValueError, match="GAP_PERSIST_UNCONFIGURED"):
-            async for _ in adapter.get_live_market_data(duration_seconds=0.1):
-                pass
+    with pytest.raises(ValueError, match="GAP_PERSIST_UNCONFIGURED"):
+        async for _ in adapter.get_live_market_data(duration_seconds=0.1):
+            pass
 
     assert factory.connect_count == 0, "it must refuse before opening a live connection"

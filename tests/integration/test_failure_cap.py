@@ -30,8 +30,8 @@ def _bad_snapshot():
     return bad
 
 
-def _live_adapter():
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
+def _live_adapter(connect_fn=None):
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0
@@ -45,18 +45,16 @@ def _live_adapter():
 async def test_count_cap_keeps_first_n_counts_all_announces(caplog):
     """COUNT cap: 6 failures, cap 3 -> the FIRST 3 kept (the onset), all 6 COUNTED, announced,
     run NOT terminated."""
-    adapter = _live_adapter()
-    adapter._max_failure_captures = 3
-
     # SNAPSHOT (position 1) then six bad snapshots (positions 2..7), each a real checksum failure.
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(6)], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._max_failure_captures = 3
 
     with caplog.at_level(logging.ERROR):
-        with patch("websockets.connect", factory.connect):
-            async for _ in adapter.get_live_market_data(duration_seconds=0.25):
-                pass
+        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+            pass
 
     # COUNT is never capped.
     assert adapter.get_checksum_failure_count() == 6, "every failure is counted"
@@ -76,18 +74,16 @@ async def test_count_cap_keeps_first_n_counts_all_announces(caplog):
 async def test_byte_cap_binds_independently(caplog):
     """BYTE cap binds independently of count (whichever comes first). A tiny byte budget caps
     retention well before the count limit; the count keeps rising, and it announces."""
-    adapter = _live_adapter()
-    adapter._max_failure_captures = 1000          # count will NOT bind
-    adapter._max_failure_capture_bytes = 2000     # ~2 KB: binds after very few captures
-
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(6)], "on_drain": "heartbeat"},
     ])
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._max_failure_captures = 1000          # count will NOT bind
+    adapter._max_failure_capture_bytes = 2000     # ~2 KB: binds after very few captures
 
     with caplog.at_level(logging.ERROR):
-        with patch("websockets.connect", factory.connect):
-            async for _ in adapter.get_live_market_data(duration_seconds=0.25):
-                pass
+        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+            pass
 
     assert adapter.get_checksum_failure_count() == 6, "count is never capped"
     assert len(adapter.get_checksum_failure_captures()) < 6, "the byte cap bound before count"
@@ -100,15 +96,14 @@ async def test_capped_failures_get_one_line_summaries():
     """WO-014c-3 addendum A: failures BEYOND the cap get a ONE-LINE summary (utc, expected/
     computed checksum, sequence position; NO raw frames), so a cluster's PHASES stay visible
     where the count alone cannot show them."""
-    adapter = _live_adapter()
-    adapter._max_failure_captures = 2   # first 2 fully captured; the rest summarized
-
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(6)], "on_drain": "heartbeat"},
     ])
-    with patch("websockets.connect", factory.connect):
-        async for _ in adapter.get_live_market_data(duration_seconds=0.25):
-            pass
+    adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._max_failure_captures = 2   # first 2 fully captured; the rest summarized
+
+    async for _ in adapter.get_live_market_data(duration_seconds=0.25):
+        pass
 
     caps = adapter.get_checksum_failure_captures()
     summaries = adapter.get_checksum_failure_summaries()

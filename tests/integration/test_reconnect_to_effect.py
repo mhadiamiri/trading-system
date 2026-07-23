@@ -46,9 +46,6 @@ async def test_five_real_failures_reconnect_and_emission_resumes():
     Five real checksum failures -> reconnect -> fresh subscription -> fresh snapshot
     -> checksum validates -> EMISSION RESUMES. Asserted on the end state (rule 0.1i).
     """
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
-
     # Socket 1: a synchronized book (emits), then FIVE consecutive bad snapshots. Each
     # fails its checksum through the production path, driving consecutive_failures 1->5.
     # Incremental updates are refused while awaiting resync, so — exactly as production
@@ -58,14 +55,16 @@ async def test_five_real_failures_reconnect_and_emission_resumes():
     socket2 = [SNAPSHOT_FRAME]
     factory = ScriptedConnectionFactory([socket1, socket2])
 
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
+
     # WO-014b-2: under keepalive a silent link no longer ENDS the capture (it would
     # reconnect); the capture ends at its deadline. A short window (well under the default
     # 5s ping / 10s absence) ends the run right after emission resumes, without a spurious
     # keepalive reconnect. The reconnect under test here is checksum-triggered.
     emitted = []
-    with patch("websockets.connect", factory.connect):
-        async for state in adapter.get_live_market_data(duration_seconds=0.1):
-            emitted.append(state)
+    async for state in adapter.get_live_market_data(duration_seconds=0.1):
+        emitted.append(state)
 
     # ---- OBSERVABLE END STATE (never "_reconnect was called") ----
 
@@ -114,12 +113,11 @@ async def test_stranded_reconnect_flag_fails_loudly():
             # BUG SIMULATION: a "reconnect" that neither reopens nor clears the flag.
             return websocket
 
-    adapter = _StrandingAdapter(mode=KrakenV2BookAdapter.MODE_LIVE)
-    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     socket1 = [SNAPSHOT_FRAME] + [_bad_snapshot() for _ in range(5)]
     factory = ScriptedConnectionFactory([socket1])
+    adapter = _StrandingAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
-    with patch("websockets.connect", factory.connect):
-        with pytest.raises(RuntimeError, match="RECONNECT_FLAG_STRANDED"):
-            async for _ in adapter.get_live_market_data(duration_seconds=30):
-                pass
+    with pytest.raises(RuntimeError, match="RECONNECT_FLAG_STRANDED"):
+        async for _ in adapter.get_live_market_data(duration_seconds=30):
+            pass
