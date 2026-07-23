@@ -38,9 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-22 (WO-019 + WO-020 done at `cceb156` — CI failure ROOT-CAUSED: `AsyncIterator` NameError on 3.11; a one-file fix awaits the lead's version ruling)
-**Current Phase**: **BETWEEN WOs — CI RED, root cause found, fix pending a ruling.** WO-018 (event-type governance) CLOSED; WO-019 (clean-env CI diagnosis) and WO-020 (CI verification-surface repair) COMPLETE. **The long-standing CI failure is diagnosed** (see block below) and its fix is a single production edit — NOT yet applied, because it is production code awaiting the lead's version ruling (fix approach + whether to add 3.14 to the CI matrix). **Immediate next step:** the version-ruling fix WO. Then by sequence: **CI green → the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.**
-**Status**: HEAD `cceb156` on master (pushed; local == remote). **215 tests green both orders LOCALLY** (`-p no:randomly` AND `--randomly-seed=20260722`), 0 failed/xfailed/xpassed; import-linter 6/6, contract 6/6, ruff clean. **CI (GitHub Actions, Python 3.11) is RED** — pytest collection fails with a `NameError` (root-caused below), NOT a test regression; the local suite is genuinely green. `gh` CLI works via `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is the authoritative sequence); read the **▶ WO-019/WO-020** and **▶ WO-018** blocks below to resume.
+**Last Updated**: 2026-07-23 (WO-021 + WO-022 done at `d9bcd74` — **CI IS GREEN ON BOTH LEGS (3.11 + 3.14)** for the first time; the WO-019→022 CI arc is CLOSED)
+**Current Phase**: **BETWEEN WOs — CI GREEN, both legs.** The long CI arc is done: WO-019 diagnosed, WO-020 repaired the verification surface, WO-021 fixed the `AsyncIterator` NameError + added the 3.11/3.14 matrix + annotation detector, WO-022 injected a synthetic baseline (8 tests) + fixed the gap-ordering assertion. **CI run `29981099178` (`d9bcd74`) is GREEN on BOTH legs.** Next by sequence: **the taxonomy-migration WO (measure-then-fork) → 008c → 24h corpus.** (One KNOWN FLAKE to clean up first or in parallel — see the WO-021/022 block below: `test_ledger_persistence::test_gap_ledger_persisted_readable_from_disk`, a 0.25s-deadline timing race that failed once on Linux/3.11 CI and passed on re-run.)
+**Status**: HEAD `d9bcd74` on master (pushed; local == remote). **215 tests green on BOTH interpreters, both orders** — locally (3.14 working tree + Windows/3.11 clean venv, seed 20260722/20260723) AND on **CI both legs** (Linux 3.11 + 3.14, run `29981099178`, both jobs `success`). import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-021/WO-022** block below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
@@ -98,6 +98,48 @@ what ships). The `AsyncIterator` fix is deliberately NOT applied here; it is the
 `kraken_v2_book.py` (approach per the lead's ruling), decide the CI-matrix question, push, and confirm CI
 goes green via `gh run view` (gh works locally — see Status line). Only after CI is green does the sequence
 continue to the taxonomy-migration WO → 008c → 24h corpus.
+
+---
+
+## ▶ WO-021 + WO-022 COMPLETE (AUTHORITATIVE) — 2026-07-23 — CI GREEN ON BOTH LEGS (the CI arc closes)
+
+> The end of the WO-019→022 CI arc. CI now passes on a 3.11 (strict) + 3.14 (dev) matrix. Reports:
+> `WO-021-REPORT.md`, `WO-022-REPORT.md`. Decision logs:
+> `docs/decisions/2026-07-22-interpreter-is-a-scope-dimension.md`,
+> `docs/decisions/2026-07-23-an-environment-is-strict-along-axes.md`.
+
+**WO-021 — the AsyncIterator fix + the matrix + the annotation detector (`121768c`→`1ac936b`):**
+- Root cause fixed: `kraken_v2_book.py` used `AsyncIterator` in return annotations (l.2300, 2718) without
+  importing it; 3.11 eager annotation eval → `NameError` at collection, 3.14 (PEP 649) masked it. Fixed with
+  a targeted `from collections.abc import AsyncIterator` (ruled: NOT `from __future__ import annotations`,
+  which would suppress the class project-wide). Sweep-first (denominator = 2, static AST scan +
+  `tools/annotation_name_scan.py`, committed standalone at the seam).
+- `ci.yml` now runs a **3.11 (strict/detector) + 3.14 (dev) matrix**, `fail-fast: false`, and a wired
+  **annotation-name detector step** on both legs (bite-proved). 0.1k added (behavioral proof sovereign;
+  hierarchy BEHAVIORAL > STATIC REACHABILITY > DEFINITION > PROSE).
+
+**WO-022 — baseline injection + gap-ordering + declared records (`d9bcd74`), TESTS + DOCS ONLY:**
+- The 8 host-scoped baseline tests (they failed identically on BOTH CI legs — the baseline was fingerprinted
+  to the dev machine) now **inject an OBVIOUSLY SYNTHETIC baseline** (`tests/integration/conftest.py`) via
+  `MEAN_CYCLE_BASELINE_STORE`; production behavior unchanged; the no-baseline refusal stays bite-proved.
+- The gap-ordering test's `max(opens) < close` → **`<=`** (monotonic-clock ties; identity carried by
+  `gap_id`, a per-run open-sequence counter). Diagnosed via consumer enumeration (no consumer needs strict
+  order) — `evidence/WO-021/gap_ordering_diagnosis.txt`.
+- Decision log: **an environment is not strict or lax, it is strict along axes** (Linux/3.11 strict on
+  annotation names; Windows strict on clock ties) + corollary: **a single-host failure is a DETECTOR REPORT
+  until diagnosed.** Zero-duration-gap declared limit added to the `GapLedger` docstring.
+
+**CI STATE — GREEN BOTH LEGS.** Run `29981099178` (`d9bcd74`): `test (3.11)` and `test (3.14)` both
+`success` — full gate each (preflight, import-linter lint 6/6, annotation detector, pytest 215 both orders).
+
+**⚠ KNOWN FLAKE (out of WO-022 scope; clean up next or in parallel):**
+`tests/integration/test_ledger_persistence.py::test_gap_ledger_persisted_readable_from_disk` failed ONCE on
+the Linux/3.11 CI leg (`0 gaps; got ['run_start','run_end']`) and **passed on re-run (215/215 both orders)**.
+It uses a **0.25s real-wall-clock deadline** and needs a disconnect→reconnect→gap-open→resolve cycle to
+finish inside it; under CI load the deadline can hit first. NOT a WO-021/022 change (touches neither the test
+nor gap production), passes on 3.14 CI + both local Windows interpreters. FIX (a follow-up): widen the
+deadline or drive the gap cycle deterministically instead of on a wall-clock race. It will otherwise flake a
+future CI run at random — the same environment-timing family as the gap-ordering tie, different mechanism.
 
 ---
 

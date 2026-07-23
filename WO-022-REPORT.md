@@ -73,7 +73,24 @@ refusal," plus the gap-duration resolution limit. Recorded only — confirmed no
 - 0 failed / xfailed / xpassed everywhere including Windows/3.11. `lint-imports` 6/6; `contract_count_check`
   6/6; `ruff` clean; `annotation_name_scan` 0. Secret scan: 0. **Delta:** the 8 previously-failing baseline
   tests + the gap-ordering test now pass on 3.11; 2 gate tests renamed. **local == remote HEAD:** in delivery.
-- **Real CI (both legs):** __CI__
+- **Real CI (both legs) — GREEN. Closure condition MET.** Run `29981099178` (`d9bcd74`), both jobs
+  `success`: **`test (3.14)` and `test (3.11)`** each pass the full gate — preflight ✓, `import-linter lint`
+  ✓ (6 kept/0 broken), annotation detector ✓, and pytest **215 passed both orders** on each leg (3.11
+  re-run: 243.69s / 241.59s). The 8 baseline tests that failed identically on both legs at `1ac936b` now
+  pass on the Linux CI host — the injection works off the dev machine, which was the whole point.
+
+  **FLAKE FINDING (honest, per the §3.1 corollary — a single-host failure is a detector report):** the
+  3.11 leg's FIRST attempt failed on **one** unrelated test — `test_ledger_persistence.py::
+  test_gap_ledger_persisted_readable_from_disk` (`AssertionError: one gap open+resolved on disk; got
+  ['run_start','run_end']`, i.e. 0 gaps). It uses a **0.25s real-wall-clock deadline** and needs a
+  disconnect→reconnect→gap-open→resolve cycle to finish inside it; under Linux/3.11 CI load the deadline
+  hit before the gap opened. **Re-running the leg passed 215/215 both orders**, and it passes on 3.14 CI +
+  both local Windows interpreters + the prior CI run — so it is an **intermittent timing fragility**, NOT
+  my change (WO-022 touches neither this test nor gap production) and NOT a deterministic Linux/3.11 bug.
+  **Diagnosed, not dismissed:** the axis is CI-runner scheduling load against a tight real deadline —
+  the same environment-timing family as §2, different mechanism. **Out of WO-022's scope** (not baseline,
+  not gap-ordering); flagged for a follow-up (widen the deadline, or drive the gap cycle deterministically
+  rather than on a wall-clock race). It will otherwise flake a future CI run at random.
 
 ### 7. Answers
 - **Affects what ships?** **NO behavior change.** The only production-file edit is a **docstring** (§3.2 in
