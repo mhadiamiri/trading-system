@@ -1,0 +1,104 @@
+WO-023 §1 — WALL-CLOCK RACE AUDIT (the denominator, committed BEFORE any fix)
+================================================================================
+Baseline d9bcd74 (CI green both legs). NO VENUE CONNECTION.
+
+HOW FOUND (forms searched, per the standing "a check is bounded by the form it matches"):
+  F1  `duration_seconds=<n>`  in tests            -> grep, 44 call-sites (real wall-clock deadline
+                                                     passed to get_live_market_data / LiveCaptureRunner)
+  F2  `asyncio.sleep(<real>)` / `time.sleep(` in tests (excluding _no_sleep stubs)  -> grep
+  F3  `asyncio.wait_for`, `@pytest.mark.timeout`, `time.monotonic()`/`time.time()` loop-compares -> grep
+  F4  `_reconnect_sleep = None` (real backoff sleeps), `starve_event_loop(` (deliberate freeze)  -> grep
+  Plus: read the ACTUAL deadline mechanism — get_live_market_data terminates on
+        `while time.time() < deadline:` (kraken_v2_book.py:2434), `deadline = time.time() + duration_seconds`
+        (:2388). The deadline uses RAW time.time(), NOT self._wall_clock — so it is UN-INJECTABLE.
+
+FORMS THIS SEARCH CANNOT SEE (declared limit):
+  - Timing dependence hidden behind a HELPER that sleeps (none found, but a future one would be invisible).
+  - Concurrency-ORDER dependence with no explicit sleep (a test relying on task-scheduling order).
+  - pytest-timeout marks (plugin not installed; none present) — a wall-clock gate one layer out.
+  - The deadline being un-injectable (line 2388) is visible only by reading PRODUCTION, not test files —
+    a reviewer auditing tests alone would miss that the race cannot be closed test-side without a clock.
+
+CLASSIFICATION (two categories, per §1):
+  RACE  = the assertion depends on scripted events being PROCESSED inside `while time.time()<deadline`;
+          under scheduler load the wall clock can pass the deadline first and the test fails with
+          production code perfectly correct. (The run ends AT the deadline; on_drain=heartbeat/block.)
+  BOUND = the run SELF-TERMINATES via the SCRIPT before the deadline (breaker trip, crash, immediate
+          raise/refusal). The passing path never reaches the deadline; it is a backstop against a hang.
+
+================================================================================
+STRUCTURAL RACES  (corpus-critical path in brackets)  — the run ends at the deadline
+================================================================================
+  test_live_capture.py:59   test_runner_drives_instrumented_transport_end_to_end   0.25  [gap ledger, emission]
+  test_live_capture.py:98   test_runner_persistence_is_not_optional_on_the_adapter 0.15  [persistence]
+  test_live_capture.py:114  test_short_bounded_run_completes_with_readable_artifacts 0.2 [persistence, emission]
+  test_live_capture.py:140  test_clean_deadline_close_does_not_reconnect_dual (part b) 0.25 [reconnect]
+  test_live_capture.py:197  test_runner_resolves_live_adapter_from_data_source     0.15  [emission, persistence]
+  test_gap_recording.py:80  test_keepalive_reconnect_gap_recorded                  0.25  [gap, reconnect]
+  test_gap_recording.py:115 test_checksum_resync_gap_recorded                      0.25  [checksum, gap]
+  test_gap_recording.py:143 test_breaker_retry_ladder_recorded_on_reconnect_gap    0.25  [gap, reconnect]
+  test_gap_recording.py:175 test_venue_disconnect_gap_recorded                     0.25  [gap, reconnect]
+  test_gap_recording.py:237 test_overlapping_gaps_union_and_collective_close       0.25  [gap]  (WO-022 §2 test)
+  test_gap_recording.py:281 test_ledger_reports_incomplete_gap                     0.15  [gap]
+  test_ledger_persistence.py:47 test_gap_ledger_persisted_readable_from_disk       0.25  [gap ledger persistence] <- THE OBSERVED FLAKE
+  test_host_suspend.py:46   test_host_suspend_recorded_diagnostic_not_terminal     0.25  [instruments, gap]
+  test_host_suspend.py:83   test_no_host_suspend_under_normal_timing               0.2   [instruments]
+  test_keepalive.py:42      test_heartbeat_absence_triggers_reconnect              0.25  [reconnect]
+  test_keepalive.py:74      test_application_ping_pong_keeps_a_quiet_link_alive     0.25  [instruments/pong]
+  test_failure_cap.py:45    test_count_cap_keeps_first_n_counts_all_announces       0.25  [failure capture]
+  test_failure_cap.py:76    test_byte_cap_binds_independently                       0.25  [failure capture]
+  test_failure_cap.py:99    test_capped_failures_get_one_line_summaries             0.25  [failure capture]
+  test_failure_capture.py:52 test_checksum_failure_capture_has_every_ruled_field   0.2   [checksum, failure capture]
+  test_failure_capture.py:102 test_every_checksum_failure_captured_not_positionally 0.2  [checksum, failure capture]
+  test_protocol_ping.py:53  test_protocol_ping_params_set_deliberately             0.05  [instruments]
+  test_protocol_ping.py:72  test_protocol_level_close_recovers                     0.25  [reconnect/recovery]
+  test_throughput.py:25     test_receive_to_process_latency_recorded               0.1   [instruments/throughput]
+  test_reconnect_to_effect.py:44 test_five_real_failures_reconnect_and_emission_resumes 0.1 [reconnect]
+  test_venue_close_path.py:35 test_venue_close_unexpected_reconnects_expected_shuts 0.25 [reconnect]
+  test_backoff_breaker.py:59 test_transient_reopen_failure_retries_under_backoff    0.1   [reconnect/backoff]
+  test_pong_observer.py:25  test_pong_observer_records_rtt_distribution  (real asyncio.sleep 0.2) [instruments]
+  test_pong_observer.py:49  test_absent_pongs_are_a_signal_not_gappiness (real asyncio.sleep 0.3) [instruments]
+  test_lag_sampler.py:27    test_starved_lag_sampler_self_reports_degradation (starve 0.30 + sleep 0.08) [instruments]
+
+  RACE COUNT = 30.  CORPUS-CRITICAL-PATH RACES = 30 of 30 (every one touches gap ledger, reconnect,
+  checksum, failure capture, or the instruments). This is NOT one flaky test; it is a structural class.
+
+================================================================================
+DETERMINISTIC OPERATION WITH A BOUND  (LEGITIMATE, stay) — self-terminate via the script
+================================================================================
+  test_backoff_breaker.py:88  test_persistent_reopen_failure_trips_breaker_loud   dur=30, breaker trips ~0.1s
+  test_gap_recording.py:202   test_terminal_venue_disconnect_breaker_gap_recorded dur=30, breaker trip ends it
+  test_live_capture.py:172    test_breaker_trip_terminates_run_with_forensic_tail dur=30, breaker trip ends it
+  test_reconnect_to_effect.py:100 test_stranded_reconnect_flag_fails_loudly       dur=30, RECONNECT_FLAG_STRANDED raises
+  test_ledger_persistence.py:82 test_incremental_persist_survives_unhandled_exception dur=0.25, injected crash ends it
+  test_no_silent_fallback.py:25 test_connection_failure_raises_and_does_not_replay dur=5, connection raises at once
+  test_no_silent_fallback.py:52 test_live_method_refuses_fixture_mode_adapter      dur=1, refuses before any loop
+  In each the deadline is a BACKSTOP against a hang; the passing path terminates via the script, not the
+  clock. These are the §1 "deterministic operation with a bound" — they stay.
+
+  NOT WALL-CLOCK-GATED AT ALL (excluded — construct/refuse before any loop, or pure functions):
+  the LiveCaptureRunner refusal tests (env/persistence/no-baseline, duration is an unused param), and the
+  unit tests (checksum_sentinel, wire_string_retention, checksum_capture_replay, save/load baseline,
+  venue_mode_observability, lag_sampler void-gate computations). test_staleness_guard_bite_proof:101
+  (asyncio.sleep 1.5 to exceed the staleness threshold) is a DELIBERATE staleness construction, not a
+  race on the assertion — noted for completeness (the sleep guarantees staleness deterministically).
+
+================================================================================
+ROOT CAUSE + FIX-SCOPE FINDING (the count is LARGE -> §1 says it comes back for a ruling)
+================================================================================
+The race is NOT 30 independent test defects. It is ONE structural fact: get_live_market_data terminates
+ONLY on `while time.time() < deadline` (a REAL wall clock, line 2434), and the tests drive it against that
+real clock. Every test that asserts on events processed inside the loop therefore gambles against
+scheduler load. Widening deadlines is refused (§2, tuning-to-green). The three ways to make it
+deterministic:
+  (a) INJECTABLE CLOCK for the deadline — line 2388 uses raw time.time(), not self._wall_clock; route it
+      through an injectable clock and tests advance it deterministically. PRODUCTION CHANGE.
+  (b) DETERMINISTIC CAPTURE-END SIGNAL in the harness — extend fake_ws_transport with a scripted
+      "capture complete" sentinel the transport honors as a clean end after the scripted events.
+      PRODUCTION CHANGE (the loop must honor the signal).
+  (c) monkeypatch time.time in tests — REFUSED (§2: patch-based mitigation of a structural problem).
+So the only non-refused fixes (a)/(b) TOUCH PRODUCTION CODE — exceeding this WO's "tests + docs only,
+expected NO ship impact" framing (§6). Per §1, with a LARGE count and a fix that changes production, the
+fix scope comes back for a RULING rather than expanding silently. Recommendation for the ruling: option
+(a) — a single injectable-clock seam on the deadline — is the smallest, most surgical production change,
+closes all 30 races by construction, and is order/load-independent by design, not by margin.
