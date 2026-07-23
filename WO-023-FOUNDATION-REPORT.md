@@ -206,7 +206,10 @@ assertions in one function) → **+1**; §6 EDITS one test in place → **+0**. 
 explicitly, not "unchanged").
 
 Secret scan: no credentials/tokens/keys/session-ids added (tests, docs, a reason-code string, and two
-clock/transport seams only). **Commit / push / CI:** __COMMIT_CI__
+clock/transport seams only). **Commit / push / CI:** committed `fbdaf58` on master, pushed, local ==
+remote == `fbdaf58`. **CI run `30026635375` GREEN on BOTH legs** — `test (3.11)` success (8m30s),
+`test (3.14)` success (8m38s); full gate each leg (preflight, import-linter 6/6, annotation detector,
+pytest 216 both orders). No re-run needed (no failure to diagnose; §4 re-run precedent not exercised).
 
 ---
 

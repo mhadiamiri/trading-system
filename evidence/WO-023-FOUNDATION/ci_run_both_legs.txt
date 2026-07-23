@@ -1,0 +1,11 @@
+✓ master CI · 30026635375
+✓ test (3.11) in 8m30s (ID 89272643152)
+✓ test (3.14) in 8m38s (ID 89272643292)
+test (3.11): .github#2
+test (3.14): .github#2
+
+CI run 30026635375 (commit fbdaf58, branch master, event push)
+  test (3.11) STRICT : success (8m30s)
+  test (3.14) DEV    : success (8m38s)
+  overall            : completed success
+Full gate each leg: preflight, import-linter lint 6/6, annotation detector, pytest 216 both orders.
