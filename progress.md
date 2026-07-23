@@ -38,9 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-23 (WO-023 §2b COMPLETE — coupling identity keying + §7 verdict VOID correction landed green; 30-test conversion is NEXT)
-**Current Phase**: **WO-023 §2b done; 30-test conversion is NEXT (fresh session).** The foundation (§2) shipped the seams + gate; §2b corrected two things the lead flagged before the conversion: (1) coupling now keys on transport IDENTITY (`resolved is _REAL_CONNECT`) not injection status — the sentinel let an explicit real transport + fake clock through; (2) the §7 re-baseline verdict corrected to NOT COVERED / VOID (the instrument doesn't execute the changed line). **SHIP IMPACT: YES** (§2b §1 is the production gate). See the **▶ WO-023 §2b** and **▶ WO-023 §2 FOUNDATION** blocks below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
-**Status**: HEAD `fddf1cd` on master (pushed; local == remote). **216 tests green on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), both orders** (`-p no:randomly` and `--randomly-seed=20260724`), 0 failed/xfailed/xpassed. import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. (Foundation `fbdaf58` CI green both legs, run `30026635375`; §2b CI green both legs, run `30030741629`.) `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023 §2 FOUNDATION** and **▶ WO-021/WO-022** blocks below to resume.
+**Last Updated**: 2026-07-23 (WO-023 §2c COMPLETE — coupling preservation dual + a code-wins finding; 30-test conversion is NEXT)
+**Current Phase**: **WO-023 §2c done; 30-test conversion is NEXT (fresh session).** Foundation (§2) shipped the seams + gate; §2b corrected the coupling keying (identity, not injection status) + the §7 VOID verdict; §2c added the coupling branch's PRESERVATION dual (assertion 5: real transport + no clock → proceeds) and found — against the WO's expectation — that Mutation D was ALREADY caught by existing no-clock live tests via the coherence branch (0.1 finding). §2c is TESTS+DOCS ONLY (no production defect; gate byte-unchanged). See the **▶ WO-023 §2c / §2b / §2 FOUNDATION** blocks below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
+**Status**: HEAD `__HEAD2C__` on master (pushed; local == remote). **216 tests green on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), both orders** (`-p no:randomly` and `--randomly-seed=20260725`), 0 failed/xfailed/xpassed. import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. (Foundation `fbdaf58` CI run `30026635375`; §2b `fddf1cd` CI run `30030741629`; §2c CI __2C_CI__ — all green both legs.) `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023 §2 FOUNDATION** and **▶ WO-021/WO-022** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
 **Repo path**: `C:\Projects\bot\trading-system` (sessions may launch from a different cwd — always work here)
 
@@ -155,6 +155,33 @@ taxonomy-migration WO → 008c → 24h corpus. **The re-run-precedent standing r
   unaffected path (WO-008b-B `pass`-stub-VOID precedent). Original "CONFIRMED" text PRESERVED, correction APPENDED (in the
   evidence file and the foundation report §7). No new instrument built — the per-iteration-cost coverage gap is RECORDED.
 - **ACCEPTANCE:** 216 passed, both interpreters, both orders (`-p no:randomly` and `--randomly-seed=20260724`). lint-imports
+  6/6, contract 6/6, ruff clean, annotation 0, preflight pass.
+
+---
+
+## ▶ WO-023 §2c COMPLETE (AUTHORITATIVE) — 2026-07-23 — the coupling branch's preservation dual + a code-wins finding
+
+> Closed one gap the §2b report surfaced: the COUPLING branch had a refusal half (assertions 1/4) but no PRESERVATION dual
+> for the production path (real transport + no clock → proceeds). **TESTS + DOCS ONLY** — `kraken_v2_book.py` is
+> byte-UNCHANGED (§1 investigation found NO production defect). Report: `WO-023-2C-REPORT.md`. Evidence: `evidence/WO-023-2C/`.
+
+- **§1 — NO production defect.** The §2b report excerpt showed the coupling check without an inline `clock_injected` guard,
+  which read literally would refuse every real run. Pasted the gate verbatim: the precondition IS present as the EARLY RETURN
+  `if not (wall_injected or mono_injected): return` (l.2403-2404) ABOVE the coupling branch (l.2409+). **Coupling branch
+  reachable with no clock: NO.** A default adapter returns early and connects — the corpus capture starts. No fix needed.
+- **§2 — Assertion 5 (DEFAULT-PATH PRESERVATION)** added to the existing test (count stays 216): real transport + NO clock →
+  PROCEEDS (transport invoked, connect_count==1). The INVERSE/pair of assertion 4 (real+clock refuses). Bite proof re-run
+  with **4 mutations**; Mutation D neuters the early return → assertion 5 fails, 1-4 pass (`evidence/WO-023-2C/bite_proof_clock_gate_4mutations.txt`).
+- **CODE-WINS FINDING (0.1):** the WO expected "no test in 216 would catch Mutation D." **The code says YES** — 6 existing
+  no-clock live tests (ledger persistence ×2, keepalive ×2, reconnect ×2) fail under Mutation D, via the COHERENCE branch
+  (a no-clock run falls through: coupling passes for their patched-fake transport, then coherent=False refuses)
+  (`evidence/WO-023-2C/mutation_d_caught_by_existing_tests.txt`). The narrower true gap: the gate's OWN 4-assertion test did
+  NOT catch it, and no test DIRECTLY asserted the coupling branch permits a real-transport no-clock run. Assertion 5 makes
+  that dual local and direct (S13/D37), independent of the incidental coherence coverage.
+- **§3 checks:** (3.1) gate and GAP_PERSIST_UNCONFIGURED both raise `ValueError` — MATCH. (3.2) recorded a construction
+  hazard for the 30-test conversion: THREE seams, THREE default conventions — `_wall_clock` raw None (late), `_monotonic_clock`
+  eager `time.monotonic`, `_connect_fn` raw None (late) — each detected differently by the gate. Recorded, not changed.
+- **ACCEPTANCE:** 216 passed, both interpreters, both orders (`-p no:randomly` and `--randomly-seed=20260725`). lint-imports
   6/6, contract 6/6, ruff clean, annotation 0, preflight pass.
 
 ---

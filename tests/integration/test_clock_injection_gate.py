@@ -1,7 +1,7 @@
 """
 WO-023 §5 (+ §2b) — the CLOCK/TRANSPORT PRE-CONNECTION GATE bite proof (RULINGS D34-2, D34-3; D37).
 
-ONE test, FOUR assertions — the gate's refusal halves AND its preservation halves in the same place
+ONE test, FIVE assertions — the gate's refusal halves AND its preservation halves in the same place
 (S13/D37: a guard that only refuses passes its refusal half and looks correct):
 
   1. UNCONFIGURED-REAL REFUSAL — the DEFAULT (unconfigured) transport resolves to the REAL callable;
@@ -15,6 +15,11 @@ ONE test, FOUR assertions — the gate's refusal halves AND its preservation hal
                      is not None`) let through — a fake clock on a real socket — so it is the
                      assertion that proves the coupling check keys on transport IDENTITY, not on
                      injection status.
+  5. DEFAULT-PATH PRESERVATION (WO-023 §2c) — real transport + NO clock injected → PROCEEDS
+                     (the transport IS invoked). The coupling branch's preservation dual and the
+                     production path: it proves the branch is conditioned on CLOCK INJECTION, not on
+                     transport identity alone. The pair with assertion 4 (real+clock refuses;
+                     real+no-clock proceeds).
 
 NO NETWORK, NO VENUE CONNECTION. The transport is the simulated ScriptedConnectionFactory. The
 REAL-transport cases (1, 4) substitute a SPY for the module's `_REAL_CONNECT` sentinel (via
@@ -135,3 +140,25 @@ async def test_clock_injection_gate():
                 pass
     assert "COUPLING" in str(exc4.value), "explicit real transport + fake clock refuses on COUPLING"
     assert spy4.connect_count == 0, "REFUSED PRE-CONNECTION — an explicit real transport is caught by identity"
+
+    # ── 5. DEFAULT-PATH PRESERVATION (WO-023 §2c) — the PRODUCTION PATH: real transport, NO clock. ─
+    # The INVERSE of assertion 4, and its PAIR: assertion 4 = real transport WITH a clock REFUSES;
+    # assertion 5 = real transport WITHOUT a clock PROCEEDS. Together they prove the coupling branch
+    # is conditioned on CLOCK INJECTION (the early-return precondition), NOT on transport identity
+    # alone — the half that carries the 24-hour corpus capture: a default-constructed adapter (no
+    # clock, real transport) MUST start. No test in the prior 216 exercised this (every no-clock test
+    # module-patches to a FAKE, so `resolved is not _REAL_CONNECT` and the branch is skipped for a
+    # reason unrelated to the precondition). Here the transport resolves to the (spy standing in as)
+    # REAL callable by identity, so ONLY the clock-injection precondition keeps the gate from refusing.
+    spy5 = _self_terminating_spy()
+    spy5_connect = spy5.connect          # one bound-method object shared by both patches (§2b pitfall)
+    default_adapter = KrakenV2BookAdapter(mode=MODE_LIVE)   # NO clock injected, connect_fn=None (default)
+    default_adapter._persistence_optional = True
+    default_adapter._heartbeat_absence_timeout = 100.0
+    default_adapter._app_ping_interval = 100.0
+    emitted5 = []
+    with patch.object(kv2, "_REAL_CONNECT", spy5_connect), patch("websockets.connect", spy5_connect):
+        async for state in default_adapter.get_live_market_data(duration_seconds=0.25):
+            emitted5.append(state)
+    assert spy5.connect_count == 1, "DEFAULT PATH PROCEEDS — the real transport IS invoked (no refusal)"
+    assert len(emitted5) >= 1, "the default real run reaches the same successful end state as assertion 2"

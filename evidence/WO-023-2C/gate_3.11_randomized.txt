@@ -1,0 +1,4 @@
+tests\integration\test_venue_mode_observability.py ......                [ 99%]
+tests\integration\test_checksum_capture_replay.py ..                     [100%]
+
+======================= 216 passed in 246.35s (0:04:06) =======================

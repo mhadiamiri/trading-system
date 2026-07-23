@@ -1,0 +1,16 @@
+WO-023 §2c — DOES THE PRE-§2c SUITE CATCH MUTATION D? (early-return precondition deleted)
+Probe: neuter the early return, run the no-clock live-capture tests. If they FAIL, the existing
+216 DO catch Mutation D — via the COHERENCE branch (a no-clock run falls through: coupling
+passes for their patched-fake transport, then coherent=False refuses). This CORRECTS the WO's
+expected 'no'. (The gate's OWN 4-assertion test still does NOT catch it — see the bite proof.)
+================================================================================
+    raise ValueError(
+E   ValueError: CLOCK_INJECTION_REFUSED: COHERENCE � injected clocks must be the coherent wall+monotonic pair from ONE source (D25: monotonic orders, wall locates). An incoherent pair is permitted ONLY when declared by name via incoherent_clocks_allowed=<reason>; the gate never infers it (RULING D34-3).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_ledger_persistence.py::test_gap_ledger_persisted_readable_from_disk
+FAILED tests/integration/test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture
+FAILED tests/integration/test_keepalive.py::test_heartbeat_absence_triggers_reconnect
+FAILED tests/integration/test_keepalive.py::test_application_ping_pong_keeps_a_quiet_link_alive
+FAILED tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes
+FAILED tests/integration/test_reconnect_to_effect.py::test_stranded_reconnect_flag_fails_loudly
+========================= 6 failed, 2 passed in 0.36s =========================
