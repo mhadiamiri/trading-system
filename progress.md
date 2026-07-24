@@ -38,7 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-24 (WO-026 COMPLETE — evidence integrity fix: gate ledger streams to `.artifacts/`, not committed evidence; the `connect_fn` threading WO then pass two are NEXT)
+**Last Updated**: 2026-07-24 (WO-027 COMPLETE — connect_fn threading INVESTIGATION + PROPOSAL, no code; snapshot tool exercised for real; proposal (Option a) awaits the lead's ruling before implementation)
+**WO-027**: HEAD `e3533bf` (base = `4f18459` + docs-only close) — INVESTIGATION only, **no production code**, `kraken_v2_book.py` byte-unchanged (`a9388694…`). §1 ran `tools/snapshot_gate_ledger.py` for the FIRST time (built WO-026, never executed) → PASSED, header all five fields real, guard held. Findings: `registry.create` is generic; **the `kraken_v2` builder `_build_kraken_v2` DROPS `connect_fn`** (the choke point); the factory→registry path resolves the transport from **ambient `websockets.connect`** (D35 condition). §2.3: **exactly one** of the 30 races (#5 / site 29, `…_via_factory`) routes through the factory — confirms expectation; it's the strict prerequisite to make race #5 clock-deterministic (a clock alone trips the gate's COUPLING). §2.4: the LIVE path has ZERO production callers; the non-live `create_feed`/`LiveTradingLoop` path must stay untouched. **Proposal: Option (a)** — explicit `connect_fn` on runner + `create_live_capture_feed` + the `kraken_v2` builder; `registry.create` unchanged; runner-up (c) protocol; Principle VII preserved mechanically but a mild "declared-vs-inferred" erosion flagged. **NO implementation — awaits ruling.** 216 both interpreters both orders (seed 20260730), evidence/ clean, CI green both legs run `PENDING`. See the **▶ WO-027** block below. Report: `WO-027-INVESTIGATION-REPORT.md`.
+**Fresh-session override (recorded):** the WO mandated a fresh session ("No override on this one"); the user was told and directed "resume with this session" — logged as an explicit override.
 **WO-026**: HEAD `4f18459` — the gate-ledger instrument now streams to git-ignored `.artifacts/gate_ledger/`; a mechanical guard forbids writing under `evidence/`; evidence is a deliberate snapshot (`tools/snapshot_gate_ledger.py`). Clobbered pass-one ledger annotated (not restored). §4.2 finding: ~12 by-name test nodeids across 5 tooling scripts (WO-025 reported 1). `kraken_v2_book.py` byte-unchanged. 216 both interpreters both orders (seed 20260729), evidence/ clean after runs, CI green both legs run `30092138390`. See the **▶ WO-026** block below.
 **WO-025**: HEAD `94bbf0f` — resolved the ledger 41-vs-40 arithmetic (the missing one = the guard test's assertion-5 EARLY_RETURN), showed the sites-29/30 ledger lines, replaced the ledger's by-name exclusion with a self-declared `@pytest.mark.gate_refusal_expected` marker (bidirectional: unmarkered refusal fails; stale marker fails; bite-proved both directions). `kraken_v2_book.py` byte-unchanged (sha256 `a9388694…`). **Finding 1 (audit name-match by file+line) INVERTED the closeout §2 premise: site 29 IS race #5 → the `connect_fn` threading WO is a pass-two PREREQUISITE** (annotation in the WO-025 block). 216 green both interpreters both orders (seed 20260728), CI green both legs run `30069882143`. **NEXT: the `connect_fn` threading WO, then pass two.**
 **WO-024 Pass One** (prior): HEAD `959e832` — migrated 34 transport-patch sites to `connect_fn=` (32 tests) + the session-scoped gate ledger. CI green run `30043854493`. See the **▶ WO-024 PASS ONE** block below.
@@ -286,6 +288,80 @@ a clock must be injected into site 29 (which the audit says it must).
 - **ACCEPTANCE:** 216 both interpreters both orders (seed 20260729); `git status --porcelain evidence/` EMPTY after a full
   suite run on each leg; marker mechanism both directions; kraken sha256 identical. lint 6/6, contract 6/6, ruff clean,
   annotation 0, preflight pass.
+
+---
+
+## ▶ WO-027 COMPLETE (AUTHORITATIVE) — 2026-07-24 — connect_fn threading: INVESTIGATION + PROPOSAL (no implementation)
+
+> INVESTIGATION only, per the WO. **No production code written**; `kraken_v2_book.py` byte-unchanged (sha256 `a9388694…`
+> before AND after). Base HEAD `e3533bf` = `4f18459` (the WO's stated base) + WO-026 docs-only close (no `src/` diff) —
+> recorded as a base annotation, not a STOP. Report: `WO-027-INVESTIGATION-REPORT.md`. Evidence: `evidence/WO-027/`.
+> **The proposal (Option a) is NOT applied — it awaits the lead's ruling (§4).**
+
+**§0.8 built-vs-operated:** every OPERATED row verified (snapshot tool exists; gate ledger + `.artifacts/` present; WO-023
+audit at `86e2a33`; the three layers located) → no STOP.
+
+**§1 — snapshot tool, FIRST real execution (was OPERATED–NEVER-RUN): PASSED.**
+- `python tools/snapshot_gate_ledger.py --wo WO-027 --order deterministic --name gate_ledger_3.14_deterministic.txt`
+  → `evidence/WO-027/gate_ledger_3.14_deterministic.txt`. A second snapshot from the randomized run (`--seed 20260730`)
+  populates the seed field: `evidence/WO-027/gate_ledger_3.14_randomized.txt`.
+- Provenance header — all five fields REAL: commit `e3533bf`, UTC `2026-07-24T15:59:38Z`, interpreter `CPython 3.14.6`,
+  ordering `deterministic` (seed `unspecified` — accurate for `-p no:randomly`, not a placeholder; real seed shown in the
+  randomized snapshot), WO `WO-027`. Ledger: 41 invocations; 0 unmarkered refusals; 0 stale markers.
+- **Guard held:** after the full suite, `git status --porcelain evidence/` = only `?? evidence/WO-027/`. **No defect. No STOP.**
+
+**§2 — the three layers (verbatim in the report):** `LiveCaptureRunner` (live_capture.py:37; factory call at :117, reached
+only when `adapter is None`); `create_live_capture_feed` (factory.py:53; `registry.create` at :86, passes NO seam);
+`registry.create` (registry.py:48, `create(name, **kwargs)` — GENERIC passthrough, needs NO change).
+- **§2.1** `registry.create` is generic. Adapters: `simulated` (no socket), `kraken_public` (real socket, **no** seam),
+  `kraken_v2` (**only one with `connect_fn`**). But the builder `_build_kraken_v2` constructs `KrakenV2BookAdapter(mode=mode)`
+  — **it drops `connect_fn`/`monotonic_clock`**, so the adapter's seam is unreachable through the registry. THE CHOKE POINT.
+- **§2.2** ambient resolutions: runner `TRADING_ENV` from env (:64–66); `clock or time.time` (:70); host baseline from disk
+  (:98→:128); factory `Settings.DATA_SOURCE` (env at import, settings.py:32–33); **and the load-bearing one — the
+  factory→registry→builder path resolves the TRANSPORT from module-global `websockets.connect`** (kraken_v2_book.py:2210/2439)
+  because the builder drops the seam. That is exactly the D35 condition the threading closes.
+- **§2.3 — EXACTLY ONE of the 30 races routes through the factory/registry:** race #5 =
+  `test_live_capture.py::test_runner_resolves_live_adapter_from_data_source_via_factory` (audit `:197`, "site 29"),
+  constructed `LiveCaptureRunner(adapter=None, data_source="kraken_v2")`. Confirms the WO's expectation; does NOT change
+  pass-two shape. The other 29 inject `KrakenV2BookAdapter(connect_fn=…)` directly or call `get_live_market_data` directly
+  (no test calls the factory/registry directly; `LiveCaptureRunner` appears only in test_live_capture + the baseline-refusal
+  tests, which are not races). **Linkage:** race #5 currently avoids a real socket via `patch("websockets.connect")` (ambient)
+  because no seam reaches it; to make it clock-deterministic in pass two you must inject a clock, which trips the gate's
+  COUPLING refusal unless a non-real transport is injected too → **`connect_fn` threading is the strict prerequisite.**
+- **§2.4** the LIVE path has **zero** production callers (`LiveCaptureRunner` constructed only in tests). The non-live
+  `create_feed → registry.create` IS used by production `LiveTradingLoop` (live.py:132, via live.py:378 main and
+  establish_mean_cycle_baseline.py:175) — must stay untouched (the proposal leaves it so).
+
+**§3/§4 — PROPOSAL (awaits ruling). Recommended: Option (a).** Explicit keyword `connect_fn=None` threaded runner →
+`create_live_capture_feed` → the `kraken_v2` builder → adapter constructor; **`registry.create` UNCHANGED** (generic `**kwargs`
+already forwards it). Diff shape: `LiveCaptureRunner.__init__` + `_resolve_feed`; `create_live_capture_feed` signature +
+its `registry.create` call; `_build_kraken_v2` builder only (NOT the adapter class body). ~6–10 lines, all `None`-defaulted →
+no existing caller changes. Runner-boundary observability satisfied (the gate inspects `self._connect_fn` identically for
+runner- and directly-constructed adapters). Import-linter #4/#5 preserved. **Runner-up (c)** — transport seam in the adapter
+protocol — the correct end-state once a SECOND live adapter exists; over-scoped now. **Rejected (b)** — `adapter_kwargs` map —
+makes the runner boundary LESS inspectable, failing the §3 observability constraint. **Principle VII:** preserved mechanically
+(new venue = one module), but the requirement that a live-capable builder accept `connect_fn` is IMPLICIT (runtime TypeError,
+not declared) — flagged as a mild "declared-vs-inferred" erosion, the exact seam where (c) takes over. **No code written.**
+
+**§5 — NAMED DEFERRED ITEM (recorded here, per the WO):**
+> **WO-TBD — identifier hardening: convert tooling bite-proof scripts from hardcoded nodeids to the marker/position identifier
+> form** (per *an enumeration is only as good as its identifiers*: position beats name, marker beats position, content-hash
+> beats marker). Scope: ~12 hardcoded test nodeids across FIVE scripts — `tools/emission_bite_proof.py` (3),
+> `instrument_mismatch_bite_proof.py` (1), `vocabulary_enforcement_bite_proof.py` (1), `vocabulary_scan_bite_proof.py` (4),
+> `wire_string_bite_proof.py` (3) — found in WO-026 §4.2 (WO-025 had reported "exactly one"). **Not currently blocking.** It
+> WOULD block if any of those five scripts silently passed because a renamed test no longer matched its hardcoded nodeid (a
+> bite proof that bites nothing).
+
+**ACCEPTANCE:** 216 both interpreters (3.11 strict `CPython 3.11.15` via scratchpad venv; 3.14 dev `CPython 3.14.6`) both
+orders (deterministic + `--randomly-seed=20260730`); `git status --porcelain evidence/` shows only the WO-027 snapshots;
+gate ledger 0 unmarkered refusals / 0 stale markers; `kraken_v2_book.py` sha256 `a9388694…` before == after; lint-imports
+6/6, contract 6/6, ruff clean, annotation 0, preflight pass. Test count unchanged at 216 (a snapshot + docs only, no test
+added/removed). CI green both legs run `PENDING`.
+
+**STOPPED / attempts:** STOPPED once — the fresh-session mandate — reported before any work; user overrode ("resume with this
+session", recorded). No in-investigation STOP. The snapshot tool passed on first run; the 3.14 deterministic suite exceeded
+the 120s foreground window and completed in the background (216). No failed/retried edits. Changed: evidence/docs only, no
+production code.
 
 ---
 

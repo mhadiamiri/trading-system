@@ -1,0 +1,69 @@
+==============================================================================
+PROVENANCE (WO-026 §2 deliberate snapshot) — taken by WO-027
+  commit:      e3533bf
+  taken (UTC): 2026-07-24T15:59:38Z
+  interpreter: CPython 3.14.6
+  ordering:    deterministic   seed: unspecified
+  source:      C:\Projects\bot\trading-system\.artifacts\gate_ledger\latest.txt
+This is a DELIBERATE copy of a run-scoped .artifacts/ ledger. The test session never writes
+here (WO-026 §2, mechanically enforced in conftest.py::_assert_ledger_dir_outside_evidence).
+==============================================================================
+WO-024/WO-025 §3 — GATE LEDGER (every _assert_clock_transport_gate invocation).
+The gate wrapper delegates to the REAL gate and only records; behaviour is unchanged.
+Total gate invocations recorded: 41
+
+SUITE-WIDE outcome counts (every test, markered or not):
+  EARLY_RETURN: 35
+  PROCEED_COHERENT: 1
+  PROCEED_DECLARED: 2
+  REFUSED_COUPLING: 2
+  REFUSED_COHERENCE: 1
+
+WO-025 §3 MARKER-BASED TOLERANCE (declared, never inferred):
+  tests carrying @pytest.mark.gate_refusal_expected: ['tests/integration/test_clock_injection_gate.py::test_clock_injection_gate']
+  (1) refusals from UNMARKERED tests (must be empty): []
+  (2) STALE markers — markered tests with NO refusal (must be empty): []
+  PROCEED_DECLARED (unmarkered): 1  -> ['tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal']
+
+PER-INVOCATION (nodeid -> outcome):
+  EARLY_RETURN      tests/integration/test_backoff_breaker.py::test_transient_reopen_failure_retries_under_backoff_then_emission_resumes
+  EARLY_RETURN      tests/integration/test_backoff_breaker.py::test_persistent_reopen_failure_trips_breaker_loud_with_forensic_tail
+  REFUSED_COUPLING  tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  PROCEED_COHERENT  tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  PROCEED_DECLARED  tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  REFUSED_COHERENCE tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  REFUSED_COUPLING  tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  EARLY_RETURN      tests/integration/test_clock_injection_gate.py::test_clock_injection_gate [markered]
+  EARLY_RETURN      tests/integration/test_failure_cap.py::test_count_cap_keeps_first_n_counts_all_announces
+  EARLY_RETURN      tests/integration/test_failure_cap.py::test_byte_cap_binds_independently
+  EARLY_RETURN      tests/integration/test_failure_cap.py::test_capped_failures_get_one_line_summaries
+  EARLY_RETURN      tests/integration/test_failure_capture.py::test_checksum_failure_capture_has_every_ruled_field
+  EARLY_RETURN      tests/integration/test_failure_capture.py::test_every_checksum_failure_captured_not_positionally_sampled
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_keepalive_reconnect_gap_recorded
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_checksum_resync_gap_recorded
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_breaker_retry_ladder_recorded_on_reconnect_gap
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_venue_disconnect_gap_recorded
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_terminal_venue_disconnect_breaker_gap_recorded
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_overlapping_gaps_union_and_collective_close
+  EARLY_RETURN      tests/integration/test_gap_recording.py::test_ledger_reports_incomplete_gap
+  PROCEED_DECLARED  tests/integration/test_host_suspend.py::test_host_suspend_recorded_diagnostic_not_terminal
+  EARLY_RETURN      tests/integration/test_host_suspend.py::test_no_host_suspend_under_normal_timing
+  EARLY_RETURN      tests/integration/test_keepalive.py::test_heartbeat_absence_triggers_reconnect
+  EARLY_RETURN      tests/integration/test_keepalive.py::test_application_ping_pong_keeps_a_quiet_link_alive
+  EARLY_RETURN      tests/integration/test_ledger_persistence.py::test_gap_ledger_persisted_readable_from_disk
+  EARLY_RETURN      tests/integration/test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_runner_drives_instrumented_transport_end_to_end
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_runner_persistence_is_not_optional_on_the_adapter
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_short_bounded_run_completes_with_readable_artifacts
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_clean_deadline_close_does_not_reconnect_dual
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_clean_deadline_close_does_not_reconnect_dual
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_breaker_trip_terminates_run_with_forensic_tail
+  EARLY_RETURN      tests/integration/test_live_capture.py::test_runner_resolves_live_adapter_from_data_source_via_factory
+  EARLY_RETURN      tests/integration/test_no_silent_fallback.py::TestNoSilentFallback::test_connection_failure_raises_and_does_not_replay_fixtures
+  EARLY_RETURN      tests/integration/test_protocol_ping.py::test_protocol_ping_params_set_deliberately
+  EARLY_RETURN      tests/integration/test_protocol_ping.py::test_protocol_level_close_recovers
+  EARLY_RETURN      tests/integration/test_reconnect_to_effect.py::test_five_real_failures_reconnect_and_emission_resumes
+  EARLY_RETURN      tests/integration/test_reconnect_to_effect.py::test_stranded_reconnect_flag_fails_loudly
+  EARLY_RETURN      tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path
+  EARLY_RETURN      tests/integration/test_venue_close_path.py::test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly
+  EARLY_RETURN      tests/integration/test_venue_close_path.py::test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly
