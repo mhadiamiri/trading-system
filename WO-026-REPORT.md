@@ -121,7 +121,7 @@ deleting or content-restoring any committed evidence (the pass-one ledger was an
   `preflight_path_check.py` pass.
 - **Test-count arithmetic:** WO-026 adds/removes no test (conftest path change + a tooling script + docs).
   **Total stays 216.**
-- **Commit / push / CI:** __COMMIT_CI__
+- **Commit / push / CI:** batches `ef986dd` (fix) + `4f18459` (acceptance) on master, pushed, local == remote. **CI run `30092138390` GREEN on BOTH legs** — test (3.11) + test (3.14) success.
 
 ---
 
