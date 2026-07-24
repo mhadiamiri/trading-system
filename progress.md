@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-24 (WO-025 COMPLETE — ledger closeout + marker-based exclusion; the `connect_fn` threading WO then pass two are NEXT)
+**Last Updated**: 2026-07-24 (WO-026 COMPLETE — evidence integrity fix: gate ledger streams to `.artifacts/`, not committed evidence; the `connect_fn` threading WO then pass two are NEXT)
+**WO-026**: HEAD `__HEAD_26__` — the gate-ledger instrument now streams to git-ignored `.artifacts/gate_ledger/`; a mechanical guard forbids writing under `evidence/`; evidence is a deliberate snapshot (`tools/snapshot_gate_ledger.py`). Clobbered pass-one ledger annotated (not restored). §4.2 finding: ~12 by-name test nodeids across 5 tooling scripts (WO-025 reported 1). `kraken_v2_book.py` byte-unchanged. 216 both interpreters both orders (seed 20260729), evidence/ clean after runs, CI __26_CI__. See the **▶ WO-026** block below.
 **WO-025**: HEAD `94bbf0f` — resolved the ledger 41-vs-40 arithmetic (the missing one = the guard test's assertion-5 EARLY_RETURN), showed the sites-29/30 ledger lines, replaced the ledger's by-name exclusion with a self-declared `@pytest.mark.gate_refusal_expected` marker (bidirectional: unmarkered refusal fails; stale marker fails; bite-proved both directions). `kraken_v2_book.py` byte-unchanged (sha256 `a9388694…`). **Finding 1 (audit name-match by file+line) INVERTED the closeout §2 premise: site 29 IS race #5 → the `connect_fn` threading WO is a pass-two PREREQUISITE** (annotation in the WO-025 block). 216 green both interpreters both orders (seed 20260728), CI green both legs run `30069882143`. **NEXT: the `connect_fn` threading WO, then pass two.**
 **WO-024 Pass One** (prior): HEAD `959e832` — migrated 34 transport-patch sites to `connect_fn=` (32 tests) + the session-scoped gate ledger. CI green run `30043854493`. See the **▶ WO-024 PASS ONE** block below.
 **Current Phase**: **WO-023 §2c done; 30-test conversion is NEXT (fresh session).** Foundation (§2) shipped the seams + gate; §2b corrected the coupling keying (identity, not injection status) + the §7 VOID verdict; §2c added the coupling branch's PRESERVATION dual (assertion 5: real transport + no clock → proceeds) and found — against the WO's expectation — that Mutation D was ALREADY caught by existing no-clock live tests via the coherence branch (0.1 finding). §2c is TESTS+DOCS ONLY (no production defect; gate byte-unchanged). See the **▶ WO-023 §2c / §2b / §2 FOUNDATION** blocks below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
@@ -257,6 +258,34 @@ registry.create) → **WO-025** (this, parallel-eligible, DONE) → **pass two**
 008c → 24h corpus. **NAMED DEFERRED ITEM — WO-TBD:** thread `connect_fn` through `LiveCaptureRunner` /
 `create_live_capture_feed` / `registry.create` — currently NOT a blocker for WO-025, becomes a pass-two PREREQUISITE the moment
 a clock must be injected into site 29 (which the audit says it must).
+
+---
+
+## ▶ WO-026 COMPLETE (AUTHORITATIVE) — 2026-07-24 — evidence integrity: the ledger was overwriting committed evidence
+
+> Fixed a defect introduced in WO-024/025: the gate-ledger conftest hook streamed directly to the COMMITTED path
+> `evidence/WO-024-PASS1/gate_ledger.txt`, so every pytest run silently overwrote committed evidence. **NO production logic
+> changed** (`kraken_v2_book.py` byte-identical, sha256 `a9388694…`). Report: `WO-026-REPORT.md`. Evidence: `evidence/WO-026/`.
+> Decision log: `docs/decisions/2026-07-24-an-instrument-must-not-write-into-the-evidence-record.md`.
+
+- **§1 damage (before any edit):** authentic pass-one blob at `b8f18b3` (sha256 9f54efa…) vs the regenerated `94bbf0f`
+  (51732bcd…) — they differ (header/section/order), but the ARITHMETIC is identical. **WO-025 §1's answer HOLDS against the
+  authentic blob** (41 total; guard test = 6, sixth EARLY_RETURN) — it was correct but read off the clobbered file. Path
+  changed in 3 commits (b8f18b3 authentic; 959e832 + 94bbf0f incidental test-run clobbers). No unique evidence irrecoverably
+  lost (reproducible instrument; b8f18b3 survives).
+- **§2 fix:** the instrument now streams to `.artifacts/gate_ledger/<utc>-<sha>.txt` (+ latest.txt, git-ignored, never
+  committed); a MECHANICAL guard (`conftest.py::_assert_ledger_dir_outside_evidence`) RAISES `GATE_LEDGER_PATH_IN_EVIDENCE`
+  if the output dir resolves inside `evidence/`; evidence is a DELIBERATE snapshot via `tools/snapshot_gate_ledger.py`
+  (provenance header). The clobbered pass-one ledger was ANNOTATED, not restored (§6 — no third rewrite).
+- **§3 bite proof** (4 artifacts, sha256 exact-restore of conftest.py): Mutation A (dir inside evidence/ → guard raises) +
+  Mutation B (a legit .artifacts dir → passes, writes there, evidence/ untouched).
+- **§4.1** annotated the pass-one report's 5/40 accounting (correct: 6/41). **§4.2 FINDING:** the by-name-identifier inventory
+  is ~12 nodeids across FIVE tooling bite-proof scripts (emission / instrument_mismatch / vocabulary_enforcement /
+  vocabulary_scan / wire_string), NOT the one WO-025 reported — a search-too-narrow miss. Enumerated, not converted (a later
+  identifier-hardening WO).
+- **ACCEPTANCE:** 216 both interpreters both orders (seed 20260729); `git status --porcelain evidence/` EMPTY after a full
+  suite run on each leg; marker mechanism both directions; kraken sha256 identical. lint 6/6, contract 6/6, ruff clean,
+  annotation 0, preflight pass.
 
 ---
 

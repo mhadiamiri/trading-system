@@ -49,3 +49,7 @@ Thumbs.db
 
 # Spec-kit working files
 .specify/tmp/
+
+# WO-026 §2: the gate-ledger instrument streams here (run-scoped, never committed).
+# Evidence is a DELIBERATE snapshot into evidence/ via tools/snapshot_gate_ledger.py.
+.artifacts/

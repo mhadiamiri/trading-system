@@ -1,5 +1,14 @@
 # WO-024 PASS ONE — TRANSPORT MIGRATION — REPORT
 
+> ⚠ **DATED CORRECTION — 2026-07-24 (WO-026 §4.1). The §3 ledger accounting below is WRONG.**
+> §3 accounts the guard test `test_clock_injection_gate` as contributing **5** outcomes (its 2 coupling
+> refusals + 1 coherence refusal + 1 declared + 1 coherent) and thus 34 + 1 + 5 = **40** against the
+> recorded **41**. The correct figure is **6 and 41**: the guard test also invokes the gate a SIXTH
+> time — an `EARLY_RETURN` from its **assertion 5** (WO-023 §2c default-path preservation, real
+> transport + no clock). Verified against the authentic pass-one blob
+> `git show b8f18b3:evidence/WO-024-PASS1/gate_ledger.txt` (WO-026 §1). The original text below is
+> preserved unchanged (a record of a mis-accounting is itself evidence).
+
 **Base:** `9175969` (worked from `ba082a9`, the §2c docs-close on top of it — identical code state).
 **Scope:** transport migration to `connect_fn` + gate ledger + two docs-only declarations. **No clock
 injected anywhere.** Pass two (clock injection) NOT begun.

@@ -1,0 +1,83 @@
+================================================================================
+WO-026 §3 — EVIDENCE-GUARD BITE PROOF (the instrument must not write under evidence/)
+guard: conftest.py::_assert_ledger_dir_outside_evidence  (called in _write_gate_ledger_and_assert)
+test : tests/integration/test_clock_injection_gate.py   (drives a session so the teardown validates the ledger output dir)
+python: 3.14.6
+================================================================================
+
+PRISTINE sha256(conftest.py) = 82ca27f34f0e79954a3527ead18cb38e491014e6c9d064fc87d42b49d32d2d06
+
+=== ARTIFACT 1 — PASS on pristine (output dir = .artifacts/gate_ledger, evidence/ untouched) ===
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.08s ==============================
+  git status --porcelain evidence/ diff during run (empty = evidence untouched):
+    (no new evidence/ changes)
+
+=== ARTIFACT 2 — MUTATION A (refusal half): point the output dir INSIDE evidence/ ===========
+  mutated sha256 = 1528af5beeb6580a59d7d60a01fd0874f4c272e2c3279628aeb220d8196bb721
+  EXPECT: the session-end guard RAISES 'GATE_LEDGER_PATH_IN_EVIDENCE' naming the offending path.
+tests\integration\test_clock_injection_gate.py .E                        [100%]
+
+=================================== ERRORS ====================================
+_______________ ERROR at teardown of test_clock_injection_gate ________________
+conftest.py:181: in _gate_ledger_recorder
+    _write_gate_ledger_and_assert()
+conftest.py:201: in _write_gate_ledger_and_assert
+    _assert_ledger_dir_outside_evidence(_LEDGER_OUTPUT_DIR)
+conftest.py:107: in _assert_ledger_dir_outside_evidence
+    raise RuntimeError(
+E   RuntimeError: GATE_LEDGER_PATH_IN_EVIDENCE: the ledger instrument's output directory C:\Projects\bot\trading-system\evidence\WO-024-PASS1 resolves inside C:\Projects\bot\trading-system\evidence � a test session must NEVER write under evidence/ (WO-026 �2). Point it at a run-scoped .artifacts/ path; evidence is a deliberate snapshot at close (tools/snapshot_gate_ledger.py).
+=========================== short test summary info ===========================
+ERROR tests/integration/test_clock_injection_gate.py::test_clock_injection_gate
+========================= 1 passed, 1 error in 0.11s ==========================
+  RESTORE sha256 = 82ca27f34f0e79954a3527ead18cb38e491014e6c9d064fc87d42b49d32d2d06
+  EXACT RESTORE (== pristine): YES
+
+=== ARTIFACT 3 — MUTATION B (preservation half): a DIFFERENT legitimate .artifacts path =====
+  mutated sha256 = d1c686c22d4f855be596183d91e02ebc84357d9480f6d32e93473c10bb091b33
+  EXPECT: guard PASSES, ledger writes under .artifacts/gate_ledger_biteB/, evidence/ untouched.
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.08s ==============================
+  wrote to .artifacts/gate_ledger_biteB/: 20260724T114659Z-147b010.txt latest.txt 
+  git status --porcelain evidence/ (must show no NEW changes vs before):
+    (evidence/ untouched during the passing run)
+  RESTORE sha256 = 82ca27f34f0e79954a3527ead18cb38e491014e6c9d064fc87d42b49d32d2d06
+  EXACT RESTORE (== pristine): YES
+
+=== ARTIFACT 4 — PASS after exact restore =======================================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\integration\test_clock_injection_gate.py .                         [100%]
+
+============================== 1 passed in 0.09s ==============================
+
+  final sha256   = 82ca27f34f0e79954a3527ead18cb38e491014e6c9d064fc87d42b49d32d2d06
+  pristine sha256= 82ca27f34f0e79954a3527ead18cb38e491014e6c9d064fc87d42b49d32d2d06
+  IDENTICAL: YES

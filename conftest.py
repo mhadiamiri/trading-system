@@ -85,7 +85,44 @@ _CURRENT_NODEID: str = "<unknown>"
 # STALE MARKER — a by-name list's failure mode (it quietly grows until the net catches nothing).
 _GATE_MARKER = "gate_refusal_expected"
 _MARKERED_NODEIDS: set[str] = set()
-_LEDGER_PATH = REPO_ROOT / "evidence" / "WO-024-PASS1" / "gate_ledger.txt"
+
+# WO-026 §2 — AN INSTRUMENT STREAMS TO AN IGNORED RUN-SCOPED PATH; EVIDENCE IS A DELIBERATE SNAPSHOT.
+# The WO-024/025 defect: this hook wrote directly to a COMMITTED evidence path, so every pytest run
+# silently overwrote committed evidence — found in a changed-files list, not by any guard (WO-026 §1).
+# Fix: the instrument now streams to `.artifacts/gate_ledger/` (git-ignored, run-scoped, NEVER
+# committed, plus a `latest.txt`); a human/WO takes a deliberate provenance-stamped snapshot into
+# evidence/ at close via tools/snapshot_gate_ledger.py. The output directory is MECHANICALLY forbidden
+# from resolving inside evidence/ (the guard, bite-proved WO-026 §3) — enforced, not by convention.
+_LEDGER_OUTPUT_DIR = REPO_ROOT / ".artifacts" / "gate_ledger"
+_EVIDENCE_DIR = (REPO_ROOT / "evidence").resolve()
+
+
+def _assert_ledger_dir_outside_evidence(output_dir) -> None:
+    """WO-026 §2 (the mechanical guard): the ledger instrument MUST NOT write anywhere under
+    evidence/. A test session that streams into a committed evidence path rewrites history on every
+    run. Fail loudly if the configured output directory resolves inside evidence/."""
+    from pathlib import Path
+    resolved = Path(output_dir).resolve()
+    if resolved == _EVIDENCE_DIR or resolved.is_relative_to(_EVIDENCE_DIR):
+        raise RuntimeError(
+            f"GATE_LEDGER_PATH_IN_EVIDENCE: the ledger instrument's output directory {resolved} "
+            f"resolves inside {_EVIDENCE_DIR} — a test session must NEVER write under evidence/ "
+            f"(WO-026 §2). Point it at a run-scoped .artifacts/ path; evidence is a deliberate "
+            f"snapshot at close (tools/snapshot_gate_ledger.py)."
+        )
+
+
+def _run_stamp() -> str:
+    """WO-026 §2: `<utc-timestamp>-<short-sha>` for the run-scoped ledger filename (never committed)."""
+    import subprocess
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(REPO_ROOT),
+                             capture_output=True, text=True, timeout=5).stdout.strip() or "nogit"
+    except Exception:
+        sha = "nogit"
+    return f"{ts}-{sha}"
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
@@ -159,7 +196,12 @@ def _write_gate_ledger_and_assert() -> None:
     # (2) a marker on a test that produced NO refusal is a STALE MARKER (a hole opening quietly).
     stale_markers = sorted(_MARKERED_NODEIDS - refused_nodeids)
 
-    _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # WO-026 §2 — the mechanical guard: the instrument writes to a run-scoped .artifacts/ path, and
+    # NEVER anywhere under evidence/. Validate the configured directory before writing.
+    _assert_ledger_dir_outside_evidence(_LEDGER_OUTPUT_DIR)
+    _LEDGER_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    run_path = _LEDGER_OUTPUT_DIR / f"{_run_stamp()}.txt"
+    latest_path = _LEDGER_OUTPUT_DIR / "latest.txt"
     lines = [
         "WO-024/WO-025 §3 — GATE LEDGER (every _assert_clock_transport_gate invocation).",
         "The gate wrapper delegates to the REAL gate and only records; behaviour is unchanged.",
@@ -184,7 +226,9 @@ def _write_gate_ledger_and_assert() -> None:
     for nodeid, outcome in _GATE_LEDGER:
         mark = " [markered]" if nodeid in _MARKERED_NODEIDS else ""
         lines.append(f"  {outcome:<17} {nodeid}{mark}")
-    _LEDGER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    body = "\n".join(lines) + "\n"
+    run_path.write_text(body, encoding="utf-8")     # WO-026 §2: run-scoped, git-ignored
+    latest_path.write_text(body, encoding="utf-8")  # convenience copy (also git-ignored)
 
     # THE FALSIFIABLE ASSERTION (WO-025 §3) — BOTH directions; the marker set is EXACTLY the
     # tolerated set. A stale marker FAILS (Ops's call), same weight as an unmarkered refusal.
@@ -192,5 +236,5 @@ def _write_gate_ledger_and_assert() -> None:
         "GATE LEDGER VIOLATION.\n"
         f"  (1) refusals from UNMARKERED tests (a real gate firing): {unmarkered_refusals}\n"
         f"  (2) STALE markers (markered tests that never refused): {stale_markers}\n"
-        f"  markered set: {sorted(_MARKERED_NODEIDS)}. See {_LEDGER_PATH}."
+        f"  markered set: {sorted(_MARKERED_NODEIDS)}. See {run_path}."
     )

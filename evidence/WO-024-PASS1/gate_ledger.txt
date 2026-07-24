@@ -1,3 +1,19 @@
+═══════════════════════════════════════════════════════════════════════════════════════════════════
+⚠ ANNOTATION — 2026-07-24 (WO-026 §2). THIS FILE WAS INCIDENTALLY REGENERATED, NOT AUTHORED.
+The gate-ledger instrument (conftest.py) used to stream directly to THIS committed path, so every
+pytest run overwrote it automatically (the WO-026 defect). The body below is the version left by the
+LAST run before WO-025 committed at `94bbf0f` — it is a MARKER-FORM regeneration, NOT the authentic
+pass-one blob.
+  • AUTHENTIC pass-one blob (by-name form): `git show b8f18b3:evidence/WO-024-PASS1/gate_ledger.txt`
+    (sha256 9f54efa536e58ee0287153d4c123c6d175bab84672e7238a59cb81e36c14f1a6).
+  • This regenerated blob at 94bbf0f: sha256 51732bcd119643a3b319ff1fda422f087af41e71409c3446bf27636c85efba42.
+  • §1 DIFF RESULT: the two DIFFER (header WO-024→WO-024/WO-025; by-name exclusion section → marker
+    section; per-invocation ORDER differs by seed; guard-test lines gained [markered]). The ARITHMETIC
+    is identical in both — total 41; guard test = 6 invocations, the sixth EARLY_RETURN — so WO-025 §1's
+    answer HOLDS against the authentic b8f18b3 blob (WO-026 §1).
+The contents are NOT restored by overwriting (that would be a THIRD rewrite of the same artifact —
+WO-026 §6). From WO-026 on, the instrument streams to `.artifacts/gate_ledger/` and never writes here.
+═══════════════════════════════════════════════════════════════════════════════════════════════════
 WO-024/WO-025 §3 — GATE LEDGER (every _assert_clock_transport_gate invocation).
 The gate wrapper delegates to the REAL gate and only records; behaviour is unchanged.
 Total gate invocations recorded: 41
