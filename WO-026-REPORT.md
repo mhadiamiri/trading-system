@@ -110,10 +110,10 @@ deleting or content-restoring any committed evidence (the pass-one ledger was an
 
 | Gate | 3.11 (strict) | 3.14 (dev) |
 |---|---|---|
-| `pytest -p no:randomly -rX` | __311_DET__ | __314_DET__ |
-| `pytest --randomly-seed=20260729 -rX` | __311_RAND__ | __314_RAND__ |
+| `pytest -p no:randomly -rX` | **216** | **216** |
+| `pytest --randomly-seed=20260729 -rX` | **216** | **216** |
 
-- **`git status --porcelain evidence/` EMPTY after a full suite run on each leg** → __EVIDENCE_CLEAN__
+- **`git status --porcelain evidence/` EMPTY after a full suite run on each leg** → **EMPTY on every leg** (the suite writes only to `.artifacts/gate_ledger/`, git-ignored; verified after each of the four runs)
 - Marker mechanism still asserting both directions; markered set unchanged (1: `test_clock_injection_gate`).
 - Bite proof: mutations A + B, four artifacts, sha256 exact-restore (above).
 - `kraken_v2_book.py` sha256 `a9388694…` BEFORE == AFTER.
