@@ -389,7 +389,8 @@ its hardcoded nodeid (a bite proof that bites nothing). Recorded in `progress.md
   `annotation_name_scan.py` **0** · `preflight_path_check.py` **pass**.
 - **Test-count arithmetic:** WO-027 adds/removes **no** test (investigation: a snapshot + docs only).
   Total **stays 216**.
-- Commit / push / CI: _[fill run id]_ — local == remote, CI green BOTH legs.
+- Commit / push / CI: `401d01a` on master, pushed, local == remote. **CI run `30108543326` GREEN on BOTH
+  legs** — test (3.11): success, test (3.14): success.
 
 ---
 
