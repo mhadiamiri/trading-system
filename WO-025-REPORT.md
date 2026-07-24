@@ -136,7 +136,7 @@ no production logic change. `kraken_v2_book.py` sha256 identical before/after.
 - `kraken_v2_book.py` sha256 BEFORE `a9388694…` == AFTER `a9388694…` (IDENTICAL).
 - **Test-count arithmetic:** WO-025 adds **no test** and removes none — the marker is a decorator on an
   existing test; the mechanism change is in conftest + pytest.ini. **Total stays 216.**
-- **Commit / push / CI:** __COMMIT_CI__
+- **Commit / push / CI:** committed `94bbf0f` on master, pushed, local == remote. **CI run `30069882143` GREEN on BOTH legs** — test (3.11) + test (3.14) success.
 
 ---
 
