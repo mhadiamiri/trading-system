@@ -38,8 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-24 (WO-024 PASS ONE COMPLETE — transport migration to connect_fn + gate ledger; pass two = clock injection is NEXT)
-**WO-024 Pass One**: HEAD `959e832` — migrated 34 transport-patch sites to `connect_fn=` (32 tests), added the session-scoped GATE LEDGER (0 refusals asserted), two docs-only D35 declarations. 216 green both interpreters both orders (seed 20260726), gate ledger clean, CI green both legs run `30043854493`. Seam finding: `connect_fn` doesn't thread through LiveCaptureRunner/registry (2 adapter=None tests left, ruled). **Pass two (clock injection into the 30 races) is NEXT.** See the **▶ WO-024 PASS ONE** block below.
+**Last Updated**: 2026-07-24 (WO-025 COMPLETE — ledger closeout + marker-based exclusion; the `connect_fn` threading WO then pass two are NEXT)
+**WO-025**: HEAD `__HEAD_25__` — resolved the ledger 41-vs-40 arithmetic (the missing one = the guard test's assertion-5 EARLY_RETURN), showed the sites-29/30 ledger lines, replaced the ledger's by-name exclusion with a self-declared `@pytest.mark.gate_refusal_expected` marker (bidirectional: unmarkered refusal fails; stale marker fails; bite-proved both directions). `kraken_v2_book.py` byte-unchanged (sha256 `a9388694…`). **Finding 1 (audit name-match by file+line) INVERTED the closeout §2 premise: site 29 IS race #5 → the `connect_fn` threading WO is a pass-two PREREQUISITE** (annotation in the WO-025 block). 216 green both interpreters both orders (seed 20260728), CI __25_CI__. **NEXT: the `connect_fn` threading WO, then pass two.**
+**WO-024 Pass One** (prior): HEAD `959e832` — migrated 34 transport-patch sites to `connect_fn=` (32 tests) + the session-scoped gate ledger. CI green run `30043854493`. See the **▶ WO-024 PASS ONE** block below.
 **Current Phase**: **WO-023 §2c done; 30-test conversion is NEXT (fresh session).** Foundation (§2) shipped the seams + gate; §2b corrected the coupling keying (identity, not injection status) + the §7 VOID verdict; §2c added the coupling branch's PRESERVATION dual (assertion 5: real transport + no clock → proceeds) and found — against the WO's expectation — that Mutation D was ALREADY caught by existing no-clock live tests via the coherence branch (0.1 finding). §2c is TESTS+DOCS ONLY (no production defect; gate byte-unchanged). See the **▶ WO-023 §2c / §2b / §2 FOUNDATION** blocks below. NEXT: the 30-test deterministic conversion → original WO-023 §3/§4/§5 → taxonomy-migration WO → 008c → 24h corpus.
 **Status**: HEAD `9175969` on master (pushed; local == remote). **216 tests green on BOTH interpreters (3.11 strict via uv venv, 3.14 dev), both orders** (`-p no:randomly` and `--randomly-seed=20260725`), 0 failed/xfailed/xpassed. import-linter 6/6, contract 6/6, ruff clean, annotation_name_scan 0. (Foundation `fbdaf58` CI run `30026635375`; §2b `fddf1cd` CI run `30030741629`; §2c `9175969` CI run `30036599896` — all green both legs.) `gh` CLI: `C:\Program Files\GitHub CLI\gh.exe` (auth: mhadiamiri, keyring). The **▶ WO-016** and **▶ CURRENT STATUS — 2026-07-20** blocks below are HISTORICAL (git log is authoritative); read the **▶ WO-023 §2 FOUNDATION** and **▶ WO-021/WO-022** blocks below to resume.
 **Remote**: https://github.com/mhadiamiri/trading-system (Private)
@@ -216,6 +217,46 @@ taxonomy-migration WO → 008c → 24h corpus. **The re-run-precedent standing r
   clean on every leg. lint-imports 6/6, contract 6/6, ruff clean, annotation 0, preflight pass. Count stays 216 (migration
   +0; ledger adds a session-level check, not a test). **Pass two (clock injection) NOT begun.** Ledger-persistence
   recommendation: keep it for pass two as the live safety net (invariant: 0 refusals; proceed-shape counts become diagnostics).
+
+---
+
+## ▶ WO-025 COMPLETE (AUTHORITATIVE) — 2026-07-24 — ledger closeout + marker-based exclusion (D35)
+
+> Closed the three WO-024 delivery gaps: the ledger arithmetic, the sites-29/30 ledger lines (shown), and the by-name
+> exclusion → a self-declared marker. **NO production logic changed** (`kraken_v2_book.py` byte-identical, sha256
+> `a9388694…`). Report: `WO-025-REPORT.md`. Evidence: `evidence/WO-025/` + `evidence/WO-024-PASS1/gate_ledger.txt`.
+> Decision log: `docs/decisions/2026-07-24-an-enumeration-is-only-as-good-as-its-identifiers.md`.
+
+- **§1 arithmetic resolved (from the committed evidence, not memory):** the 41 is correct; the pass-one report's accounting
+  (34 + 1 + guard's 5 = 40) missed ONE — the guard test's OWN `EARLY_RETURN` from **assertion 5** (§2c default-path
+  preservation, no clock → early return). The guard test makes **6** gate invocations, not 5. Suite-wide: 35 EARLY_RETURN +
+  2 PROCEED_DECLARED + 1 PROCEED_COHERENT + 2 REFUSED_COUPLING + 1 REFUSED_COHERENCE = 41.
+- **§2 sites 29/30 (shown, from the ledger file):** site 29 `test_runner_resolves_…_via_factory` → `EARLY_RETURN` (no clock in
+  pass one); site 30 `test_…_refuses_non_live_capable_…` → **absent** (refuses before the gate). Both as expected.
+- **§3 MARKER MECHANISM (this WO built it):** replaced the by-name exclusion with `@pytest.mark.gate_refusal_expected`
+  (registered in pytest.ini; carried by EXACTLY ONE test, `test_clock_injection_gate`). Session-end asserts BOTH directions:
+  (1) no refusal from an UNMARKERED test; (2) a markered test with NO refusal FAILS as a STALE marker. Bite-proved
+  (`evidence/WO-025/ledger_bite_proof.txt`, 4 artifacts, sha256): Mutation A (unmarkered refusal → dir 1) + Mutation B (stale
+  marker → dir 2). By-name-enumeration inventory (enumerate, not convert): `tools/vocabulary_enforcement_bite_proof.py:18`
+  hardcodes a test nodeid — a candidate for a later identifier-hardening WO.
+- **ACCEPTANCE:** 216 both interpreters both orders (seed 20260728), marker mechanism live + asserted both directions.
+  lint-imports 6/6, contract 6/6, ruff clean, annotation 0, preflight pass. `kraken_v2_book.py` sha256 identical before/after.
+
+**§5 DATED ANNOTATION (annotate, don't delete — D35) — the WO-024 CLOSEOUT §2 instruction is SUSPENDED, premise INVERTED:**
+> The WO-024 closeout §2 ordered comments at sites 29/30 stating the `connect_fn` threading is "currently NOT a blocker."
+> **That premise is INVERTED.** The WO-023 §1 audit name-match (by file+line, WO-025 Finding 1) shows site 29
+> (`test_runner_resolves_live_adapter_from_data_source_via_factory`, test_live_capture.py:190 / audit-era :197) IS **race #5 of
+> 30**, corpus-critical `[emission, persistence]`. So the runner/registry `connect_fn` threading is a **PREREQUISITE** for pass
+> two, not a deferral. The sites-29/30 comments were NOT written in WO-025. That instruction **re-issues after the
+> `connect_fn` threading WO lands** (with corrected text). Site 30 remains out-of-population (never connects).
+
+**RULED SEQUENCE (r21):** **`connect_fn` threading WO** (thread through LiveCaptureRunner → create_live_capture_feed →
+registry.create) → **WO-025** (this, parallel-eligible, DONE) → **pass two** (26 clock-injectable races; the three
+`asyncio.sleep`/`starve` races — `test_pong_observer` ×2, `test_starved_lag_sampler` — EXCLUDED BY ENUMERATION) →
+**`asyncio.sleep` investigation WO** (default: resolve before corpus) → **capture-loop baseline WO** → taxonomy migration →
+008c → 24h corpus. **NAMED DEFERRED ITEM — WO-TBD:** thread `connect_fn` through `LiveCaptureRunner` /
+`create_live_capture_feed` / `registry.create` — currently NOT a blocker for WO-025, becomes a pass-two PREREQUISITE the moment
+a clock must be injected into site 29 (which the audit says it must).
 
 ---
 

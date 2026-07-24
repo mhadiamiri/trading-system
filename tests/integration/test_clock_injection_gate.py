@@ -55,6 +55,7 @@ def _self_terminating_spy():
     ])
 
 
+@pytest.mark.gate_refusal_expected   # WO-025 §3: this test intentionally makes the gate REFUSE
 @pytest.mark.asyncio
 async def test_clock_injection_gate():
     # ── 1. UNCONFIGURED-REAL REFUSAL — default connect_fn resolves to the REAL transport. ─────────

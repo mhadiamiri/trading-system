@@ -1,0 +1,97 @@
+================================================================================
+WO-025 §3 — MARKER-BASED GATE-LEDGER BITE PROOF (both directions; 0.4 local+direct)
+instrument: conftest.py::_gate_ledger_recorder + _write_gate_ledger_and_assert (marker-based)
+marker: @pytest.mark.gate_refusal_expected  (registered in pytest.ini; carried ONLY by
+        test_clock_injection_gate). The previous WO-024 by-name bite proof is INVALIDATED by
+        the mechanism change and is re-run here, not cited.
+python: 3.14.6
+================================================================================
+
+PRISTINE sha256(tests/integration/test_throughput.py) = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+
+=== ARTIFACT 1 — PASS on pristine (no markered test in this file; no refusal) ===
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests\integration\test_throughput.py ..                                  [100%]
+
+============================== 2 passed in 0.12s ==============================
+
+=== ARTIFACT 2 — MUTATION A: refusal from an UNMARKERED test (direction 1) ======
+  (drop connect_fn -> module-patch the transport; inject an incoherent clock. Per 0.1 finding
+   (b) this fires COHERENCE under identity keying; the ledger records the actual outcome and the
+   assertion does NOT hard-code the type. test_throughput carries NO marker -> direction (1) fails.)
+mutation A applied
+  mutated sha256 = d9a19e51d6983a8e5267df8a5a5c97ba66fe2d18db175a109f791e424519b03f
+  EXPECT: session-end ledger ERRORS — '(1) refusals from UNMARKERED tests' non-empty.
+E       markered set: []. See C:\Projects\bot\trading-system\evidence\WO-024-PASS1\gate_ledger.txt.
+E   assert (not [('tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path', 'REFUSED_COHERENCE')])
+================================== FAILURES ===================================
+______ test_receive_to_process_latency_recorded_through_production_path _______
+tests\integration\test_throughput.py:33: in test_receive_to_process_latency_recorded_through_production_path
+    async for _ in adapter.get_live_market_data(duration_seconds=0.1):
+src\trading\data\adapters\kraken_v2_book.py:2509: in get_live_market_data
+    self._assert_clock_transport_gate(incoherent_clocks_allowed)
+conftest.py:116: in _recording_gate
+    result = original(self, incoherent_clocks_allowed)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\trading\data\adapters\kraken_v2_book.py:2454: in _assert_clock_transport_gate
+    raise ValueError(
+E   ValueError: CLOCK_INJECTION_REFUSED: COHERENCE � injected clocks must be the coherent wall+monotonic pair from ONE source (D25: monotonic orders, wall locates). An incoherent pair is permitted ONLY when declared by name via incoherent_clocks_allowed=<reason>; the gate never infers it (RULING D34-3).
+=========================== short test summary info ===========================
+FAILED tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path
+ERROR tests/integration/test_throughput.py::test_message_rate_completeness_reports_silent_seconds
+==================== 1 failed, 1 passed, 1 error in 0.12s =====================
+  RESTORE sha256 = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  EXACT RESTORE (== pristine): YES
+
+=== ARTIFACT 3 — MUTATION B: STALE MARKER (direction 2) ==========================
+  (add @pytest.mark.gate_refusal_expected to a test that produces NO refusal -> it early-returns
+   -> markered but never refuses -> STALE MARKER. This is the preservation dual, local+direct.)
+mutation B applied
+  mutated sha256 = 8ea27175d7620cab3f5c18dc4457cc4a2b944f983b475833b86496a3b1e2972e
+  EXPECT: session-end ledger ERRORS — '(2) STALE markers' names the test (it early-returns, never refuses).
+collected 2 items
+
+tests\integration\test_throughput.py ..E                                 [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at teardown of test_message_rate_completeness_reports_silent_seconds __
+conftest.py:144: in _gate_ledger_recorder
+    _write_gate_ledger_and_assert()
+conftest.py:191: in _write_gate_ledger_and_assert
+    assert not unmarkered_refusals and not stale_markers, (
+E   AssertionError: GATE LEDGER VIOLATION.
+E       (1) refusals from UNMARKERED tests (a real gate firing): []
+E       (2) STALE markers (markered tests that never refused): ['tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path']
+E       markered set: ['tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path']. See C:\Projects\bot\trading-system\evidence\WO-024-PASS1\gate_ledger.txt.
+E   assert (not [] and not ['tests/integration/test_throughput.py::test_receive_to_process_latency_recorded_through_production_path'])
+=========================== short test summary info ===========================
+ERROR tests/integration/test_throughput.py::test_message_rate_completeness_reports_silent_seconds
+========================= 2 passed, 1 error in 0.22s ==========================
+  RESTORE sha256 = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  EXACT RESTORE (== pristine): YES
+
+=== ARTIFACT 4 — PASS after exact restore ========================================
+
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Projects\bot\trading-system
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests\integration\test_throughput.py ..                                  [100%]
+
+============================== 2 passed in 0.13s ==============================
+
+  final sha256   = 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  pristine sha256= 576745bd2a58479c6534494c491db3ecc59c81359269de547e41f5a48324bb7e
+  IDENTICAL: YES

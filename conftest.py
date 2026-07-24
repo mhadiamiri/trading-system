@@ -77,17 +77,25 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 _GATE_LEDGER: list[tuple[str, str]] = []   # (test nodeid, outcome)
 _CURRENT_NODEID: str = "<unknown>"
-# The guard's OWN test intentionally exercises refusals + a declared proceed (its
-# S13/D37 bite proof), so it is excluded from the zero-refusal / one-declared counts.
-_GATE_OWN_TEST = "tests/integration/test_clock_injection_gate.py"
+# WO-025 §3 — MARKER-BASED EXCLUSION (replaces the WO-024 by-name exclusion). The ledger tolerates
+# gate refusals ONLY from a test that DECLARES the `gate_refusal_expected` marker ON ITSELF (its own
+# S13/D37 bite proof). A marker is an identifier that cannot truncate in transit, unlike a name copied
+# between documents (Finding 1 / D34-3: declared, never inferred). The check is bidirectional: a
+# refusal from an UNMARKERED test fails, AND a marker on a test that produces NO refusal fails as a
+# STALE MARKER — a by-name list's failure mode (it quietly grows until the net catches nothing).
+_GATE_MARKER = "gate_refusal_expected"
+_MARKERED_NODEIDS: set[str] = set()
 _LEDGER_PATH = REPO_ROOT / "evidence" / "WO-024-PASS1" / "gate_ledger.txt"
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
-    """Record which test is about to run, so the gate wrapper can attribute its
-    invocations to a nodeid (the gate fires during the test body, after this)."""
+    """Record which test is about to run (so the gate wrapper can attribute its invocations to a
+    nodeid — the gate fires during the test body, after this), and whether it declares the
+    gate_refusal_expected marker (so the ledger tolerates its refusals, and only its)."""
     global _CURRENT_NODEID
     _CURRENT_NODEID = item.nodeid
+    if item.get_closest_marker(_GATE_MARKER) is not None:
+        _MARKERED_NODEIDS.add(item.nodeid)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -139,20 +147,25 @@ def _gate_ledger_recorder():
 def _write_gate_ledger_and_assert() -> None:
     from collections import Counter
 
-    # Suite-wide counts (every invocation), and counts EXCLUDING the guard's own test.
     all_counts: Counter = Counter(o for _, o in _GATE_LEDGER)
-    migrated = [(n, o) for n, o in _GATE_LEDGER if not n.startswith(_GATE_OWN_TEST)]
-    migrated_counts: Counter = Counter(o for _, o in migrated)
-    refused = [(n, o) for n, o in migrated if o.startswith("REFUSED_")]
-    declared = [n for n, o in migrated if o == "PROCEED_DECLARED"]
+    refused = [(n, o) for n, o in _GATE_LEDGER if o.startswith("REFUSED_")]
+    refused_nodeids = {n for n, _ in refused}
+    declared = [n for n, o in _GATE_LEDGER
+                if o == "PROCEED_DECLARED" and n not in _MARKERED_NODEIDS]
+
+    # WO-025 §3 — the two directions of the marker-based tolerance.
+    # (1) a refusal from an UNMARKERED test is a real gate firing (a finding).
+    unmarkered_refusals = [(n, o) for n, o in refused if n not in _MARKERED_NODEIDS]
+    # (2) a marker on a test that produced NO refusal is a STALE MARKER (a hole opening quietly).
+    stale_markers = sorted(_MARKERED_NODEIDS - refused_nodeids)
 
     _LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = [
-        "WO-024 PASS ONE §3 — GATE LEDGER (every _assert_clock_transport_gate invocation).",
+        "WO-024/WO-025 §3 — GATE LEDGER (every _assert_clock_transport_gate invocation).",
         "The gate wrapper delegates to the REAL gate and only records; behaviour is unchanged.",
         f"Total gate invocations recorded: {len(_GATE_LEDGER)}",
         "",
-        "SUITE-WIDE outcome counts (includes the guard's own test):",
+        "SUITE-WIDE outcome counts (every test, markered or not):",
     ]
     for o in ("EARLY_RETURN", "PROCEED_COHERENT", "PROCEED_DECLARED",
               "REFUSED_COUPLING", "REFUSED_COHERENCE", "REFUSED_OTHER"):
@@ -160,28 +173,24 @@ def _write_gate_ledger_and_assert() -> None:
             lines.append(f"  {o}: {all_counts[o]}")
     lines += [
         "",
-        f"EXCLUDING the guard's own test ({_GATE_OWN_TEST} — its refusals/declared-proceed are its "
-        "designed bite proof):",
-    ]
-    for o in ("EARLY_RETURN", "PROCEED_COHERENT", "PROCEED_DECLARED",
-              "REFUSED_COUPLING", "REFUSED_COHERENCE", "REFUSED_OTHER"):
-        if migrated_counts.get(o):
-            lines.append(f"  {o}: {migrated_counts[o]}")
-    lines += [
-        "",
-        f"REFUSED_COUPLING (excl. guard test): {migrated_counts.get('REFUSED_COUPLING', 0)}",
-        f"REFUSED_COHERENCE (excl. guard test): {migrated_counts.get('REFUSED_COHERENCE', 0)}",
-        f"PROCEED_DECLARED (excl. guard test): {migrated_counts.get('PROCEED_DECLARED', 0)}  "
-        f"-> {declared}",
+        "WO-025 §3 MARKER-BASED TOLERANCE (declared, never inferred):",
+        f"  tests carrying @pytest.mark.{_GATE_MARKER}: {sorted(_MARKERED_NODEIDS)}",
+        f"  (1) refusals from UNMARKERED tests (must be empty): {unmarkered_refusals}",
+        f"  (2) STALE markers — markered tests with NO refusal (must be empty): {stale_markers}",
+        f"  PROCEED_DECLARED (unmarkered): {len(declared)}  -> {declared}",
         "",
         "PER-INVOCATION (nodeid -> outcome):",
     ]
     for nodeid, outcome in _GATE_LEDGER:
-        lines.append(f"  {outcome:<17} {nodeid}")
+        mark = " [markered]" if nodeid in _MARKERED_NODEIDS else ""
+        lines.append(f"  {outcome:<17} {nodeid}{mark}")
     _LEDGER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # THE FALSIFIABLE ASSERTION (WO-024 §3): zero refusals outside the guard's own test.
-    assert not refused, (
-        f"GATE FIRED during pass one (transport-only migration) — this is a FINDING, not friction. "
-        f"Refusals (excluding the guard's own test): {refused}. See {_LEDGER_PATH}."
+    # THE FALSIFIABLE ASSERTION (WO-025 §3) — BOTH directions; the marker set is EXACTLY the
+    # tolerated set. A stale marker FAILS (Ops's call), same weight as an unmarkered refusal.
+    assert not unmarkered_refusals and not stale_markers, (
+        "GATE LEDGER VIOLATION.\n"
+        f"  (1) refusals from UNMARKERED tests (a real gate firing): {unmarkered_refusals}\n"
+        f"  (2) STALE markers (markered tests that never refused): {stale_markers}\n"
+        f"  markered set: {sorted(_MARKERED_NODEIDS)}. See {_LEDGER_PATH}."
     )
