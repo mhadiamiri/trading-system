@@ -202,7 +202,8 @@ ledger 41 invocations, 0 unmarkered refusals, 0 stale markers on every leg; snap
 - `lint-imports` **6/6** (runner imports only `factory`/`websockets`, never `kraken_v2_book`) ·
   `contract_count_check.py` **6/6** · `ruff` **clean** · `annotation_name_scan.py` **0** ·
   `preflight_path_check.py` **pass**.
-- Commit, push, local == remote, CI green BOTH legs — run `_[fill]_`.
+- Commit `c50b70e`, pushed, local == remote. **CI run `30175153052` GREEN on BOTH legs** — test (3.11):
+  success, test (3.14): success.
 
 ---
 
