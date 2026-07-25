@@ -14,10 +14,18 @@ import any concrete adapter module. Adapters self-register when
 
 from typing import Any, AsyncIterator, Optional
 
+import websockets
+
 from trading.data.market_state import MarketState
 from trading.data.adapters import registry
 from trading.logkit.decision import DecisionLogger
 from config.settings import Settings
+
+# WO-028 §2.3 (D36-1b): the live path's DECLARED default transport is `websockets.connect`, which
+# is the SAME object as kraken_v2_book._REAL_CONNECT (verified by identity — ONE anchor, not two).
+# The factory references the shared object directly rather than importing a concrete adapter module
+# (it resolves adapters by name through the registry; importing kraken_v2_book would break that
+# principle). A caller passing nothing gets exactly the transport it does today.
 
 
 # Store active feed instance for diagnostics
@@ -55,6 +63,7 @@ def create_live_capture_feed(
     duration_seconds: float,
     decision_logger: DecisionLogger | None = None,
     data_source: str | None = None,
+    connect_fn=websockets.connect,
 ):
     """
     WO-015: resolve a LIVE-mode adapter through the registry (the sole adapter-resolution path,
@@ -83,11 +92,16 @@ def create_live_capture_feed(
             f"Set DATA_SOURCE to a live-capable adapter (e.g. 'kraken_v2'). Refusing before "
             f"opening any connection."
         )
+    # WO-028 §2.3: forward the DECLARED transport seam. Safe to pass unconditionally here because
+    # `is_live_capable` above guarantees only a live-capable builder (kraken_v2, which accepts
+    # connect_fn — enforced at registration, §3) is reached; the generic `create_feed` path canNOT
+    # forward it (its builder is polymorphic over DATA_SOURCE and simulated/kraken_public reject it).
     feed = registry.create(
         name,
         decision_logger=decision_logger,
         mode="live",
         gap_persist_path=str(persist_path),
+        connect_fn=connect_fn,
     )
     _active_feed = feed
     return feed, feed.get_live_market_data(duration_seconds)

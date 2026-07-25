@@ -144,6 +144,13 @@ VALID_REASON_CODES = {
         # live-only kwarg. Prefix-free (LIVE_CAPTURE_ENV_ vs LIVE_CAPTURE_UNSUPPORTED — neither
         # prefixes the other).
         "LIVE_CAPTURE_UNSUPPORTED",
+        # WO-028 §3 (D36-2b / D39): raised AT REGISTRATION (import time) by register(live_capture=True)
+        # when the decorated builder does not accept a `connect_fn` parameter. A live-capable builder
+        # must accept connect_fn so the transport is a DECLARED seam threaded at construction, not an
+        # ambient module-global reach at call time — rejected the moment it enters the system, not at a
+        # later forwarding TypeError. Prefix-free (LIVE_CAPABLE_ vs LIVE_CAPTURE_ diverge at CAPABLE/
+        # CAPTURE — neither prefixes the other).
+        "LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN",
         # WO-015 addendum A: the RULED FIFTH gap-ledger cause (a lead ruling, not an invented
         # fifth — so it does NOT trigger WO-014c-2's "STOP if a path fits none of the four").
         # Emitted when wall-vs-monotonic divergence exceeds the declared drift bound (WO-014c-3

@@ -3083,15 +3083,23 @@ from trading.data.adapters.registry import register  # noqa: E402
 
 @register("kraken_v2", live_capture=True)
 def _build_kraken_v2(decision_logger=None, mode=KrakenV2BookAdapter.MODE_FIXTURE,
-                     gap_persist_path=None) -> "KrakenV2BookAdapter":
+                     gap_persist_path=None, connect_fn=_REAL_CONNECT) -> "KrakenV2BookAdapter":
     """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
 
     WO-015: the registry is the SOLE adapter-resolution path (Principle IV/VII), so the LIVE
     adapter is built HERE (via the factory's create_live_capture_feed passing mode='live'),
     never by a caller importing this module. `gap_persist_path` configures the live gap ledger
     at construction so the live-capture runner need not touch adapter internals.
+
+    WO-028 §2.1 (D36-1b): `connect_fn` is a DECLARED default parameter equal to `_REAL_CONNECT`
+    (the SAME import-time anchor the gate compares against — not a second capture of
+    websockets.connect). It is forwarded to the adapter constructor, so a builder-constructed
+    adapter holds `_connect_fn is _REAL_CONNECT` (a DECLARED transport at construction) rather than
+    None resolved ambiently at call time. The resolved socket is identical to today's
+    (`_REAL_CONNECT is websockets.connect`); only the mechanism of holding it changed. This is the
+    single point that serves BOTH create_live_capture_feed and create_feed (they share this builder).
     """
-    adapter = KrakenV2BookAdapter(mode=mode)
+    adapter = KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn)
     if gap_persist_path is not None:
         adapter._gap_persist_path = str(gap_persist_path)
     return adapter

@@ -21,10 +21,16 @@ socket — that is the re-run's job, under the per-run authorization, on a host 
 import time
 from typing import Any, Optional, AsyncIterator
 
+import websockets
+
 # WO-015: the runner resolves the LIVE adapter through the FACTORY/REGISTRY (the sole
 # adapter-resolution path, Principle IV/VII). It MUST NOT import a concrete adapter module —
 # import-linter forbids trading.loop -> trading.data.adapters.kraken_v2_book. The adapter is a
 # duck-typed object here; tests inject one directly (tests are exempt from the boundary).
+# WO-028 §2.4 (D36-1b): the runner's DECLARED default transport is `websockets.connect`. Because
+# import-linter forbids importing kraken_v2_book, the runner CANNOT reference its `_REAL_CONNECT`
+# name — but `websockets.connect` IS that same object by identity (one anchor, verified), so the
+# declared default reaches the builder as _REAL_CONNECT with no concrete-adapter import.
 from trading.data.adapters import factory
 from trading.execution.paper import PaperExecutionClient
 from trading.loop.live import LiveTradingLoop
@@ -48,6 +54,7 @@ class LiveCaptureRunner:
         loop: Optional[LiveTradingLoop] = None,
         clock=None,
         data_source: Optional[str] = None,
+        connect_fn=websockets.connect,     # WO-028 §2.4: DECLARED transport seam (== _REAL_CONNECT)
     ) -> None:
         """
         Args:
@@ -69,6 +76,7 @@ class LiveCaptureRunner:
         self._loop = loop
         self._clock = clock or time.time
         self._data_source = data_source
+        self._connect_fn = connect_fn
         self._mean_cycle_baseline = None   # WO-016 §D28: set by _preflight from the host store
         self._preflight()
 
@@ -116,6 +124,7 @@ class LiveCaptureRunner:
             return adapter, adapter.get_live_market_data(self._duration_seconds)
         return factory.create_live_capture_feed(
             self._persist_path, self._duration_seconds, data_source=self._data_source,
+            connect_fn=self._connect_fn,     # WO-028 §2.4: thread the declared transport seam
         )
 
     async def run(self) -> dict:

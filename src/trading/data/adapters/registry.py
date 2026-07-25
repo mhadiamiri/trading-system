@@ -14,6 +14,7 @@ registers itself, config names it, nothing else moves.
 
 from __future__ import annotations
 
+import inspect
 from typing import Callable, Dict, Set
 
 _REGISTRY: Dict[str, Callable] = {}
@@ -32,6 +33,18 @@ def register(name: str, *, live_capture: bool = False) -> Callable:
     def _decorator(builder: Callable) -> Callable:
         if name in _REGISTRY:
             raise ValueError(f"Adapter name already registered: {name!r}")
+        # WO-028 §3 (D36-2b): declare the transport-seam contract AT REGISTRATION. A live-capable
+        # builder MUST accept `connect_fn` so the transport is a DECLARED seam threaded at
+        # construction, not an ambient module-global reach at call time. Validated here, at import
+        # time, so a non-conforming builder is rejected the moment it enters the system — not at a
+        # later forwarding TypeError. `live_capture=False` builders are NOT subject to the check.
+        if live_capture and "connect_fn" not in inspect.signature(builder).parameters:
+            raise TypeError(
+                f"LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN: builder {builder.__name__} is registered "
+                f"live_capture=True but does not accept 'connect_fn'. Live-capable builders must "
+                f"accept connect_fn so the transport is a declared seam, not an ambient default — "
+                f"see D39 / Principle VII."
+            )
         _REGISTRY[name] = builder
         if live_capture:
             _LIVE_CAPABLE.add(name)

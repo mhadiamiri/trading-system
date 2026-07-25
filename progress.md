@@ -38,7 +38,9 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-24 (WO-027 COMPLETE — connect_fn threading INVESTIGATION + PROPOSAL, no code; snapshot tool exercised for real; proposal (Option a) awaits the lead's ruling before implementation)
+**Last Updated**: 2026-07-25 (WO-028 COMPLETE — connect_fn threading IMPLEMENTED in production (D36-1b), registration-time contract (D36-2b) with bite proof, race #5 migrated off the monkeypatch; 217 both interpreters both orders; SHIP IMPACT YES, authorized)
+**WO-028**: HEAD `PENDING` (base `f2ea05e` = `401d01a` + WO-027 docs-only close) — PRODUCTION implementation of D36. **1b (both paths):** the declared default `connect_fn=_REAL_CONNECT` lives on the SHARED builder `_build_kraken_v2` (serves both `create_live_capture_feed` and `create_feed`); factory live-path + runner forward it; a builder-constructed adapter now holds `_connect_fn is _REAL_CONNECT` (declared at construction, not ambient at call time) — the resolved socket is byte-identical to today (`_REAL_CONNECT is websockets.connect`). Runner/factory reference `websockets.connect` (the SAME anchor object) because import-linter forbids the runner importing `kraken_v2_book`; single-anchor verified by `is`. `create_feed` UNCHANGED (generic over DATA_SOURCE; simulated/kraken_public reject connect_fn) — 1b held at the shared builder. **2b:** `register(live_capture=True)` validates the builder accepts `connect_fn` at import (`LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN`, D39-flagged for the lead), bite-proved 4 artifacts sha256 exact-restore both directions. **§4.2** +1 identity test (non-live default `is _REAL_CONNECT`, construction-only). **§5** race #5 migrated to inject `connect_fn` through the runner (monkeypatch removed), still `EARLY_RETURN`. Vocabulary declaration added for the new code (`logkit/decision.py`). 217 both interpreters both orders (seed 20260731), gate ledger 0 unmarkered/0 stale, evidence/ clean, CI green both legs run `PENDING`. See the **▶ WO-028** block below. Report: `WO-028-REPORT.md`.
+**Fresh-session override (recorded):** the WO mandated a fresh session; the user directed "resume with this session" — logged as an explicit override.
 **WO-027**: HEAD `401d01a` (base `e3533bf` = `4f18459` + docs-only close) — INVESTIGATION only, **no production code**, `kraken_v2_book.py` byte-unchanged (`a9388694…`). §1 ran `tools/snapshot_gate_ledger.py` for the FIRST time (built WO-026, never executed) → PASSED, header all five fields real, guard held. Findings: `registry.create` is generic; **the `kraken_v2` builder `_build_kraken_v2` DROPS `connect_fn`** (the choke point); the factory→registry path resolves the transport from **ambient `websockets.connect`** (D35 condition). §2.3: **exactly one** of the 30 races (#5 / site 29, `…_via_factory`) routes through the factory — confirms expectation; it's the strict prerequisite to make race #5 clock-deterministic (a clock alone trips the gate's COUPLING). §2.4: the LIVE path has ZERO production callers; the non-live `create_feed`/`LiveTradingLoop` path must stay untouched. **Proposal: Option (a)** — explicit `connect_fn` on runner + `create_live_capture_feed` + the `kraken_v2` builder; `registry.create` unchanged; runner-up (c) protocol; Principle VII preserved mechanically but a mild "declared-vs-inferred" erosion flagged. **NO implementation — awaits ruling.** 216 both interpreters both orders (seed 20260730), evidence/ clean, CI green both legs run `30108543326`. See the **▶ WO-027** block below. Report: `WO-027-INVESTIGATION-REPORT.md`.
 **Fresh-session override (recorded):** the WO mandated a fresh session ("No override on this one"); the user was told and directed "resume with this session" — logged as an explicit override.
 **WO-026**: HEAD `4f18459` — the gate-ledger instrument now streams to git-ignored `.artifacts/gate_ledger/`; a mechanical guard forbids writing under `evidence/`; evidence is a deliberate snapshot (`tools/snapshot_gate_ledger.py`). Clobbered pass-one ledger annotated (not restored). §4.2 finding: ~12 by-name test nodeids across 5 tooling scripts (WO-025 reported 1). `kraken_v2_book.py` byte-unchanged. 216 both interpreters both orders (seed 20260729), evidence/ clean after runs, CI green both legs run `30092138390`. See the **▶ WO-026** block below.
@@ -362,6 +364,68 @@ added/removed). CI green both legs run `30108543326`.
 session", recorded). No in-investigation STOP. The snapshot tool passed on first run; the 3.14 deterministic suite exceeded
 the 120s foreground window and completed in the background (216). No failed/retried edits. Changed: evidence/docs only, no
 production code.
+
+---
+
+## ▶ WO-028 COMPLETE (AUTHORITATIVE) — 2026-07-25 — connect_fn threading (production, D36-1b/2b/3)
+
+> PRODUCTION implementation of D36 (the ruling on WO-027's proposal). **SHIP IMPACT: YES** — authorized.
+> Base HEAD `f2ea05e` = `401d01a` (WO's stated base) + WO-027 docs-only close. Report: `WO-028-REPORT.md`.
+> Evidence: `evidence/WO-028/`. Decision log: `docs/decisions/2026-07-24-scope-intentions-do-not-survive-a-shared-implementation.md`.
+> **FRESH-SESSION MANDATE OVERRIDDEN by the user ("resume with this session") — recorded.** `/context` at START: 17%.
+
+**§0.8 single-anchor confirmation:** `websockets.connect is kraken_v2_book._REAL_CONNECT` → True (ONE anchor,
+stable). The `_REAL_CONNECT` NAME lives only in kraken_v2_book; the runner/factory reference the same OBJECT
+via `websockets.connect` because import-linter (#3/#4/#5) forbids the runner importing kraken_v2_book. Not a
+two-captures finding — same object by identity. No STOP at §0.8.
+
+**§2 threading (D36-1b), both paths:**
+- **Builder** `_build_kraken_v2(…, connect_fn=_REAL_CONNECT)` → `KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn)`.
+  The SHARED builder both factory functions route through — the single declared-default site (§7).
+- **§2.2 adapter default** left `None` (untouched); the builder passes `_REAL_CONNECT` explicitly, so a
+  builder-constructed adapter has `_connect_fn is _REAL_CONNECT`. Gate reads it as REAL by identity; with NO
+  clock injected it **EARLY-RETURNS** (verified) — no refusal. `_connect` resolves the identical object as
+  before (`_REAL_CONNECT or websockets.connect`); the production socket path is behaviourally unchanged.
+- **§2.3 factory:** `create_live_capture_feed` forwards `connect_fn` (safe — `is_live_capable` gates it to the
+  kraken_v2 builder). **`create_feed` UNCHANGED**: it dispatches generically over DATA_SOURCE; simulated/
+  kraken_public builders reject `connect_fn`, so it must not forward. 1b still held on the non-live path — the
+  declared default lives in the shared builder, which `create_feed`→`registry.create("kraken_v2")` inherits
+  (verified `create_feed()` active feed `_connect_fn is _REAL_CONNECT`).
+- **§2.4 runner** `connect_fn=websockets.connect`, stored, forwarded in the `adapter is None` branch.
+  **§2.5 registry.create UNCHANGED** (generic passthrough).
+- All layer defaults verified `is _REAL_CONNECT`: builder, create_live_capture_feed, runner, registry.create("kraken_v2"), create_feed().
+
+**§3 registration contract (D36-2b):** `register(live_capture=True)` validates (inspect.signature) that the
+builder accepts `connect_fn`; absence raises `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN` naming the contract +
+reason (**D39 — flagged for the lead to confirm/reassign**). Real `_build_kraken_v2` passes. **Bite proof**
+(`evidence/WO-028/registration_validation_bite_proof.txt`, `tools/registration_validation_bite_proof.py`):
+four artifacts, sha256 exact-restore of registry.py (IDENTICAL), both directions — A1 refusal+preservation,
+A2 guard-weakened→registers-silently (necessity), A3 restored, A4 sha256 match. VERDICT PASS.
+
+**§4.2 identity test** (the +1): `test_clock_injection_gate.py::test_nonlive_production_default_transport_is_real_connect_by_identity`
+— construction-only (no socket), asserts `registry.create("kraken_v2")._connect_fn is _REAL_CONNECT`.
+
+**§5 race #5 migrated:** `test_runner_resolves_live_adapter_from_data_source_via_factory` now injects
+`connect_fn=conn.connect` through the runner; `patch("websockets.connect", …)` REMOVED. No clock injected →
+gate disposition still **EARLY_RETURN** (confirmed in the ledger). No other test touched.
+
+**§6 re-baseline — REASONED EXCLUSION:** the builder + threaded params run ONCE at construction, never in the
+per-frame `get_live_market_data` loop; outside the hot-path boundary → no re-baseline triggered.
+
+**Vocabulary (required consequence):** `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN` declared in `logkit/decision.py`
+(prefix-free vs `LIVE_CAPTURE_*`). Surfaced as a real 1-failed on the first suite run; fixed before acceptance.
+
+**ACCEPTANCE:** **217** (216 + §4.2; race #5 migrated not added; bite proof is a standalone tools/ instrument)
+on {3.11 strict, 3.14 dev} × {deterministic, `--randomly-seed=20260731`}; gate ledger 41 invocations, 0
+unmarkered refusals / 0 stale markers; `git status evidence/` only WO-028 snapshots; lint-imports 6/6 (runner
+imports only factory/websockets, never kraken_v2_book), contract 6/6, ruff clean, annotation 0, preflight pass.
+kraken_v2_book.py sha256 changed (authorized, SHIP IMPACT YES): `a9388694…` → `c98d7da0…`.
+
+**STOPPED/attempts:** STOPPED once on the fresh-session mandate (user overrode). No in-implementation STOP —
+the import boundary constrained HOW the anchor is referenced (websockets.connect, identical object), not a
+contradiction. Attempt: a `factory._REAL_CONNECT` named constant written then reverted to inline
+`websockets.connect` (avoid a second-anchor appearance). Vocabulary failure caught + fixed. Next: §3-small /
+pass two in fresh sessions.
 
 ---
 

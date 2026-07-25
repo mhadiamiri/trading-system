@@ -37,6 +37,7 @@ from websockets.exceptions import ConnectionClosedOK
 
 import trading.data.adapters.kraken_v2_book as kv2
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+from trading.data.adapters import registry
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
 from tests.fixtures.fake_ws_transport import (
     ScriptedConnectionFactory, FakeClock, incoherent_clock_pair,
@@ -163,3 +164,24 @@ async def test_clock_injection_gate():
             emitted5.append(state)
     assert spy5.connect_count == 1, "DEFAULT PATH PROCEEDS — the real transport IS invoked (no refusal)"
     assert len(emitted5) >= 1, "the default real run reaches the same successful end state as assertion 2"
+
+
+def test_nonlive_production_default_transport_is_real_connect_by_identity():
+    """WO-028 §4.2 (D36-1b): the DECLARED default IS the real transport, proven by IDENTITY, not by
+    behaviour. An adapter built through the NON-LIVE production path (`registry.create` -> the shared
+    `_build_kraken_v2` builder) with NOTHING injected holds `_connect_fn is _REAL_CONNECT` — the
+    transport is a seam DECLARED at construction, not None resolved ambiently at call time (the
+    pre-WO-028 state). This is the +1 the WO names.
+
+    Construction only — NO socket is opened. If constructing through this path tried to connect, that
+    would be the builder doing I/O at construction (a defect); this test would hang/error instead of
+    asserting, which is itself the alarm.
+    """
+    # exactly what create_feed reaches when DATA_SOURCE=kraken_v2 (the non-live production dispatch):
+    adapter = registry.create("kraken_v2")
+    assert adapter._connect_fn is kv2._REAL_CONNECT, (
+        "non-live production default transport must be the real anchor _REAL_CONNECT by identity, "
+        "not None (ambient) — D36-1b declared default"
+    )
+    # the shared builder directly — the single declared-default site both factory paths route through:
+    assert kv2._build_kraken_v2()._connect_fn is kv2._REAL_CONNECT

@@ -1,0 +1,28 @@
+WO-028 §3 BITE PROOF — live-capable registration contract (D36-2b), four artifacts, sha256
+Guard file: src\trading\data\adapters\registry.py  (register(): the live_capture connect_fn check)
+Contract code: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN
+sha256 BEFORE: c3db912ce02c178647419b7746073c9a947f7f0334f0334b54330fe61eecdc68
+
+-- ARTIFACT 1 — GUARD PRESENT (pristine) --
+  [refusal]  bad live builder (no connect_fn):
+    RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN
+    FULL_MSG: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN: builder _bad is registered live_capture=True but does not accept 'connect_fn'. Live-capable builders must accept connect_fn so the transport is a declared seam, not an ambient default — see D39 / Principle VII.
+  [preserve] good live builder + non-live builder:
+    PRESERVE_OK: good_live + nonlive both registered
+    REAL _build_kraken_v2 registered live_capable: True
+
+-- ARTIFACT 2 — GUARD WEAKENED (necessity: `if live_capture and ...` -> `if False and ...`) --
+  bad live builder now:
+    REGISTERED_NO_RAISE
+  sha256 WHILE WEAKENED: bc8050cd3718d7c26ee5dfd4de5dc605a21ead287c5b13c5a36a55624d6bddf8
+
+-- ARTIFACT 3 — GUARD RESTORED --
+  bad live builder again:
+    RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN
+    FULL_MSG: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN: builder _bad is registered live_capture=True but does not accept 'connect_fn'. Live-capable builders must accept connect_fn so the transport is a declared seam, not an ambient default — see D39 / Principle VII.
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER:  c3db912ce02c178647419b7746073c9a947f7f0334f0334b54330fe61eecdc68
+IDENTICAL: YES
+
+VERDICT: PASS

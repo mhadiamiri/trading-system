@@ -190,13 +190,18 @@ async def test_breaker_trip_terminates_run_with_forensic_tail(tmp_path, injected
 async def test_runner_resolves_live_adapter_from_data_source_via_factory(tmp_path, injected_baseline):
     """PRODUCTION path (no injected adapter): the runner resolves the LIVE adapter FROM DATA_SOURCE
     through the factory/registry — the sole adapter-resolution path (Principle IV/VII). It never
-    imports a concrete adapter. data_source is the config value ('kraken_v2' here)."""
+    imports a concrete adapter. data_source is the config value ('kraken_v2' here).
+
+    WO-028 §5: the transport is now INJECTED through the runner's `connect_fn` seam (threaded to the
+    builder) instead of `patch("websockets.connect", …)`. This exercises the threading end to end at
+    the runner boundary. NO clock is injected (that is pass two), so the gate still EARLY_RETURNs for
+    this adapter — its disposition is unchanged."""
     persist = tmp_path / "g.jsonl"
-    runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.15, trading_env="paper",
-                               adapter=None, loop=_paper_loop(), data_source="kraken_v2")
     conn = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    with patch("websockets.connect", conn.connect):
-        result = await runner.run()
+    runner = LiveCaptureRunner(persist_path=persist, duration_seconds=0.15, trading_env="paper",
+                               adapter=None, loop=_paper_loop(), data_source="kraken_v2",
+                               connect_fn=conn.connect)
+    result = await runner.run()
     assert result["venue_name"] == "kraken_mainnet", "the factory resolved a LIVE mainnet adapter"
     assert conn.connect_count == 1
     assert persist.exists(), "the factory-built adapter persisted its ledger"
