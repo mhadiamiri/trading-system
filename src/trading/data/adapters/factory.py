@@ -12,6 +12,7 @@ import any concrete adapter module. Adapters self-register when
 `trading.data.adapters` is imported; config names the adapter by string.
 """
 
+import time
 from typing import Any, AsyncIterator, Optional
 
 import websockets
@@ -64,6 +65,8 @@ def create_live_capture_feed(
     decision_logger: DecisionLogger | None = None,
     data_source: str | None = None,
     connect_fn=websockets.connect,
+    monotonic_clock=time.monotonic,
+    wall_clock=None,
 ):
     """
     WO-015: resolve a LIVE-mode adapter through the registry (the sole adapter-resolution path,
@@ -96,12 +99,18 @@ def create_live_capture_feed(
     # `is_live_capable` above guarantees only a live-capable builder (kraken_v2, which accepts
     # connect_fn — enforced at registration, §3) is reached; the generic `create_feed` path canNOT
     # forward it (its builder is polymorphic over DATA_SOURCE and simulated/kraken_public reject it).
+    # WO-030 §2.3 (D38): forward the CLOCK seams too, same reasoning as connect_fn — safe here
+    # (is_live_capable gates to the kraken_v2 builder, which accepts them, §3); `create_feed` still
+    # does NOT forward them (generic dispatch; the declared defaults live in the shared builder).
+    # `wall_clock=None` by default (the raw-None convention); only a pass-two injection sets it.
     feed = registry.create(
         name,
         decision_logger=decision_logger,
         mode="live",
         gap_persist_path=str(persist_path),
         connect_fn=connect_fn,
+        monotonic_clock=monotonic_clock,
+        wall_clock=wall_clock,
     )
     _active_feed = feed
     return feed, feed.get_live_market_data(duration_seconds)

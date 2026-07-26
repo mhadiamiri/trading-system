@@ -38,6 +38,9 @@ from websockets.exceptions import ConnectionClosedOK
 import trading.data.adapters.kraken_v2_book as kv2
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from trading.data.adapters import registry
+from trading.loop.live_capture import LiveCaptureRunner       # WO-030 §4.2: full runner→factory path
+from trading.loop.live import LiveTradingLoop
+from trading.execution.paper import PaperExecutionClient
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
 from tests.fixtures.fake_ws_transport import (
     ScriptedConnectionFactory, FakeClock, incoherent_clock_pair,
@@ -183,5 +186,68 @@ def test_nonlive_production_default_transport_is_real_connect_by_identity():
         "non-live production default transport must be the real anchor _REAL_CONNECT by identity, "
         "not None (ambient) — D36-1b declared default"
     )
+    # WO-030 §4.1 (D38): the CLOCK seams' declared defaults, held at construction, by identity.
+    # monotonic: time.monotonic (its eager convention — reads NOT-injected). wall: raw None (its
+    # raw-None convention — reads NOT-injected; late-resolves to time.time at use, unchanged). A real
+    # capture therefore early-returns at the gate (no fake clock injected).
+    import time
+    assert adapter._monotonic_clock is time.monotonic, "non-live default monotonic clock == time.monotonic"
+    assert adapter._wall_clock is None, "non-live default wall clock stays raw-None (not injected)"
     # the shared builder directly — the single declared-default site both factory paths route through:
-    assert kv2._build_kraken_v2()._connect_fn is kv2._REAL_CONNECT
+    b = kv2._build_kraken_v2()
+    assert b._connect_fn is kv2._REAL_CONNECT
+    assert b._monotonic_clock is time.monotonic and b._wall_clock is None
+
+
+class _StubPersistence:
+    """Keeps LiveTradingLoop off the Parquet path (WO-030 §4.2 exercises the gate, not the store)."""
+    _data_dir = "(stub)"
+    def write_event(self, _ms): pass
+    def close(self): pass
+    def get_file_info(self): return {"path": "(stub)", "exists": False, "event_count": 0, "size_bytes": 0}
+
+
+def _gate_paper_loop():
+    return LiveTradingLoop(execution_client=PaperExecutionClient(), persistence=_StubPersistence())
+
+
+@pytest.mark.gate_refusal_expected   # the refuse half intentionally makes the gate REFUSE (COUPLING)
+@pytest.mark.asyncio
+async def test_factory_built_adapter_is_legible_to_coupling_gate(tmp_path, injected_baseline):
+    """WO-030 §4.2 (D38) — FACTORY-BOUNDARY OBSERVABILITY. A factory-built adapter (constructed through
+    the FULL runner→factory→builder path, NOT injected directly) is as legible to the coupling gate as
+    a directly-constructed one — the whole point of threading the clock seam. Two halves, one test:
+
+      PROCEED half: a COHERENT fake clock pair + a fake transport, injected THROUGH THE RUNNER, reach
+        the factory-built adapter and the gate PROCEEDS (PROCEED_COHERENT) — the injected transport is
+        opened. This is only possible because WO-030 threaded the clock seam to the factory path.
+      REFUSE half: a fake clock + a REAL transport (a spy standing in for _REAL_CONNECT by identity,
+        as the gate bite proof does — no genuine socket), injected THROUGH THE RUNNER, and the gate
+        REFUSES on COUPLING PRE-CONNECTION (connect callable never invoked). Proves the gate's
+        identity guarantee crosses the factory boundary intact.
+
+    NO real socket in either half (the spy self-terminates / the refusal precedes any connect)."""
+    # ── PROCEED half: coherent pair + fake transport through the runner → PROCEED_COHERENT ──
+    fc = FakeClock()
+    conn = _self_terminating_spy()
+    runner_ok = LiveCaptureRunner(
+        persist_path=tmp_path / "ok.jsonl", duration_seconds=0.25, trading_env="paper",
+        adapter=None, loop=_gate_paper_loop(), data_source="kraken_v2",
+        connect_fn=conn.connect, monotonic_clock=fc.monotonic, wall_clock=fc.wall)
+    result = await runner_ok.run()
+    assert conn.connect_count >= 1, "PROCEED_COHERENT: the factory-built adapter opened the injected transport"
+    assert result["venue_name"] == "kraken_mainnet", "the factory resolved a LIVE mainnet adapter"
+
+    # ── REFUSE half: coherent fake clock + REAL transport (spy as _REAL_CONNECT) → COUPLING, pre-connect ──
+    fc2 = FakeClock()
+    spy = _self_terminating_spy()
+    spy_connect = spy.connect     # ONE bound method for both patches (the §2b identity pitfall)
+    with patch.object(kv2, "_REAL_CONNECT", spy_connect), patch("websockets.connect", spy_connect):
+        runner_refuse = LiveCaptureRunner(
+            persist_path=tmp_path / "refuse.jsonl", duration_seconds=0.25, trading_env="paper",
+            adapter=None, loop=_gate_paper_loop(), data_source="kraken_v2",
+            connect_fn=spy_connect, monotonic_clock=fc2.monotonic, wall_clock=fc2.wall)
+        with pytest.raises(ValueError, match="CLOCK_INJECTION_REFUSED") as exc:
+            await runner_refuse.run()
+    assert "COUPLING" in str(exc.value), "a REAL transport with a fake clock refuses COUPLING, through the factory"
+    assert spy.connect_count == 0, "REFUSED PRE-CONNECTION — the connect callable was never invoked"

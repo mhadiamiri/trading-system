@@ -1,23 +1,25 @@
-"""WO-028 §3 — bite proof: the LIVE-CAPABLE registration contract (D36-2b) is load-bearing.
+"""WO-030 §3 — bite proof: the GENERALIZED live-capable registration contract (D38) is load-bearing.
 
-Four artifacts, sha256 exact-restore of the guard file (registry.py), BOTH directions:
+Generalizes WO-028's connect_fn bite proof: register(live_capture=True) now requires the builder to
+accept EVERY parameter the live path forwards (registry._LIVE_FORWARDED_PARAMS: connect_fn,
+monotonic_clock, wall_clock). Four artifacts, sha256 exact-restore of the guard file (registry.py),
+BOTH directions:
 
   A1 GUARD PRESENT (pristine):
-       - REFUSAL:      a throwaway `@register("x", live_capture=True)` builder with NO `connect_fn`
-                       param raises LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN at registration.
-       - PRESERVATION: the SAME builder WITH a `connect_fn` param registers cleanly; AND a
-                       `live_capture=False` builder without `connect_fn` registers cleanly (the check
-                       does not over-fire on non-live builders).
-       - the REAL `_build_kraken_v2` passes the check (it now accepts connect_fn, §2).
-  A2 GUARD WEAKENED (necessity): disable the raise in registry.py -> the SAME bad builder REGISTERS
-       SILENTLY (DID NOT RAISE). Proves the guard is what enforces the contract, not Python's own
-       argument binding (which would only TypeError LATER, at a forwarding call).
-  A3 GUARD RESTORED: the bad builder raises again.
+       - REFUSAL (per-parameter): a throwaway live_capture=True builder missing ONLY `wall_clock`
+         (but having connect_fn + monotonic_clock) raises LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM,
+         the message naming `wall_clock` SPECIFICALLY (proves the check is per-parameter, not just
+         "has connect_fn"). A builder missing `connect_fn` still refuses (WO-028's case still holds).
+       - PRESERVATION: a builder with ALL THREE registers cleanly; a live_capture=False builder with
+         NONE registers cleanly (no over-fire).
+       - the REAL `_build_kraken_v2` passes the generalized check (it accepts all three, §2).
+  A2 GUARD WEAKENED (necessity of the CLOCK params): shrink _LIVE_FORWARDED_PARAMS to ("connect_fn",)
+       — the WO-028 behaviour — and the wall_clock-missing builder REGISTERS SILENTLY. Proves the clock
+       params in the inventory are what enforce the generalized contract, not arg-binding.
+  A3 GUARD RESTORED: the wall_clock-missing builder raises again.
   A4 sha256(registry.py) AFTER == BEFORE (byte-identical restore).
 
-Each check runs in a FRESH subprocess (the registry is module-global; a fresh import picks up the
-current — weakened or restored — registry.py and starts with a clean _REGISTRY). No suite test is
-added: this is a standalone instrument, so the suite count is unchanged (§9: 216 + 1 §4.2 = 217).
+Each check runs in a FRESH subprocess (registry is module-global). No suite test is added.
 """
 import hashlib
 import os
@@ -26,36 +28,48 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "src", "trading", "data", "adapters", "registry.py")
-OUT = os.path.join(REPO, "evidence", "WO-028", "registration_validation_bite_proof.txt")
+OUT = os.path.join(REPO, "evidence", "WO-030", "registration_validation_bite_proof.txt")
 
-ANCHOR = '        if live_capture and "connect_fn" not in inspect.signature(builder).parameters:'
-WEAK = '        if False and "connect_fn" not in inspect.signature(builder).parameters:  # WEAKENED'
+ANCHOR = '_LIVE_FORWARDED_PARAMS = ("connect_fn", "monotonic_clock", "wall_clock")'
+WEAK = '_LIVE_FORWARDED_PARAMS = ("connect_fn",)  # WEAKENED: clock params no longer required'
 
-# A live_capture=True builder with NO connect_fn — the contract violation the guard must catch.
-CHECK_BAD = '''
+# live_capture=True, missing ONLY wall_clock (has connect_fn + monotonic_clock).
+CHECK_MISSING_WALL = '''
 from trading.data.adapters import registry
 try:
-    @registry.register("bite_bad", live_capture=True)
-    def _bad(decision_logger=None):
+    @registry.register("bite_missing_wall", live_capture=True)
+    def _b(decision_logger=None, connect_fn=None, monotonic_clock=None):
         return object()
     print("REGISTERED_NO_RAISE")
 except TypeError as e:
     print("RAISED_CODE:", str(e).split(":", 1)[0])
+    print("NAMES_WALL_CLOCK:", "wall_clock" in str(e))
     print("FULL_MSG:", str(e))
 '''
 
-# Preservation: a conforming live builder AND a non-live builder without connect_fn both register.
+# live_capture=True, missing connect_fn (WO-028's original case — must still refuse).
+CHECK_MISSING_CONNECT = '''
+from trading.data.adapters import registry
+try:
+    @registry.register("bite_missing_connect", live_capture=True)
+    def _b(decision_logger=None, monotonic_clock=None, wall_clock=None):
+        return object()
+    print("REGISTERED_NO_RAISE")
+except TypeError as e:
+    print("RAISED_CODE:", str(e).split(":", 1)[0], "| names connect_fn:", "connect_fn" in str(e))
+'''
+
+# preservation: all three present, and a non-live builder with none.
 CHECK_PRESERVE = '''
 from trading.data.adapters import registry
 @registry.register("bite_good", live_capture=True)
-def _good(decision_logger=None, connect_fn=None):
+def _good(decision_logger=None, connect_fn=None, monotonic_clock=None, wall_clock=None):
     return object()
-@registry.register("bite_nonlive")            # live_capture unset -> NOT checked
+@registry.register("bite_nonlive")
 def _nonlive(decision_logger=None):
     return object()
-print("PRESERVE_OK: good_live + nonlive both registered")
-# and the REAL builder passes the check (imported the package above triggers its registration):
-print("REAL _build_kraken_v2 registered live_capable:", registry.is_live_capable("kraken_v2"))
+print("PRESERVE_OK: full live builder + non-live builder both registered")
+print("REAL _build_kraken_v2 live_capable:", registry.is_live_capable("kraken_v2"))
 '''
 
 
@@ -73,43 +87,45 @@ def run(snippet):
 
 def main():
     original = open(SRC, "rb").read()
-    assert original.decode().count(ANCHOR) == 1, "guard anchor not unique in registry.py"
+    assert original.decode().count(ANCHOR) == 1, "guard anchor (_LIVE_FORWARDED_PARAMS) not unique"
     before = sha256(SRC)
-    out = ["WO-028 §3 BITE PROOF — live-capable registration contract (D36-2b), four artifacts, sha256",
-           f"Guard file: {os.path.relpath(SRC, REPO)}  (register(): the live_capture connect_fn check)",
-           "Contract code: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN",
+    out = ["WO-030 §3 BITE PROOF — generalized live-capable registration contract (D38), 4 artifacts, sha256",
+           f"Guard file: {os.path.relpath(SRC, REPO)}  (register(): the _LIVE_FORWARDED_PARAMS check)",
+           "Contract code: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM  (generalized from WO-028's connect_fn code)",
            f"sha256 BEFORE: {before}", ""]
 
-    # A1 — pristine: refusal fires, preservation holds
-    r_bad = run(CHECK_BAD)
+    r_wall = run(CHECK_MISSING_WALL)
+    r_conn = run(CHECK_MISSING_CONNECT)
     r_pre = run(CHECK_PRESERVE)
     out += ["-- ARTIFACT 1 — GUARD PRESENT (pristine) --",
-            "  [refusal]  bad live builder (no connect_fn):", "    " + r_bad.replace("\n", "\n    "),
-            "  [preserve] good live builder + non-live builder:", "    " + r_pre.replace("\n", "\n    "),
-            ""]
+            "  [refusal, per-param] live builder missing ONLY wall_clock:",
+            "    " + r_wall.replace("\n", "\n    "),
+            "  [refusal] live builder missing connect_fn (WO-028 case still holds):",
+            "    " + r_conn.replace("\n", "\n    "),
+            "  [preserve] full live builder + non-live builder:",
+            "    " + r_pre.replace("\n", "\n    "), ""]
 
-    # A2 — weaken the guard: the bad builder now registers silently
     open(SRC, "wb").write(original.decode().replace(ANCHOR, WEAK).encode())
-    r_weak = run(CHECK_BAD)
-    out += ["-- ARTIFACT 2 — GUARD WEAKENED (necessity: `if live_capture and ...` -> `if False and ...`) --",
-            "  bad live builder now:", "    " + r_weak.replace("\n", "\n    "),
+    r_weak = run(CHECK_MISSING_WALL)
+    out += ["-- ARTIFACT 2 — GUARD WEAKENED (necessity of clock params: inventory -> ('connect_fn',)) --",
+            "  wall_clock-missing builder now:", "    " + r_weak.replace("\n", "\n    "),
             f"  sha256 WHILE WEAKENED: {sha256(SRC)}", ""]
 
-    # A3 — restore: the bad builder raises again
     open(SRC, "wb").write(original)
-    r_restored = run(CHECK_BAD)
+    r_restored = run(CHECK_MISSING_WALL)
     out += ["-- ARTIFACT 3 — GUARD RESTORED --",
-            "  bad live builder again:", "    " + r_restored.replace("\n", "\n    "), ""]
+            "  wall_clock-missing builder again:", "    " + r_restored.replace("\n", "\n    "), ""]
 
-    # A4 — sha256 exact-restore
     after = sha256(SRC)
     out += ["-- ARTIFACT 4 — sha256 EXACT-RESTORE --",
-            f"sha256 AFTER:  {after}",
-            f"IDENTICAL: {'YES' if after == before else 'NO'}", ""]
+            f"sha256 AFTER:  {after}", f"IDENTICAL: {'YES' if after == before else 'NO'}", ""]
 
-    verdict = ("PASS" if ("RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN" in r_bad
+    verdict = ("PASS" if ("RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM" in r_wall
+                          and "NAMES_WALL_CLOCK: True" in r_wall
+                          and "RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM" in r_conn
+                          and "PRESERVE_OK" in r_pre
                           and "REGISTERED_NO_RAISE" in r_weak
-                          and "RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN" in r_restored
+                          and "RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM" in r_restored
                           and after == before) else "FAIL")
     out += [f"VERDICT: {verdict}"]
 

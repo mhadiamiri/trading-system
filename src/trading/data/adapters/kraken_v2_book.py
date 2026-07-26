@@ -30,6 +30,7 @@ import binascii
 import logging
 import json
 import random
+import time   # WO-030: module-level, so the builder's declared default `monotonic_clock=time.monotonic`
 
 import websockets
 
@@ -3083,7 +3084,8 @@ from trading.data.adapters.registry import register  # noqa: E402
 
 @register("kraken_v2", live_capture=True)
 def _build_kraken_v2(decision_logger=None, mode=KrakenV2BookAdapter.MODE_FIXTURE,
-                     gap_persist_path=None, connect_fn=_REAL_CONNECT) -> "KrakenV2BookAdapter":
+                     gap_persist_path=None, connect_fn=_REAL_CONNECT,
+                     monotonic_clock=time.monotonic, wall_clock=None) -> "KrakenV2BookAdapter":
     """Builder invoked by the registry when DATA_SOURCE=kraken_v2.
 
     WO-015: the registry is the SOLE adapter-resolution path (Principle IV/VII), so the LIVE
@@ -3098,8 +3100,23 @@ def _build_kraken_v2(decision_logger=None, mode=KrakenV2BookAdapter.MODE_FIXTURE
     None resolved ambiently at call time. The resolved socket is identical to today's
     (`_REAL_CONNECT is websockets.connect`); only the mechanism of holding it changed. This is the
     single point that serves BOTH create_live_capture_feed and create_feed (they share this builder).
+
+    WO-030 §2.1/§2.2 (D38): the CLOCK seam, threaded parallel to connect_fn so a factory-built
+    adapter is clock-injectable (unblocking race #5 for pass two — NOT converted here, §5). The two
+    clock seams honour the D35-2 convention block (this file, ~line 1151) — DELIBERATELY asymmetric,
+    load-bearing:
+      * `monotonic_clock` DECLARED default `time.monotonic`, threaded through the CONSTRUCTOR (the
+        adapter's eager `monotonic_clock or time.monotonic`). Detection is `is not time.monotonic`,
+        so a builder-supplied `time.monotonic` reads as NOT injected — a real capture early-returns.
+      * `wall_clock` DECLARED default `None` — NOT `time.time`. The adapter's `_wall_clock` uses the
+        raw-None convention (detection `is not None`); holding `time.time` would read as INJECTED and
+        trip COHERENCE on a real capture. So we set `_wall_clock` ONLY when a fake wall is injected
+        (pass two); a real capture leaves it None and the adapter late-resolves to time.time,
+        byte-identical to today. Declared default None here == the adapter's held default.
     """
-    adapter = KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn)
+    adapter = KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn, monotonic_clock=monotonic_clock)
     if gap_persist_path is not None:
         adapter._gap_persist_path = str(gap_persist_path)
+    if wall_clock is not None:
+        adapter._wall_clock = wall_clock
     return adapter

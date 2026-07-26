@@ -55,6 +55,8 @@ class LiveCaptureRunner:
         clock=None,
         data_source: Optional[str] = None,
         connect_fn=websockets.connect,     # WO-028 §2.4: DECLARED transport seam (== _REAL_CONNECT)
+        monotonic_clock=time.monotonic,    # WO-030 §2.4: DECLARED clock seams, threaded to the
+        wall_clock=None,                   # ADAPTER via the factory (NOT the runner's `clock` below)
     ) -> None:
         """
         Args:
@@ -74,9 +76,14 @@ class LiveCaptureRunner:
         self._trading_env = trading_env
         self._adapter = adapter
         self._loop = loop
-        self._clock = clock or time.time
+        self._clock = clock or time.time   # the runner's OWN per-minute bucketing clock (run())
         self._data_source = data_source
         self._connect_fn = connect_fn
+        # WO-030 §2.4: the ADAPTER's deadline/suspend clock seams — threaded through the factory to
+        # the builder, DISTINCT from self._clock above. `time.monotonic` (declared, reads not-injected)
+        # and `wall_clock=None` (raw-None convention; only a pass-two injection sets the adapter's).
+        self._monotonic_clock = monotonic_clock
+        self._wall_clock = wall_clock
         self._mean_cycle_baseline = None   # WO-016 §D28: set by _preflight from the host store
         self._preflight()
 
@@ -125,6 +132,8 @@ class LiveCaptureRunner:
         return factory.create_live_capture_feed(
             self._persist_path, self._duration_seconds, data_source=self._data_source,
             connect_fn=self._connect_fn,     # WO-028 §2.4: thread the declared transport seam
+            monotonic_clock=self._monotonic_clock,   # WO-030 §2.4: thread the declared clock seams
+            wall_clock=self._wall_clock,             # to the ADAPTER (factory branch only)
         )
 
     async def run(self) -> dict:

@@ -1,231 +1,245 @@
-# WO-028 — connect_fn THREADING (production). D36: 1b scope, registration validation, full discipline.
+# WO-030 — CLOCK SEAM THREADING (production). D38: both paths, both-seam registration contract.
 
-**FRESH CLAUDE CODE SESSION — MANDATORY.** This is a production-module edit on the production import
-path (D36 ruling 3). Do not continue a session that has carried prior WOs.
 
-BASE: HEAD `401d01a` on master (local == remote). 216 both orders both interpreters,
-CI green both legs (run 30108543326). `kraken_v2_book.py` sha256
-`a9388694f0af3d46e596c5aeae50596a9d7ad02da6cc3dd69b3c8da8ea03379b`.
 
-SCOPE: implement the threading, both paths (1b), with registration validation. Commit green, STOP.
-SHIP IMPACT: **YES** — production, full discipline (D36-3). This is authorized.
+BASE: HEAD `64e2001` on master (local == remote). 217 both orders both interpreters, CI green both
+legs (WO-028 code `c50b70e` run 30175153052; docs-close `64e2001` run 30176270010).
+Production sha256s at base: `kraken_v2_book.py` `c98d7da0…`, `factory.py` `60cba127…`,
+`registry.py` `c3db912c…`, `live_capture.py` `50b08c62…`, `logkit/decision.py` `a65cfa3c…`.
 
-WHAT WAS RULED (d36, do not relitigate):
-- **1b** — the seam is constructor-injected at EVERY layer, on BOTH the live and non-live paths;
-  the default is a DECLARED default parameter `connect_fn=_REAL_CONNECT` at the builder signature,
-  NOT an ambient module-global reach at call time. Same value the code resolves today; different
-  mechanism of holding it. The production socket path must be proven behaviourally unchanged.
-- **2b** — declare the contract at registration: `register(live_capture=True)` validates that the
-  builder accepts `connect_fn`, with an error message naming the contract and its reason. Option
-  (c) (transport seam in the adapter protocol) is the named successor for when a second
-  live-capable adapter appears — NOT built now.
-- **3** — full production discipline. Hot-path re-baseline is a REASONED EXCLUSION (the builder
-  runs once at construction, never per-frame), stated as such, not skipped.
+SCOPE: thread the clock seam through runner→factory→builder on BOTH paths; extend the registration
+contract to require both seams. Commit green, STOP.
+SHIP IMPACT: **YES** — production, full discipline (D36-3 / D38). Authorized.
+
+WHAT WAS RULED (d38 — do not relitigate):
+- **Option 1** — thread a `monotonic_clock`/`wall_clock` seam through
+  `LiveCaptureRunner → create_live_capture_feed → _build_kraken_v2`, exactly parallel to WO-028's
+  `connect_fn`, so race #5 becomes clock-injectable. Declared defaults at the builder signature
+  (`time.monotonic` / `time.time`), NOT ambient. Both paths (the shared builder, per its doctrine).
+- **Both-seam registration contract** — the existing `register(live_capture=True)` validation
+  EXTENDS to require BOTH transport AND clock parameters. One gate, one error form, same doctrine
+  citation. The contract follows the FORWARDING, not the motivation: any kwarg
+  `create_live_capture_feed` forwards is a declared obligation on every live-capable builder.
+- **Factory-boundary observability** — a factory-built adapter must be as legible to the coupling
+  gate as a directly-constructed one; one explicit test asserts it (§4.2).
+- **Re-baseline: reasoned exclusion** — construction-time, not per-frame.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
-0.1 **No discretion.** Code wins over this order: STOP and report. Four investigations of this
-    shape have run; three overturned a ruling made without the file. This one has the file — but
-    if the code still contradicts the ruling, STOP.
-0.2 No monkeypatching to make a guard pass, and no monkeypatch left where a seam now exists —
-    where a test can now inject `connect_fn`, it SHOULD, but that migration is pass two, not here.
-    Do not migrate tests in this WO except the one §5 authorizes.
-0.3 Fail-then-pass bite proof for the registration validation: four artifacts, `sha256`
-    exact-restore.
+0.1 **No discretion.** Code wins over this order: STOP and report. This is the fifth production/
+    investigation WO of this shape; the last four each corrected a ruling made without the file.
+    This one has d38 AND WO-028 as a template — but if the code contradicts either, STOP.
+0.2 No monkeypatching to make a guard pass.
+0.3 Fail-then-pass bite proof for the extended registration contract: four artifacts, sha256
+    exact-restore, BOTH directions.
 0.4 Preservation duals mandatory, local and direct.
 0.5 Report every attempt, including failed and retried.
 0.6 **AUTO MODE OFF** for every production edit. `kraken_v2_book.py`, `factory.py`, `registry.py`,
-    `live_capture.py` are all production.
-0.7 Report your `/context` reading at START. Ask the user; do not guess.
-0.8 **BUILT-VS-OPERATED DECLARATION (D24).**
+    `live_capture.py`. (WO-029 twice showed the bar reading ON while the summary said off — VERIFY
+    the toggle, do not trust the intention.)
+0.7 Report `/context` at START.
+0.8 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Built & verified where |
     |---|---|---|
-    | `_REAL_CONNECT` module capture | **OPERATED** | Built WO-023 §2b (`959e832`) — the gate's identity anchor |
-    | `_assert_clock_transport_gate` (three-field) | **OPERATED** | WO-023 §2/§2b/§2c, 5 assertions / 4 mutations |
-    | `register` / `_REGISTRY` / `is_live_capable` | **OPERATED** | Pre-existing registry (`registry.py`) |
-    | `_build_kraken_v2` / `create_live_capture_feed` / `create_feed` / `LiveCaptureRunner` | **OPERATED** | Pre-existing production |
-    | `connect_fn` threading + registration validation | **THIS WO IS THE BUILDER** | Does not exist — §2, §3 |
+    | WO-028 `connect_fn` threading (the template) | **OPERATED** | Committed `c50b70e`, CI 30175153052 |
+    | `register(live_capture=True)` transport validation | **OPERATED** | WO-028 §3, bite-proved |
+    | `_wall_clock` / `_monotonic_clock` adapter seams | **OPERATED** | WO-023 foundation |
+    | Coherent FakeClock harness (shared token) | **OPERATED** | WO-023 §3 |
+    | Coupling gate (`_assert_clock_transport_gate`) | **OPERATED** | WO-023 §2/§2b/§2c |
+    | Clock seam through runner/factory/builder + both-seam contract | **THIS WO IS THE BUILDER** | Does not exist — §2, §3 |
 
-    Any OPERATED row not verified as stated → **STOP and report.** In particular: confirm
-    `_REAL_CONNECT` is the SAME anchor the gate compares against, so the builder's declared default
-    and the gate's identity test refer to one object. If they are two different captures of
-    `websockets.connect`, that is a finding — report before proceeding.
-
----
-
-## §1 FIRST — RE-PASTE THE FOUR SIGNATURES AS THEY ARE NOW
-
-Before editing, paste verbatim with line numbers, from the current tree (not from WO-027's report,
-which was a prior commit):
-- `LiveCaptureRunner.__init__` and `_resolve_feed`
-- `create_live_capture_feed` AND `create_feed` (both — 1b touches the non-live path)
-- `_build_kraken_v2` (the `@register` builder) and the `register` decorator itself
-- `KrakenV2BookAdapter.__init__`'s `connect_fn` / `monotonic_clock` seam, and `_REAL_CONNECT`
-
-If any signature differs from WO-027's paste, note it. The base is the same commit, so they should
-match; confirming closes the "written against its consumers" risk.
+    Any OPERATED row not verified as stated → **STOP and report.** In particular confirm the
+    adapter's `_wall_clock`/`_monotonic_clock` seams and their injection-detection
+    (`is not None` / `is not time.monotonic`) are as WO-023 left them — the threading must feed
+    these exact seams.
 
 ---
 
-## §2 THE THREADING — BOTH PATHS (D36-1b)
+## §1 RE-PASTE THE SIGNATURES AND THE WO-028 TEMPLATE (before editing)
 
-Declared default, one value, every layer:
+Paste verbatim with line numbers, at THIS HEAD:
+- `LiveCaptureRunner.__init__` + `_resolve_feed` (with the `connect_fn` threading WO-028 added — the
+  clock threads the SAME way; show it so the parallel is exact)
+- `create_live_capture_feed` AND `create_feed` (both — the shared builder means both paths)
+- `_build_kraken_v2` (with WO-028's `connect_fn=_REAL_CONNECT` default — the clock defaults sit
+  beside it)
+- `register` (with WO-028's transport validation — the clock check extends THIS)
+- `KrakenV2BookAdapter.__init__`'s `_wall_clock` / `_monotonic_clock` seam and their defaults
 
-2.1 **Builder** (`_build_kraken_v2`, kraken_v2_book.py). Add `connect_fn=_REAL_CONNECT` to the
-    builder signature and forward it: `KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn, …)`.
-    `_REAL_CONNECT` MUST be the gate's existing anchor — import/reference the same object, do not
-    re-capture `websockets.connect` a second time. The builder's default is now DECLARED and equal
-    to the value the adapter resolves ambiently today.
-
-2.2 **Adapter constructor.** The adapter already has `connect_fn=None` resolving to
-    `websockets.connect` at call time. Decide and state explicitly: does the adapter's default stay
-    `None` (late-resolved) while the BUILDER supplies `_REAL_CONNECT`, or does the adapter's default
-    also become `_REAL_CONNECT`? D36-1b is about the builder holding a declared default; the adapter
-    seam already exists. **Recommended:** leave the adapter's `None` default untouched (it is the
-    gate-observability seam and changing it risks the gate's `is _REAL_CONNECT` logic), and have the
-    builder pass `_REAL_CONNECT` explicitly. State the consequence for the gate: a builder-constructed
-    adapter now has `_connect_fn is _REAL_CONNECT` (not None), so the gate reads it as the REAL
-    transport by identity — which is correct, it IS the real transport. Verify the gate still
-    early-returns for it (no clock injected) rather than refusing.
-
-2.3 **Factory, both functions.** `create_live_capture_feed(…, connect_fn=_REAL_CONNECT)` forwarding
-    into `registry.create(…, connect_fn=connect_fn)`. AND `create_feed` — trace whether `create_feed`
-    reaches `_build_kraken_v2`; if it does, it must forward the declared default too (1b: the
-    non-live production path must hold the declared default, not resolve ambiently). If `create_feed`
-    does NOT reach the kraken_v2 builder, state that and the point is moot for it — report which.
-
-2.4 **Runner.** `LiveCaptureRunner.__init__(…, connect_fn=_REAL_CONNECT)`, stored, forwarded in the
-    `_resolve_feed` `adapter is None` branch into `create_live_capture_feed`. The injected-adapter
-    branch is unchanged (an injected adapter carries its own `connect_fn`).
-
-2.5 **Registry.** `registry.create` stays generic `**kwargs` passthrough — NO change (D36 confirmed;
-    WO-027 established it forwards verbatim).
-
-**The value must be identical to today's resolved value at every layer.** No production caller
-passing nothing may see a different transport than it does now. That is the whole point of "declared
-default, same value."
+If any differs from expectation, note it. Same base as the WO-028 report, so `connect_fn`'s
+threading should be present and intact; confirming it is the "written against its consumers" check.
 
 ---
 
-## §3 THE REGISTRATION-TIME CONTRACT (D36-2b) — THIS WO IS THE BUILDER
+## §2 THREAD THE CLOCK SEAM — EXACTLY PARALLEL TO connect_fn (D38, D36-1b)
 
-`register(live_capture=True)` must validate, AT REGISTRATION (import time), that the decorated
-builder accepts a `connect_fn` parameter. A live-capable builder without it is rejected the moment
-it enters the system, not at a later forwarding `TypeError`.
+Declared defaults, both paths, feeding the adapter's existing seams:
 
-- Inspect the builder's signature (`inspect.signature`) for a `connect_fn` parameter.
-- On absence, raise at registration with a message that NAMES THE CONTRACT AND ITS REASON, verbatim
-  shape: `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN: builder <name> is registered live_capture=True
-  but does not accept 'connect_fn'. Live-capable builders must accept connect_fn so the transport is
-  a declared seam, not an ambient default — see D39 / Principle VII.`
-  (Use whatever decision number the lead assigns; if unknown, cite "Principle VII" and leave the D-
-  number as `D39` for the lead to confirm — flag it in the report.)
-- `live_capture=False` (or unset) builders are NOT subject to the check.
+2.1 **Builder** (`_build_kraken_v2`): add `monotonic_clock=time.monotonic, wall_clock=time.time`
+    to the signature, forward as `KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn,
+    monotonic_clock=monotonic_clock, wall_clock=wall_clock)`. Declared defaults equal to what the
+    adapter resolves today. **Decide and STATE** whether the builder default for `monotonic_clock`
+    should be `time.monotonic` (matching the adapter's eager-resolve convention) — note WO-023 made
+    the adapter's `_monotonic_clock` EAGERLY resolved (`monotonic_clock or time.monotonic`) and
+    that eager resolution is LOAD-BEARING for the suspend exception. The builder default must not
+    break that. If passing `time.monotonic` explicitly changes the adapter's injected-vs-default
+    detection (`is not time.monotonic`), STOP — that is a finding about the seam interaction.
+
+2.2 **Adapter constructor**: UNTOUCHED (same decision as WO-028 §2.2 for `connect_fn`). The
+    builder supplies the declared defaults; the adapter's own `_wall_clock=None` /
+    `_monotonic_clock` defaults and their detection logic stay exactly as WO-023 left them. State
+    the consequence: a builder-constructed adapter now holds `time.monotonic`/`time.time` explicitly
+    — verify the gate still reads it as NOT-injected (default clock) and EARLY-RETURNS, because a
+    real capture injects no fake clock. If a builder-supplied `time.monotonic` reads as INJECTED
+    (tripping coherence/coupling on a real capture), that is a blocking finding — STOP.
+
+2.3 **Factory, both functions**: `create_live_capture_feed(…, monotonic_clock=time.monotonic,
+    wall_clock=time.time)`, forwarded into `registry.create(…)`. For `create_feed`: same treatment
+    WO-028 gave `connect_fn` — it reaches `_build_kraken_v2` only under `DATA_SOURCE=kraken_v2`, and
+    it must NOT forward the clock kwargs (the `simulated`/`kraken_public` builders don't accept
+    them; forwarding TypeErrors). 1b is satisfied because the DECLARED DEFAULT lives in the shared
+    builder — `create_feed → registry.create("kraken_v2") → _build_kraken_v2()` with no clock passed
+    → the builder's declared defaults apply. Verify: `create_feed()` under `DATA_SOURCE=kraken_v2`
+    yields an adapter whose clocks are the declared defaults, held at construction.
+
+2.4 **Runner**: `LiveCaptureRunner.__init__(…, monotonic_clock=time.monotonic, wall_clock=time.time)`,
+    stored, forwarded in the `adapter is None` branch. Injected-adapter branch unchanged. Note the
+    runner already has a `clock` param (`self._clock = clock or time.time`, live_capture.py:70) used
+    for its OWN duration accounting — do NOT conflate it with the threaded seam; state how the two
+    relate and confirm the threaded clocks reach the ADAPTER, not the runner's duration clock.
+
+2.5 **Registry**: unchanged — generic `**kwargs` passthrough.
+
+**Every layer default must equal today's resolved value.** No production caller passing nothing sees
+a different clock than it does now. Declared default, same value.
+
+---
+
+## §3 EXTEND THE REGISTRATION CONTRACT TO BOTH SEAMS (D38)
+
+`register(live_capture=True)` currently validates the builder accepts `connect_fn`. Extend it to
+require the builder accept **all** parameters the live path forwards: `connect_fn`, `monotonic_clock`,
+`wall_clock`. One gate, one error form, same doctrine citation:
+    LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM: builder <name> registered live_capture=True but
+    does not accept forwarded live-path parameter(s): <missing list>. Live-capable builders must
+    accept every parameter create_live_capture_feed forwards, so each is a declared seam not an
+    ambient default — see <D-entry> / Principle VII.
+(Reuse or rename WO-028's `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN` — state which. If you generalize
+the code name, that is a reason-code change: the vocabulary guard will require it declared. Handle it
+per WO-028's precedent BUT note it for the vocabulary-split WO — do NOT introduce a second load-time
+code that the split then has to untangle. Prefer generalizing the existing one over adding a new one;
+state your choice and why.)
+
+`live_capture=False` builders remain unchecked.
 
 ### Bite proof — four artifacts, sha256 exact-restore, BOTH directions (0.3, 0.4)
-- **Mutation A (refusal half):** a throwaway builder decorated `@register("x", live_capture=True)`
-  with NO `connect_fn` param → registration RAISES the named error at import. Prove the message
-  names the contract.
-- **Mutation B (preservation half, local and direct):** the SAME throwaway builder WITH a
-  `connect_fn` param → registers cleanly. And: a `live_capture=False` builder without `connect_fn`
-  → registers cleanly (the check does not over-fire on non-live builders).
-- Restore; sha256 == pristine; final artifact PASS.
+- **Mutation A (refusal):** a throwaway `live_capture=True` builder missing `wall_clock` (but having
+  `connect_fn` + `monotonic_clock`) → registration RAISES, the message naming the MISSING param
+  specifically (proving the check is per-parameter, not just "has connect_fn"). Also show a builder
+  missing `connect_fn` still refuses (WO-028's case still holds under the generalized check).
+- **Mutation B (preservation):** a builder with ALL THREE registers cleanly; a `live_capture=False`
+  builder missing all three registers cleanly (no over-fire).
+- **Mutation C (necessity):** weaken the new clock-param check to a no-op → the wall_clock-missing
+  builder registers SILENTLY → proves the check, not arg-binding, enforces it.
+- Restore each; sha256 == pristine; final PASS.
 
-State whether `_build_kraken_v2` — the real one — passes the check after §2 (it must; it now
-accepts `connect_fn`). If it does not, §2 is incomplete.
-
----
-
-## §4 PROVE THE PRODUCTION SOCKET PATH IS BEHAVIOURALLY UNCHANGED (D36-1b's burden)
-
-D36 placed this burden explicitly. Two witnesses:
-
-4.1 **The existing suite** — 216 unchanged, both orders, both interpreters. Any production caller
-    passing nothing resolves the same transport it did at `401d01a`.
-4.2 **One explicit new test** — assert that on the non-live production path, the default transport
-    the adapter holds after construction through `create_feed`/`_build_kraken_v2` **is `_REAL_CONNECT`
-    by identity**. This is the test D36 named: the declared default IS the real transport, proven by
-    `is`, not by behaviour. Place it with the gate/identity tests. It is the +1 to the count.
-
-Do NOT open a real socket to prove this. Construct through the production path and inspect
-`adapter._connect_fn is _REAL_CONNECT`. If construction through that path tries to connect, STOP —
-that is a finding about the builder doing I/O at construction, which it must not.
+Confirm the REAL `_build_kraken_v2` passes the generalized check after §2.
 
 ---
 
-## §5 THE ONE AUTHORIZED TEST CHANGE
+## §4 PROVE PRODUCTION UNCHANGED + FACTORY-BOUNDARY OBSERVABILITY (D38's named test)
 
-Race #5 (`test_runner_resolves_live_adapter_from_data_source_via_factory`, test_live_capture.py:190)
-currently uses `patch("websockets.connect", …)` because no `connect_fn` seam reached the runner.
-That seam now exists. **You MAY migrate race #5 to inject `connect_fn` through the runner and remove
-the monkeypatch — but ONLY the transport migration, NO clock injection** (clock injection is pass
-two). This proves the threading reaches the runner boundary end to end.
+4.1 **Production socket path unchanged** — existing suite 217 unchanged both orders both
+    interpreters; plus assert (identity, no socket) that the non-live production default clocks are
+    `time.monotonic`/`time.time` held at construction through `create_feed`/`_build_kraken_v2`.
 
-If migrating it requires anything beyond passing `connect_fn` through the runner, STOP and report —
-that is a finding about the threading's completeness. Do NOT touch any other race. Do NOT inject a
-clock into race #5; that is pass two and would trip nothing useful here.
+4.2 **The factory-boundary observability test D38 named** — build via the FULL
+    runner→factory→builder path (not a directly-constructed adapter) and assert the coupling gate
+    sees the injected seams identically:
+    - injected fake COHERENT clock pair + injected fake transport (`connect_fn`), through the runner
+      → gate PROCEEDS (`PROCEED_COHERENT`);
+    - injected fake clock + DEFAULT (real) transport, through the runner → gate REFUSES on COUPLING,
+      **pre-connection** (connect callable never invoked).
+    This is the whole point of the exercise: the gate's guarantees cross the factory boundary
+    intact. A factory-built adapter is as legible to the gate as a directly-built one. Place it with
+    the gate/identity tests. It is a +1 (or +N) to the count — state the arithmetic.
 
-State explicitly whether race #5, post-migration, still injects no clock and therefore still
-early-returns at the gate. Its gate disposition must remain `EARLY_RETURN`.
-
----
-
-## §6 RE-BASELINE — REASONED EXCLUSION (D36-3, do not skip the reasoning)
-The standing rule's when-in-doubt-re-baseline default is ANSWERED, not ignored: the builder and the
-threaded parameters execute ONCE at construction, never inside `get_live_market_data`'s per-frame
-loop. The changed code is outside the loop's hot path by the rule's own boundary. **No re-baseline
-is triggered.** State this as a reasoned exclusion in the report with the boundary cited; do not
-silently omit it.
+Do NOT open a real socket in either test. If construction through the path attempts a connection,
+STOP — the builder must do no I/O at construction.
 
 ---
 
-## §7 DECISION LOG — ONE ENTRY, RATIFIED VERBATIM
-`docs/decisions/2026-07-24-scope-intentions-do-not-survive-a-shared-implementation.md`:
+## §5 RACE #5 IS NOT CONVERTED HERE
+This WO makes race #5 clock-INJECTABLE; it does NOT inject a clock into it. That is WO-029 batch A,
+which re-enumerates the full 26 at HEAD after this lands (D38 named the denominator: 26). Do NOT
+convert race #5 or any pass-two race in this WO. §4.2's tests use throwaway/fixture constructions,
+not the race #5 test itself. If tempted to "just convert #5 while the seam is fresh," STOP — that
+crosses into pass two and breaks the batch denominator.
 
-> A shared builder makes "the live path" and "the production path" the same edit — scope intentions
-> do not survive a shared implementation. Ruling D36-1 existed only because one builder
-> (`_build_kraken_v2`) serves both `create_live_capture_feed` and `create_feed`; a change scoped to
-> "live" could not be confined to live without splitting the builder. General consequence: **scope
-> claims are checked against the implementation's sharing topology, not the caller's intent** — the
-> call-graph doctrine arriving at scoping decisions.
+---
+
+## §6 RE-BASELINE — REASONED EXCLUSION (D36-3 / D38)
+The threaded clock params execute ONCE at construction, never in `get_live_market_data`'s per-frame
+loop. Outside the hot path by the standing rule's boundary. **No re-baseline triggered** — stated as
+a reasoned exclusion with the boundary cited, not skipped. (Note distinctly: the clocks the adapter
+USES per-frame are unchanged in identity — same `time.monotonic`/`time.time` — so per-frame timing
+behaviour is byte-identical; the change is only WHERE the default is declared.)
+
+---
+
+## §7 DECISION LOG — ONE ENTRY, RATIFIED VERBATIM + THE GENERALIZING SENTENCE
+`docs/decisions/2026-07-25-a-transport-seam-is-not-a-clock-seam.md`:
+
+> A transport seam is not a clock seam; each injected dependency crosses the runner/factory/builder
+> boundary on its own or not at all. Unblocking a factory-built race for its transport (WO-028's
+> connect_fn) did not unblock it for its clock; the clock needed the identical threading.
+>
+> Sixth specimen of a-figure-traveled-as-prose (WO-027's "26" was 25 until this WO); second sourced
+> from the shared builder (D36 was the first).
+>
+> Generalizing, since the builder will be the crossing point for every future seam:
+> **the shared builder's forwarding surface is a contract inventory — every kwarg it forwards is a
+> declared obligation on every live-capable builder, and the registration gate is that inventory's
+> enforcement.** When a third seam needs the crossing, the checklist question is already written:
+> "what else does the shared builder forward, and does every live-capable builder accept it?"
 
 ---
 
 ## §8 SCOPE FENCE
-- NO clock injection anywhere (pass two).
-- NO migrating any test except race #5's transport (§5).
-- NO building option (c) / the adapter protocol seam (named successor, not now).
-- NO touching `registry.create`'s passthrough.
-- NO gate docstring precision note (r20 ruling 2 STILL unruled — STOP and cite if you disagree).
+- NO pass-two conversion — race #5 and all 26 stay for WO-029.
+- NO new load-time reason code if the existing one can be generalized (§3) — avoid handing the
+  vocabulary-split WO a second tangle.
+- NO gate docstring precision note (r20 ruling 2 folds into the vocabulary-audit WO per D37).
+- NO adapter-protocol seam (option (c), still the named successor, not now).
 
 ---
 
 ## §9 ACCEPTANCE
-- `pytest tests/ -p no:randomly -rX` → **217** (216 + the §4.2 identity test), 0 f/xf/xp
-- `pytest tests/ --randomly-seed=20260731 -rX` → same
-- BOTH interpreters (3.11 strict, 3.14 dev)
-- Registration validation live; bite proof mutations A + B, four artifacts, sha256 exact-restore
-- `_build_kraken_v2` passes the registration check; stated
-- §4.2 identity test green: non-live default `is _REAL_CONNECT`
-- Race #5 migrated to `connect_fn`, monkeypatch removed, still `EARLY_RETURN` at the gate
+- `pytest tests/ -p no:randomly -rX` → 217 + §4.2's tests (state N and arithmetic), 0 f/xf/xp
+- `pytest tests/ --randomly-seed=<seed>` → same, both interpreters
+- Extended registration contract live; bite proof A+B+C, four artifacts, sha256 exact-restore
+- `_build_kraken_v2` passes the generalized check; stated
+- §4.1 non-live default clocks are `time.monotonic`/`time.time` by identity; §4.2 factory-boundary
+  observability (proceed + pre-connection refuse) green
 - Gate ledger: 0 unmarkered refusals, 0 stale markers
-- `lint-imports` 6/6 (runner still imports only `factory`, never `kraken_v2_book`) ·
+- `lint-imports` 6/6 (runner still imports only `factory`/`websockets`, never `kraken_v2_book`) ·
   `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 ·
   `preflight_path_check.py` pass
-- Test-count arithmetic stated: 216 + 1 (§4.2) = 217; race #5 migrated not added
-- Commit, push, local == remote, CI green BOTH legs via `gh run view`
-- Snapshot the gate ledger into `evidence/WO-028/` via `tools/snapshot_gate_ledger.py` (the WO-026
-  discipline — deliberate snapshot, not an evidence-path write)
-- Append a WO-028 block to `progress.md`
+- The FOUR unchanged production files sha256-IDENTICAL before/after; the TWO changed
+  (`kraken_v2_book.py`, `factory.py`, `registry.py`, `live_capture.py` — the same four WO-028
+  touched) reported with new hashes and a one-line diff summary each. `logkit/decision.py` changes
+  only if a reason code is added/renamed (§3) — state which.
+- Commit, push, local == remote, CI green BOTH legs via `gh run view` (paste run number — not a
+  placeholder; WO-028 shipped with `_[fill]_`)
+- Snapshot gate ledger into `evidence/WO-030/` via `tools/snapshot_gate_ledger.py`
+- Append a WO-030 block to `progress.md`
 
-## §10 REPORT — `WO-028-REPORT.md`
-The four signatures before/after; the `_REAL_CONNECT` single-anchor confirmation; the §2.2 adapter-
-default decision and its gate consequence; whether `create_feed` reaches the kraken_v2 builder; the
-registration validation and its bite proof verbatim with sha256; the §4.2 identity test; race #5's
-migration and its retained `EARLY_RETURN`; the reasoned re-baseline exclusion; the ledger snapshot
-path and provenance header; the §9 gate output verbatim; the D-number flag from §3; every attempt;
-any STOP.
+## §10 REPORT — `WO-030-REPORT.md`
+Signatures before/after; the §2.1 eager-resolve interaction decision; the §2.2 gate-reads-default
+verification; `create_feed` both-path handling; the generalized registration code choice and its
+bite proof verbatim with sha256; §4.1 + §4.2 with the observability test; the reasoned re-baseline
+exclusion; the CI run number (real); the production-file hashes; every attempt; any STOP.
 
-**THEN STOP.** §3 small WO / pass two follow, in fresh sessions.
+**THEN STOP.** WO-029 batch A (full 26, re-enumerated at HEAD) is next, fresh session.

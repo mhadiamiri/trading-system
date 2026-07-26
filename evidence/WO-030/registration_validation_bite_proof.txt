@@ -1,0 +1,32 @@
+WO-030 §3 BITE PROOF — generalized live-capable registration contract (D38), 4 artifacts, sha256
+Guard file: src\trading\data\adapters\registry.py  (register(): the _LIVE_FORWARDED_PARAMS check)
+Contract code: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM  (generalized from WO-028's connect_fn code)
+sha256 BEFORE: 5bf833c78fd3b91e055e91c08026da2439801cf124c485928ecf8f492ba38a68
+
+-- ARTIFACT 1 — GUARD PRESENT (pristine) --
+  [refusal, per-param] live builder missing ONLY wall_clock:
+    RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM
+    NAMES_WALL_CLOCK: True
+    FULL_MSG: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM: builder _b registered live_capture=True but does not accept forwarded live-path parameter(s): ['wall_clock']. Live-capable builders must accept every parameter create_live_capture_feed forwards, so each is a declared seam not an ambient default — see D38 / Principle VII.
+  [refusal] live builder missing connect_fn (WO-028 case still holds):
+    RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM | names connect_fn: True
+  [preserve] full live builder + non-live builder:
+    PRESERVE_OK: full live builder + non-live builder both registered
+    REAL _build_kraken_v2 live_capable: True
+
+-- ARTIFACT 2 — GUARD WEAKENED (necessity of clock params: inventory -> ('connect_fn',)) --
+  wall_clock-missing builder now:
+    REGISTERED_NO_RAISE
+  sha256 WHILE WEAKENED: 48d1dd0a004986ff39e25513621b18d0e565ce5f3c4a6707cf51b0a427b5c164
+
+-- ARTIFACT 3 — GUARD RESTORED --
+  wall_clock-missing builder again:
+    RAISED_CODE: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM
+    NAMES_WALL_CLOCK: True
+    FULL_MSG: LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM: builder _b registered live_capture=True but does not accept forwarded live-path parameter(s): ['wall_clock']. Live-capable builders must accept every parameter create_live_capture_feed forwards, so each is a declared seam not an ambient default — see D38 / Principle VII.
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER:  5bf833c78fd3b91e055e91c08026da2439801cf124c485928ecf8f492ba38a68
+IDENTICAL: YES
+
+VERDICT: PASS

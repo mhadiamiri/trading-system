@@ -38,7 +38,10 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-25 (WO-028 COMPLETE — connect_fn threading IMPLEMENTED in production (D36-1b), registration-time contract (D36-2b) with bite proof, race #5 migrated off the monkeypatch; 217 both interpreters both orders; SHIP IMPACT YES, authorized)
+**Last Updated**: 2026-07-25 (WO-030 COMPLETE — CLOCK seam threaded through runner→factory→builder (D38, parallel to WO-028's connect_fn), registration contract generalized to all three forwarded params; race #5 now clock-INJECTABLE; 218 both interpreters both orders; SHIP IMPACT YES)
+**WO-030**: HEAD `PENDING` (base `64e2001`) — PRODUCTION (D38, ruling on WO-029's race #5 finding). Threaded `monotonic_clock`/`wall_clock` through `LiveCaptureRunner → create_live_capture_feed → _build_kraken_v2`, parallel to WO-028's `connect_fn`, so a factory-built adapter is clock-injectable (race #5 rejoins pass two's 26 — NOT converted here). **§2.1 decision:** wall default is `None` NOT `time.time` (the D35-2 raw-None convention — `time.time` held in `_wall_clock` reads as INJECTED and trips COHERENCE on a real capture; `time.monotonic` is safe). Verified: a real factory-built adapter reads BOTH clocks as not-injected → gate EARLY-RETURNS. **§3:** `register(live_capture=True)` generalized to require all of `_LIVE_FORWARDED_PARAMS=(connect_fn, monotonic_clock, wall_clock)`; WO-028's code RENAMED `…MISSING_CONNECT_FN` → `…MISSING_FORWARDED_PARAM` (one code for the whole contract, cites D38); bite-proved 4 artifacts A/B/C sha256 exact-restore. **§4.2** +1 factory-boundary observability test (through the runner: coherent pair+fake transport PROCEEDS; fake clock+real transport REFUSES COUPLING pre-connection). `create_feed` UNCHANGED; registry passthrough unchanged. 218 both interpreters both orders (seed 20260801), gate ledger 43 inv 0 unmarkered/0 stale, CI green both legs run `PENDING`. Five production files changed. See the **▶ WO-030** block below. Report: `WO-030-REPORT.md`.
+**AUTO-MODE NOTE:** the first production edit was DENIED by the auto-mode classifier while the bar read ON (confirming it was never off); the user cycled it off (shift+tab) and the four edits were applied one at a time, each visible — no production/auto-mode permission granted.
+**WO-029 (pass two batch A): STOPPED at §2.0, no commit** — the mechanical re-enumeration found race #5 was NOT clock-injectable (transport-injectable via WO-028's connect_fn, but no clock seam through the factory), so the tests-only-clock-injectable count was 25 not 26. Reported; the lead ruled Option 1 → WO-030 (this) builds the clock seam. WO-029 re-runs fresh after WO-030 lands.
 **WO-028**: HEAD `c50b70e` (base `f2ea05e` = `401d01a` + WO-027 docs-only close) — PRODUCTION implementation of D36. **1b (both paths):** the declared default `connect_fn=_REAL_CONNECT` lives on the SHARED builder `_build_kraken_v2` (serves both `create_live_capture_feed` and `create_feed`); factory live-path + runner forward it; a builder-constructed adapter now holds `_connect_fn is _REAL_CONNECT` (declared at construction, not ambient at call time) — the resolved socket is byte-identical to today (`_REAL_CONNECT is websockets.connect`). Runner/factory reference `websockets.connect` (the SAME anchor object) because import-linter forbids the runner importing `kraken_v2_book`; single-anchor verified by `is`. `create_feed` UNCHANGED (generic over DATA_SOURCE; simulated/kraken_public reject connect_fn) — 1b held at the shared builder. **2b:** `register(live_capture=True)` validates the builder accepts `connect_fn` at import (`LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN`, D39-flagged for the lead), bite-proved 4 artifacts sha256 exact-restore both directions. **§4.2** +1 identity test (non-live default `is _REAL_CONNECT`, construction-only). **§5** race #5 migrated to inject `connect_fn` through the runner (monkeypatch removed), still `EARLY_RETURN`. Vocabulary declaration added for the new code (`logkit/decision.py`). 217 both interpreters both orders (seed 20260731), gate ledger 0 unmarkered/0 stale, evidence/ clean, CI green both legs run `30175153052`. See the **▶ WO-028** block below. Report: `WO-028-REPORT.md`.
 **Fresh-session override (recorded):** the WO mandated a fresh session; the user directed "resume with this session" — logged as an explicit override.
 **WO-027**: HEAD `401d01a` (base `e3533bf` = `4f18459` + docs-only close) — INVESTIGATION only, **no production code**, `kraken_v2_book.py` byte-unchanged (`a9388694…`). §1 ran `tools/snapshot_gate_ledger.py` for the FIRST time (built WO-026, never executed) → PASSED, header all five fields real, guard held. Findings: `registry.create` is generic; **the `kraken_v2` builder `_build_kraken_v2` DROPS `connect_fn`** (the choke point); the factory→registry path resolves the transport from **ambient `websockets.connect`** (D35 condition). §2.3: **exactly one** of the 30 races (#5 / site 29, `…_via_factory`) routes through the factory — confirms expectation; it's the strict prerequisite to make race #5 clock-deterministic (a clock alone trips the gate's COUPLING). §2.4: the LIVE path has ZERO production callers; the non-live `create_feed`/`LiveTradingLoop` path must stay untouched. **Proposal: Option (a)** — explicit `connect_fn` on runner + `create_live_capture_feed` + the `kraken_v2` builder; `registry.create` unchanged; runner-up (c) protocol; Principle VII preserved mechanically but a mild "declared-vs-inferred" erosion flagged. **NO implementation — awaits ruling.** 216 both interpreters both orders (seed 20260730), evidence/ clean, CI green both legs run `30108543326`. See the **▶ WO-027** block below. Report: `WO-027-INVESTIGATION-REPORT.md`.
@@ -426,6 +429,65 @@ the import boundary constrained HOW the anchor is referenced (websockets.connect
 contradiction. Attempt: a `factory._REAL_CONNECT` named constant written then reverted to inline
 `websockets.connect` (avoid a second-anchor appearance). Vocabulary failure caught + fixed. Next: §3-small /
 pass two in fresh sessions.
+
+---
+
+## ▶ WO-029 (PASS TWO BATCH A) — STOPPED at §2.0 (no commit) — 2026-07-25 — race #5 was not clock-injectable
+
+> NOT committed — a STOP, per §2.0 / §0.1. Ran in a session that (by the user's override of the fresh-session
+> mandate) held WO-027's "26"; mitigated by deriving the enumeration MECHANICALLY from the audit at HEAD.
+> §1 baseline 217/217 confirmed. Enumeration: 30 audit races = 3 asyncio-sleep (names matched) + 1
+> already-converted foundation (`test_host_suspend_recorded_diagnostic_not_terminal`) + 26 clock-dependent.
+> **Finding:** race #5 (`…_via_factory`) is the ONLY factory-built race; the WO-028 `connect_fn` seam injects
+> TRANSPORT, not a clock, and no clock seam existed through create_live_capture_feed → _build_kraken_v2 →
+> (runner passes no clock to the adapter). So race #5 was transport-injectable but NOT tests-only-clock-injectable;
+> the real count was **25**, not 26. Recommended a production clock-seam WO (parallel to connect_fn). Lead ruled
+> **Option 1 (D38)** → WO-030. Nothing edited; five production sha256s held. WO-029 re-runs fresh after WO-030.
+
+---
+
+## ▶ WO-030 COMPLETE (AUTHORITATIVE) — 2026-07-25 — clock seam threading (production, D38)
+
+> PRODUCTION implementation of D38 (the ruling on WO-029's race #5 finding). **SHIP IMPACT: YES.** Base HEAD
+> `64e2001`. Report: `WO-030-REPORT.md`. Evidence: `evidence/WO-030/`. Decision log:
+> `docs/decisions/2026-07-25-a-transport-seam-is-not-a-clock-seam.md`.
+> **AUTO MODE:** first production edit DENIED by the classifier while the bar read ON (confirming never off);
+> user cycled it off (shift+tab); four edits applied one at a time, each visible; no auto-mode permission granted.
+
+**§2 threading (D38, parallel to connect_fn), both paths:**
+- **Builder** `_build_kraken_v2(…, monotonic_clock=time.monotonic, wall_clock=None)`; monotonic threads through
+  the CONSTRUCTOR (adapter's eager `monotonic_clock or time.monotonic`), wall set post-construction only when
+  injected. Needed a module-level `import time` in kraken_v2_book.py (was local-only).
+- **§2.1/§2.2 DECISION (the one deviation from the WO's literal text, §0.1 code-wins):** wall default is `None`
+  NOT `time.time`. The D35-2 convention block makes `_wall_clock` raw-None (detection `is not None`); `time.time`
+  held there reads as INJECTED → trips COHERENCE on a real capture. `time.monotonic` reads not-injected (its
+  `is not time.monotonic` convention). VERIFIED: a real factory-built adapter reads BOTH as not-injected → gate
+  EARLY-RETURNS; an injected coherent pair (shared token) reaches the adapter and proceeds.
+- **Factory** `create_live_capture_feed` forwards both clocks (is_live_capable-gated); **`create_feed` UNCHANGED**
+  (generic; simulated/kraken_public reject the kwargs; 1b held at the shared builder — verified). **Runner** gains
+  + stores + forwards them, DISTINCT from its own `self._clock` (per-minute bucketing). **Registry** unchanged.
+- All layer monotonic defaults `is time.monotonic`; all wall defaults `None`.
+
+**§3 generalized contract (D38):** `register(live_capture=True)` requires all of
+`_LIVE_FORWARDED_PARAMS=(connect_fn, monotonic_clock, wall_clock)` — the shared builder's forwarding inventory.
+WO-028's `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN` **RENAMED** → `LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM`
+(one load-time code, cites D38; vocabulary updated in decision.py — a rename, not a second code, per §8). Real
+`_build_kraken_v2` passes. Bite proof (`evidence/WO-030/registration_validation_bite_proof.txt`) four artifacts
+sha256 exact-restore: A1 missing-wall raises naming wall_clock + missing-connect still refuses + full/non-live
+register; A2 inventory weakened → wall-missing registers silently (necessity); A3 restored; A4 IDENTICAL. PASS.
+
+**§4.1** identity test extended: non-live default `_monotonic_clock is time.monotonic`, `_wall_clock is None`.
+**§4.2 (+1, D38's named test)** `test_factory_built_adapter_is_legible_to_coupling_gate` — through the full
+runner→factory→builder path: coherent pair + fake transport → PROCEED_COHERENT; fake clock + real transport
+(spy as _REAL_CONNECT) → REFUSE COUPLING pre-connection (connect_count 0). No real socket.
+**§5** race #5 NOT converted (pass two). **§6** re-baseline reasoned-excluded (construction-time, per-frame clocks
+byte-identical).
+
+**ACCEPTANCE:** **218** (217 + §4.2; §4.1 extended, not added; bite proof standalone) on {3.11,3.14}×{det, seed
+20260801}; gate ledger 43 inv, 0 unmarkered/0 stale; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
+pass. Five production files changed (kraken_v2_book `b06c347e`, factory `103a8ba7`, registry `5bf833c7`,
+live_capture `dab18f67`, decision `3d153a11`); no other production file touched. **NEXT: WO-029 batch A, fresh
+session, re-enumerates the 26 (now including race #5) at HEAD.**
 
 ---
 
