@@ -124,7 +124,7 @@ generalizing sentence: the shared builder's forwarding surface is a contract inv
 - `lint-imports` 6/6 (runner imports only `factory`/`websockets`, never `kraken_v2_book`) ·
   `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 · `preflight` pass.
 - Five production files changed (hashes above); no OTHER production file touched.
-- Commit, push, local == remote, CI green BOTH legs — run `_[fill]_`.
+- Commit, push, local == remote, CI green BOTH legs — run `30183494157`.
 
 ## §10 — STOPPED / attempts
 - **STOPPED:** none in-implementation (the §2.1 wall-default decision was a "decide and state" the WO
