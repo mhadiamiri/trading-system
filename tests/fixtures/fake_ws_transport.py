@@ -243,3 +243,58 @@ class ScriptedConnectionFactory:
             )
         self.sockets.append(socket)
         return socket
+
+
+class AdvancingClock:
+    """WO-029 §2.0-bis — the frozen FakeClock MADE TO MOVE, so a deadline can FIRE deterministically.
+
+    Every other clock here is FROZEN (FakeClock): it injects a coherent pair but a deadline computed on
+    its monotonic seam is never reached, so tests terminate via the script, not the deadline. A
+    deadline-ASSERTION test (race 4: `test_clean_deadline_close_does_not_reconnect_dual`) needs the
+    deadline to actually END the run — reframing it as a scripted clean-close is a §2 STOP (it changes
+    what the test observes). This fixture fills that gap.
+
+    Same coherent construction as FakeClock — ONE counter drives wall+monotonic, the SAME fixed D25
+    offsets (monotonic ORDERS, wall LOCATES), the SAME shared `_coherence_token` so it passes the gate's
+    COHERENCE check EXACTLY as the frozen pair does — but the counter ADVANCES by `delta` on every
+    MONOTONIC read (the deadline clock). A deadline set as `monotonic() + duration` is therefore reached
+    after `ceil(duration/delta)` subsequent reads: DETERMINISTIC, same firing point every run/order,
+    independent of wall-clock time. It is the frozen harness made to move, not a new incoherent thing.
+
+    Reusable: `delta` sets the firing point. `advance(d)` moves the counter explicitly too (both seams).
+
+        clk = AdvancingClock(delta=0.05)                     # fires a 0.15s deadline after ~3 reads
+        adapter = KrakenV2BookAdapter(mode=..., monotonic_clock=clk.monotonic, connect_fn=...)
+        adapter._wall_clock = clk.wall                        # coherent pair, shared token
+    """
+
+    _MONOTONIC_BASE = 10_000.0            # small, boot-relative — ORDERS (D25); same base as FakeClock
+    _WALL_BASE = 1_700_000_000.0          # a plausible unix epoch — LOCATES (D25); same base as FakeClock
+
+    def __init__(self, delta, start=0.0):
+        if float(delta) <= 0.0:
+            raise ValueError("AdvancingClock delta must be > 0 (a deadline that never advances cannot fire)")
+        self._counter = float(start)
+        self._delta = float(delta)
+        # Wall READS the counter (LOCATES) without advancing; monotonic READS then advances (the deadline
+        # driver). One counter, so both seams stay coherent; the shared token is THIS instance.
+        self.wall = self._make_wall()
+        self.monotonic = self._make_monotonic()
+
+    def _make_wall(self):
+        def _read():
+            return self._WALL_BASE + self._counter
+        _read._coherence_token = self
+        return _read
+
+    def _make_monotonic(self):
+        def _read():
+            value = self._MONOTONIC_BASE + self._counter
+            self._counter += self._delta      # advance AFTER reading: the deadline-set read sees `start`
+            return value
+        _read._coherence_token = self
+        return _read
+
+    def advance(self, delta):
+        """Advance the single source explicitly; BOTH seams move by the same delta (coherent)."""
+        self._counter += float(delta)

@@ -1,0 +1,26 @@
+WO-029 §2.0-bis BITE PROOF — AdvancingClock FIRES a deadline (not prematurely); 4 artifacts, sha256
+Harness: tests\fixtures\fake_ws_transport.py  (AdvancingClock — the frozen FakeClock made to move)
+Signal = race 4's: connect_count==1 (deadline close, no reconnect) + capture_terminated None
+sha256 BEFORE: 7b17732c96db7e5d0c2a6bf6bd6d8972fc9e72f5f38aa01be74d357c58dc7601
+
+-- ARTIFACT 1 — FIRES + DOES-NOT-FIRE-PREMATURELY (pristine) --
+  FIRES: connect_count=1 emitted=1 terminated=None reconnect_gaps=0
+  NOT_PREMATURE: connect_count=1 emitted=1 terminated=None
+  Expect FIRES: connect_count=1 emitted>=1 terminated=None reconnect_gaps=0 (deadline ended it, after the snapshot)
+  Expect NOT_PREMATURE: emitted>=1 terminated=None (ran to the snapshot; ended via clean close, deadline not reached)
+
+-- ARTIFACT 2 — NECESSITY (advance mutated to fire PREMATURELY: *1_000_000) --
+  FIRES: connect_count=1 emitted=0 terminated=None reconnect_gaps=0
+  NOT_PREMATURE: connect_count=1 emitted=0 terminated=None
+  Expect FIRES: emitted=0 — the deadline fired BEFORE the snapshot (race 4 would pass for the wrong reason)
+  sha256 WHILE MUTATED: 126fec17deba6bdc94c15ea10881acb912dec1f2b6ba9b278299453c55dc6802
+
+-- ARTIFACT 3 — RESTORED --
+  FIRES: connect_count=1 emitted=1 terminated=None reconnect_gaps=0
+  NOT_PREMATURE: connect_count=1 emitted=1 terminated=None
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER:  7b17732c96db7e5d0c2a6bf6bd6d8972fc9e72f5f38aa01be74d357c58dc7601
+IDENTICAL: YES
+
+VERDICT: PASS

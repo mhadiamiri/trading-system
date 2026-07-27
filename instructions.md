@@ -1,245 +1,227 @@
-# WO-030 — CLOCK SEAM THREADING (production). D38: both paths, both-seam registration contract.
+# WO-029 (refreshed) — PASS TWO, BATCH A. Clock injection into the first cluster of the 26 races.
 
+BASE: current HEAD on master (the WO-030 docs-close, `9c084c3`, on top of clock-seam `dd9def5`) —
+**confirm actual HEAD in §1 and use it.** 218 both orders both interpreters, CI green both legs
+(WO-030 code `dd9def5` run 30183494157).
 
+SCOPE: **BATCH A ONLY.** Batches B and C are separate WOs that re-read this WO's committed partition.
+Commit green, STOP. Do not convert a race outside batch A even if it looks trivial.
+SHIP IMPACT: **NO** — tests, conftest, evidence. Every production file byte-unchanged; §7 proves it.
 
-BASE: HEAD `64e2001` on master (local == remote). 217 both orders both interpreters, CI green both
-legs (WO-028 code `c50b70e` run 30175153052; docs-close `64e2001` run 30176270010).
-Production sha256s at base: `kraken_v2_book.py` `c98d7da0…`, `factory.py` `60cba127…`,
-`registry.py` `c3db912c…`, `live_capture.py` `50b08c62…`, `logkit/decision.py` `a65cfa3c…`.
+WHAT CHANGED SINCE THIS WO WAS FIRST DRAFTED: WO-030 threaded the clock seam through
+runner→factory→builder, so **race #5 is now clock-injectable** and the pass-two denominator is a
+genuine **26** (D38 named it). `test_live_capture.py` (races 1–5) now converts WHOLE — no file split.
 
-SCOPE: thread the clock seam through runner→factory→builder on BOTH paths; extend the registration
-contract to require both seams. Commit green, STOP.
-SHIP IMPACT: **YES** — production, full discipline (D36-3 / D38). Authorized.
-
-WHAT WAS RULED (d38 — do not relitigate):
-- **Option 1** — thread a `monotonic_clock`/`wall_clock` seam through
-  `LiveCaptureRunner → create_live_capture_feed → _build_kraken_v2`, exactly parallel to WO-028's
-  `connect_fn`, so race #5 becomes clock-injectable. Declared defaults at the builder signature
-  (`time.monotonic` / `time.time`), NOT ambient. Both paths (the shared builder, per its doctrine).
-- **Both-seam registration contract** — the existing `register(live_capture=True)` validation
-  EXTENDS to require BOTH transport AND clock parameters. One gate, one error form, same doctrine
-  citation. The contract follows the FORWARDING, not the motivation: any kwarg
-  `create_live_capture_feed` forwards is a declared obligation on every live-capable builder.
-- **Factory-boundary observability** — a factory-built adapter must be as legible to the coupling
-  gate as a directly-constructed one; one explicit test asserts it (§4.2).
-- **Re-baseline: reasoned exclusion** — construction-time, not per-frame.
+WHAT PASS TWO DOES: converts wall-clock-dependent races to deterministic by injecting a COHERENT
+clock pair (shared `_coherence_token`) through the WO-023/028/030 seams. The gate permits a coherent
+pair; an incoherent one refuses. The gate ledger is the live safety net — a wrong injection trips a
+refusal and cannot pass silently.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
-0.1 **No discretion.** Code wins over this order: STOP and report. This is the fifth production/
-    investigation WO of this shape; the last four each corrected a ruling made without the file.
-    This one has d38 AND WO-028 as a template — but if the code contradicts either, STOP.
-0.2 No monkeypatching to make a guard pass.
-0.3 Fail-then-pass bite proof for the extended registration contract: four artifacts, sha256
-    exact-restore, BOTH directions.
+0.1 **No discretion.** Code wins over this order: STOP and report. Do not reconcile silently.
+0.2 No monkeypatching to make a guard pass. Where a race still monkeypatches the transport, migrate
+    it to `connect_fn` (direct construction) or the runner clock/transport seams (factory-built) in
+    the same edit — a clock injection with a module-patched transport trips COUPLING, so the two go
+    together for any race not already transport-migrated.
+0.3 Every guard/assertion touched gets a fail-then-pass bite proof: four artifacts, sha256
+    exact-restore.
 0.4 Preservation duals mandatory, local and direct.
-0.5 Report every attempt, including failed and retried.
-0.6 **AUTO MODE OFF** for every production edit. `kraken_v2_book.py`, `factory.py`, `registry.py`,
-    `live_capture.py`. (WO-029 twice showed the bar reading ON while the summary said off — VERIFY
-    the toggle, do not trust the intention.)
-0.7 Report `/context` at START.
-0.8 **BUILT-VS-OPERATED (D24).**
+0.5 Report every attempt, including failures and retries.
+0.6 Report `/context` at START and at the commit seam.
+0.7 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Built & verified where |
     |---|---|---|
-    | WO-028 `connect_fn` threading (the template) | **OPERATED** | Committed `c50b70e`, CI 30175153052 |
-    | `register(live_capture=True)` transport validation | **OPERATED** | WO-028 §3, bite-proved |
-    | `_wall_clock` / `_monotonic_clock` adapter seams | **OPERATED** | WO-023 foundation |
+    | WO-023 §1 audit (the 30 races, enumerated) | **OPERATED** | Committed `86e2a33` |
     | Coherent FakeClock harness (shared token) | **OPERATED** | WO-023 §3 |
-    | Coupling gate (`_assert_clock_transport_gate`) | **OPERATED** | WO-023 §2/§2b/§2c |
-    | Clock seam through runner/factory/builder + both-seam contract | **THIS WO IS THE BUILDER** | Does not exist — §2, §3 |
+    | `_wall_clock`/`_monotonic_clock` adapter seams | **OPERATED** | WO-023 foundation |
+    | `connect_fn` seam (runner/factory/builder) | **OPERATED** | WO-028 `c50b70e` |
+    | Clock seam (runner/factory/builder) — makes race #5 injectable | **OPERATED** | WO-030 `dd9def5` |
+    | Gate ledger + marker exclusion + snapshot tool | **OPERATED** | WO-024/025/026; first-run WO-027 |
+    | The 26-race partition into batches A/B/C | **THIS WO IS THE BUILDER** | Does not exist — §2.0 |
+    | Self-advancing coherent clock fixture (deadline-firing) | **THIS WO IS THE BUILDER** | Does not exist — §2.0-bis |
 
-    Any OPERATED row not verified as stated → **STOP and report.** In particular confirm the
-    adapter's `_wall_clock`/`_monotonic_clock` seams and their injection-detection
-    (`is not None` / `is not time.monotonic`) are as WO-023 left them — the threading must feed
-    these exact seams.
-
----
-
-## §1 RE-PASTE THE SIGNATURES AND THE WO-028 TEMPLATE (before editing)
-
-Paste verbatim with line numbers, at THIS HEAD:
-- `LiveCaptureRunner.__init__` + `_resolve_feed` (with the `connect_fn` threading WO-028 added — the
-  clock threads the SAME way; show it so the parallel is exact)
-- `create_live_capture_feed` AND `create_feed` (both — the shared builder means both paths)
-- `_build_kraken_v2` (with WO-028's `connect_fn=_REAL_CONNECT` default — the clock defaults sit
-  beside it)
-- `register` (with WO-028's transport validation — the clock check extends THIS)
-- `KrakenV2BookAdapter.__init__`'s `_wall_clock` / `_monotonic_clock` seam and their defaults
-
-If any differs from expectation, note it. Same base as the WO-028 report, so `connect_fn`'s
-threading should be present and intact; confirming it is the "written against its consumers" check.
+    Any OPERATED row not verified as stated → **STOP and report.** In particular: confirm race #5
+    (`…_resolves_live_adapter_from_data_source_via_factory`) can now inject a clock through the
+    runner seam (WO-030). If it cannot, STOP — WO-030 did not achieve its purpose.
 
 ---
 
-## §2 THREAD THE CLOCK SEAM — EXACTLY PARALLEL TO connect_fn (D38, D36-1b)
-
-Declared defaults, both paths, feeding the adapter's existing seams:
-
-2.1 **Builder** (`_build_kraken_v2`): add `monotonic_clock=time.monotonic, wall_clock=time.time`
-    to the signature, forward as `KrakenV2BookAdapter(mode=mode, connect_fn=connect_fn,
-    monotonic_clock=monotonic_clock, wall_clock=wall_clock)`. Declared defaults equal to what the
-    adapter resolves today. **Decide and STATE** whether the builder default for `monotonic_clock`
-    should be `time.monotonic` (matching the adapter's eager-resolve convention) — note WO-023 made
-    the adapter's `_monotonic_clock` EAGERLY resolved (`monotonic_clock or time.monotonic`) and
-    that eager resolution is LOAD-BEARING for the suspend exception. The builder default must not
-    break that. If passing `time.monotonic` explicitly changes the adapter's injected-vs-default
-    detection (`is not time.monotonic`), STOP — that is a finding about the seam interaction.
-
-2.2 **Adapter constructor**: UNTOUCHED (same decision as WO-028 §2.2 for `connect_fn`). The
-    builder supplies the declared defaults; the adapter's own `_wall_clock=None` /
-    `_monotonic_clock` defaults and their detection logic stay exactly as WO-023 left them. State
-    the consequence: a builder-constructed adapter now holds `time.monotonic`/`time.time` explicitly
-    — verify the gate still reads it as NOT-injected (default clock) and EARLY-RETURNS, because a
-    real capture injects no fake clock. If a builder-supplied `time.monotonic` reads as INJECTED
-    (tripping coherence/coupling on a real capture), that is a blocking finding — STOP.
-
-2.3 **Factory, both functions**: `create_live_capture_feed(…, monotonic_clock=time.monotonic,
-    wall_clock=time.time)`, forwarded into `registry.create(…)`. For `create_feed`: same treatment
-    WO-028 gave `connect_fn` — it reaches `_build_kraken_v2` only under `DATA_SOURCE=kraken_v2`, and
-    it must NOT forward the clock kwargs (the `simulated`/`kraken_public` builders don't accept
-    them; forwarding TypeErrors). 1b is satisfied because the DECLARED DEFAULT lives in the shared
-    builder — `create_feed → registry.create("kraken_v2") → _build_kraken_v2()` with no clock passed
-    → the builder's declared defaults apply. Verify: `create_feed()` under `DATA_SOURCE=kraken_v2`
-    yields an adapter whose clocks are the declared defaults, held at construction.
-
-2.4 **Runner**: `LiveCaptureRunner.__init__(…, monotonic_clock=time.monotonic, wall_clock=time.time)`,
-    stored, forwarded in the `adapter is None` branch. Injected-adapter branch unchanged. Note the
-    runner already has a `clock` param (`self._clock = clock or time.time`, live_capture.py:70) used
-    for its OWN duration accounting — do NOT conflate it with the threaded seam; state how the two
-    relate and confirm the threaded clocks reach the ADAPTER, not the runner's duration clock.
-
-2.5 **Registry**: unchanged — generic `**kwargs` passthrough.
-
-**Every layer default must equal today's resolved value.** No production caller passing nothing sees
-a different clock than it does now. Declared default, same value.
+## §1 CONFIRM HEAD AND THE STARTING SUITE
+State actual HEAD. Run `pytest tests/ -p no:randomly -rX` on both interpreters; confirm the starting
+count (**218**, per WO-030) before any edit. If it is not 218, STOP.
 
 ---
 
-## §3 EXTEND THE REGISTRATION CONTRACT TO BOTH SEAMS (D38)
+## §2.0 RE-ENUMERATE ALL 26 AT HEAD, DECLARE THE PARTITION (before any edit)
 
-`register(live_capture=True)` currently validates the builder accepts `connect_fn`. Extend it to
-require the builder accept **all** parameters the live path forwards: `connect_fn`, `monotonic_clock`,
-`wall_clock`. One gate, one error form, same doctrine citation:
-    LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM: builder <name> registered live_capture=True but
-    does not accept forwarded live-path parameter(s): <missing list>. Live-capable builders must
-    accept every parameter create_live_capture_feed forwards, so each is a declared seam not an
-    ambient default — see <D-entry> / Principle VII.
-(Reuse or rename WO-028's `LIVE_CAPABLE_BUILDER_MISSING_CONNECT_FN` — state which. If you generalize
-the code name, that is a reason-code change: the vocabulary guard will require it declared. Handle it
-per WO-028's precedent BUT note it for the vocabulary-split WO — do NOT introduce a second load-time
-code that the split then has to untangle. Prefer generalizing the existing one over adding a new one;
-state your choice and why.)
+The "26" is now D38-ratified, but the FILE+LINE identity of each race must be re-derived at THIS HEAD
+— WO-030 moved lines in `kraken_v2_book.py`/`factory.py`/`live_capture.py`, and *an enumeration is
+only as good as its identifiers* (the ratified entry that caught race #5). Do not trust prior line
+numbers.
 
-`live_capture=False` builders remain unchecked.
+Produce the full table of all 30 audit races at THIS HEAD:
+- file+line (current), test name (current — flag any rename), audit race #,
+- category: **CLOCK-INJECTABLE** (must total **26**, now including race #5) /
+  **ASYNCIO-SLEEP** (3, excluded, D35) / **ALREADY-CONVERTED** (1, the suspend test, foundation).
+- Confirm the 3 asyncio.sleep races by name: `test_pong_observer_records_rtt_distribution`,
+  `test_absent_pongs_are_a_signal_not_gappiness`, `test_starved_lag_sampler_self_reports_degradation`.
+  If the set differs, STOP — the exclusion denominator changed.
+- Confirm race #5 is in the 26 (CLOCK-INJECTABLE via the runner seam). If not, STOP.
+- For each of the 26, note its construction path: **DIRECT** (test builds
+  `KrakenV2BookAdapter(...)` — injects FakeClock directly) or **FACTORY-BUILT** (via the runner —
+  injects through the runner clock/transport seams). Race #5 is the only known FACTORY-BUILT; confirm
+  no others are.
 
-### Bite proof — four artifacts, sha256 exact-restore, BOTH directions (0.3, 0.4)
-- **Mutation A (refusal):** a throwaway `live_capture=True` builder missing `wall_clock` (but having
-  `connect_fn` + `monotonic_clock`) → registration RAISES, the message naming the MISSING param
-  specifically (proving the check is per-parameter, not just "has connect_fn"). Also show a builder
-  missing `connect_fn` still refuses (WO-028's case still holds under the generalized check).
-- **Mutation B (preservation):** a builder with ALL THREE registers cleanly; a `live_capture=False`
-  builder missing all three registers cleanly (no over-fire).
-- **Mutation C (necessity):** weaken the new clock-param check to a no-op → the wall_clock-missing
-  builder registers SILENTLY → proves the check, not arg-binding, enforces it.
-- Restore each; sha256 == pristine; final PASS.
+**If the injectable count is not 26, STOP and report the real number with the delta.** Five prior
+counts in this family traveled as prose and were wrong; this one is derived at HEAD or not trusted.
 
-Confirm the REAL `_build_kraken_v2` passes the generalized check after §2.
+**Then declare the A/B/C partition** as a committed artifact (`evidence/WO-029/batch_partition.md`):
+each of the 26 assigned to exactly one batch, **partitioned BY TEST FILE** (a file's races convert
+together — no file split across batches). State batch A's members explicitly with their construction
+path. B and C named, not touched. The partition is evidence; later batches re-read it and
+re-enumerate against it rather than re-deciding.
 
----
-
-## §4 PROVE PRODUCTION UNCHANGED + FACTORY-BOUNDARY OBSERVABILITY (D38's named test)
-
-4.1 **Production socket path unchanged** — existing suite 217 unchanged both orders both
-    interpreters; plus assert (identity, no socket) that the non-live production default clocks are
-    `time.monotonic`/`time.time` held at construction through `create_feed`/`_build_kraken_v2`.
-
-4.2 **The factory-boundary observability test D38 named** — build via the FULL
-    runner→factory→builder path (not a directly-constructed adapter) and assert the coupling gate
-    sees the injected seams identically:
-    - injected fake COHERENT clock pair + injected fake transport (`connect_fn`), through the runner
-      → gate PROCEEDS (`PROCEED_COHERENT`);
-    - injected fake clock + DEFAULT (real) transport, through the runner → gate REFUSES on COUPLING,
-      **pre-connection** (connect callable never invoked).
-    This is the whole point of the exercise: the gate's guarantees cross the factory boundary
-    intact. A factory-built adapter is as legible to the gate as a directly-built one. Place it with
-    the gate/identity tests. It is a +1 (or +N) to the count — state the arithmetic.
-
-Do NOT open a real socket in either test. If construction through the path attempts a connection,
-STOP — the builder must do no I/O at construction.
+Batch A sizing guidance (not a hard rule): aim for a cluster whose conversion + determinism proof
+fits comfortably in one session with margin, biasing toward whole test files. If one file's race
+count alone is large, batch A may be that single file. State your sizing rationale.
 
 ---
 
-## §5 RACE #5 IS NOT CONVERTED HERE
-This WO makes race #5 clock-INJECTABLE; it does NOT inject a clock into it. That is WO-029 batch A,
-which re-enumerates the full 26 at HEAD after this lands (D38 named the denominator: 26). Do NOT
-convert race #5 or any pass-two race in this WO. §4.2's tests use throwaway/fixture constructions,
-not the race #5 test itself. If tempted to "just convert #5 while the seam is fresh," STOP — that
-crosses into pass two and breaks the batch denominator.
+## §2.0-bis THE SELF-ADVANCING COHERENT CLOCK FIXTURE — THIS WO IS THE BUILDER
+
+The §2.0 enumeration surfaced a harness gap: race 4
+(`test_clean_deadline_close_does_not_reconnect_dual`, `test_live_capture.py`) asserts DEADLINE-CLOSE
+semantics — reaching the deadline ENDS the run. Every existing FakeClock is FROZEN: it injects a
+coherent pair but cannot FIRE a deadline (that needs the clock to advance past the threshold on its
+own). Reframing "deadline close" as a scripted clean-close is a §2 STOP (changes what the test
+observes). So race 4 needs a NEW self-advancing coherent clock fixture — and because §2.0 forbids
+splitting a file, race 4 gates the whole of `test_live_capture.py`.
+
+**This fixture is a HARNESS BUILD, not a test edit.** It is subject to §0.3 (bite proof) and §0.4
+(preservation dual), because every future deadline-assertion race will depend on it. Build it BEFORE
+converting any race in the file.
+
+Requirements:
+- A coherent clock source (shared `_coherence_token`, same as the frozen harness — it must pass the
+  gate's COHERENCE check exactly as the frozen pair does) whose wall and monotonic ADVANCE together
+  by a fixed delta per read (or per an explicit `advance()`), so a deadline computed on the
+  monotonic seam is REACHED after a determinate number of reads. Deterministic: same construction →
+  same firing point, every run, every order.
+- The advance must preserve D25's discipline INSIDE the fixture (monotonic orders, wall locates,
+  fixed offset between them) — it is the frozen harness made to move, not a new incoherent thing.
+- It must be reusable: parameterized by the advance delta and/or the target firing iteration, so any
+  future deadline race constructs it without bespoke code.
+
+### Bite proof — four artifacts, sha256 exact-restore, BOTH directions (§0.3, §0.4)
+- **FIRES (refusal-analog / the positive assertion):** construct with an advance that REACHES the
+  deadline → the run terminates via the deadline path (not via reconnect, not via a scripted close).
+  Prove the termination is the DEADLINE firing, by the same signal race 4 checks.
+- **DOES NOT FIRE PREMATURELY (preservation dual, local and direct):** construct with an advance
+  that approaches but does NOT pass the threshold → the run CONTINUES (no premature deadline). This
+  is the half that matters: a clock that fires too eagerly makes race 4 pass for the wrong reason.
+- Restore; sha256 == pristine; final artifact PASS.
+
+State the fixture's name and location, and confirm it lands in the shared harness
+(`tests/fixtures/…`), extending it, not rebuilt.
 
 ---
 
-## §6 RE-BASELINE — REASONED EXCLUSION (D36-3 / D38)
-The threaded clock params execute ONCE at construction, never in `get_live_market_data`'s per-frame
-loop. Outside the hot path by the standing rule's boundary. **No re-baseline triggered** — stated as
-a reasoned exclusion with the boundary cited, not skipped. (Note distinctly: the clocks the adapter
-USES per-frame are unchanged in identity — same `time.monotonic`/`time.time` — so per-frame timing
-behaviour is byte-identical; the change is only WHERE the default is declared.)
+## §2 CONVERT BATCH A
+
+For each race in batch A:
+- Inject a COHERENT clock pair (shared `_coherence_token`) via the FakeClock harness, replacing the
+  wall-clock dependency that makes the test flaky. DIRECT races inject at construction; FACTORY-BUILT
+  races (race #5, if in batch A) inject through the runner's clock+transport seams.
+- If the race still monkeypatches the transport, migrate it in the same edit (0.2).
+- The test must become DETERMINISTIC: state, per race, what wall-clock dependency was removed and
+  what now drives time. A conversion leaving any real-time dependency is incomplete — name it and
+  STOP rather than half-converting.
+- **Do NOT weaken an assertion to make a test pass under the fake clock.** If the fake clock changes
+  what the test observes, that is a finding about the test's original correctness — STOP and report;
+  do not adjust the assertion to fit. (This is the pass-two failure mode: a "converted" test that is
+  really a loosened one.)
+
+Per-race in the report: race #, construction path, before (what drove time), after (what drives it),
+whether a transport migration rode along, and the gate ledger disposition (`PROCEED_COHERENT` for an
+injected coherent pair; `EARLY_RETURN` only if the race legitimately injects no clock — state which
+and why).
 
 ---
 
-## §7 DECISION LOG — ONE ENTRY, RATIFIED VERBATIM + THE GENERALIZING SENTENCE
-`docs/decisions/2026-07-25-a-transport-seam-is-not-a-clock-seam.md`:
+## §3 THE FLAKE MUST ACTUALLY BE GONE — PROVE IT, DON'T ASSERT IT
 
-> A transport seam is not a clock seam; each injected dependency crosses the runner/factory/builder
-> boundary on its own or not at all. Unblocking a factory-built race for its transport (WO-028's
-> connect_fn) did not unblock it for its clock; the clock needed the identical threading.
->
-> Sixth specimen of a-figure-traveled-as-prose (WO-027's "26" was 25 until this WO); second sourced
-> from the shared builder (D36 was the first).
->
-> Generalizing, since the builder will be the crossing point for every future seam:
-> **the shared builder's forwarding surface is a contract inventory — every kwarg it forwards is a
-> declared obligation on every live-capable builder, and the registration gate is that inventory's
-> enforcement.** When a third seam needs the crossing, the checklist question is already written:
-> "what else does the shared builder forward, and does every live-capable builder accept it?"
+- Run batch A's tests under **randomized ordering with 5 distinct seeds** AND `-p no:randomly`, both
+  interpreters. All green, all runs. Paste the seeds.
+- For at least ONE representative converted race, demonstrate the injected clock now CONTROLS the
+  timing the test depends on — e.g. advancing the fake clock is what advances the test's observed
+  time — not merely that the test still passes. "Still passes" ≠ "is now deterministic" (the WO-008b
+  throughput VOID is the precedent for measuring the real thing).
+- If race #5 is in batch A: additionally show its clock injection reaches the adapter THROUGH the
+  runner→factory→builder path (the WO-030 seam actually carrying the fake clock to the adapter),
+  not a directly-constructed shortcut.
+
+If any converted race remains order- or timing-sensitive, it is NOT converted. STOP and report.
 
 ---
 
-## §8 SCOPE FENCE
-- NO pass-two conversion — race #5 and all 26 stay for WO-029.
-- NO new load-time reason code if the existing one can be generalized (§3) — avoid handing the
-  vocabulary-split WO a second tangle.
-- NO gate docstring precision note (r20 ruling 2 folds into the vocabulary-audit WO per D37).
-- NO adapter-protocol seam (option (c), still the named successor, not now).
+## §4 THE LEDGER STILL BITES AFTER THE BATCH (safety-net integrity)
+
+Prove the net still catches a wrong injection AFTER batch A's changes (four artifacts, sha256
+exact-restore):
+- Take one batch-A converted race, corrupt its injection to an INCOHERENT pair (mismatched token)
+  → the gate refuses, the ledger's session-end assertion FAILS naming the nodeid. Restore; sha256
+  == pristine; passes.
+This is not a new guard — it is proof the existing net did not go slack as the population it guards
+grew. Report it verbatim.
 
 ---
 
-## §9 ACCEPTANCE
-- `pytest tests/ -p no:randomly -rX` → 217 + §4.2's tests (state N and arithmetic), 0 f/xf/xp
-- `pytest tests/ --randomly-seed=<seed>` → same, both interpreters
-- Extended registration contract live; bite proof A+B+C, four artifacts, sha256 exact-restore
-- `_build_kraken_v2` passes the generalized check; stated
-- §4.1 non-live default clocks are `time.monotonic`/`time.time` by identity; §4.2 factory-boundary
-  observability (proceed + pre-connection refuse) green
-- Gate ledger: 0 unmarkered refusals, 0 stale markers
-- `lint-imports` 6/6 (runner still imports only `factory`/`websockets`, never `kraken_v2_book`) ·
-  `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 ·
-  `preflight_path_check.py` pass
-- The FOUR unchanged production files sha256-IDENTICAL before/after; the TWO changed
-  (`kraken_v2_book.py`, `factory.py`, `registry.py`, `live_capture.py` — the same four WO-028
-  touched) reported with new hashes and a one-line diff summary each. `logkit/decision.py` changes
-  only if a reason code is added/renamed (§3) — state which.
-- Commit, push, local == remote, CI green BOTH legs via `gh run view` (paste run number — not a
-  placeholder; WO-028 shipped with `_[fill]_`)
-- Snapshot gate ledger into `evidence/WO-030/` via `tools/snapshot_gate_ledger.py`
-- Append a WO-030 block to `progress.md`
+## §5 SCOPE FENCE
+- BATCH A ONLY. Batches B and C named in the partition, not touched.
+- The 3 asyncio.sleep races NOT touched (out of pass two, D35).
+- NO production logic changes. NO new reason codes (the vocabulary split is a later WO).
+- NO gate docstring precision note (r20 ruling 2 folds into the vocabulary-audit WO, D37).
+- NO weakening of any assertion to fit the fake clock.
 
-## §10 REPORT — `WO-030-REPORT.md`
-Signatures before/after; the §2.1 eager-resolve interaction decision; the §2.2 gate-reads-default
-verification; `create_feed` both-path handling; the generalized registration code choice and its
-bite proof verbatim with sha256; §4.1 + §4.2 with the observability test; the reasoned re-baseline
-exclusion; the CI run number (real); the production-file hashes; every attempt; any STOP.
+---
 
-**THEN STOP.** WO-029 batch A (full 26, re-enumerated at HEAD) is next, fresh session.
+## §6 DECISION LOG
+No new entry required unless the enumeration or a conversion surfaces one. If §2.0's count differs
+from 26, or a conversion reveals a test that was passing for the wrong reason, THAT is a candidate —
+report it and propose the entry; do not write it without flagging.
+
+---
+
+## §7 ACCEPTANCE
+- `pytest tests/ -p no:randomly -rX` → count = 218 (batch A converts, does not add/remove) unless a
+  conversion legitimately splits/merges a test — if the count changes, state the arithmetic and why.
+  0 f/xf/xp.
+- `pytest tests/ --randomly-seed=<5 seeds>` → all green, both interpreters (§3).
+- Gate ledger: 0 unmarkered refusals, 0 stale markers; batch-A dispositions as stated in §2.
+- Self-advancing clock fixture (§2.0-bis): bite proof BOTH directions (fires / does-not-fire-early),
+  four artifacts, sha256 exact-restore. Fixture lands in the shared harness, coherent-token-passing.
+- Ledger-still-bites bite proof (§4): four artifacts, sha256 exact-restore.
+- If batch A = `test_live_capture.py`, all five of its races (1,2,3,4,5) convert together; race 4 via
+  the self-advancing fixture, race 5 through the runner seam. State that the file converts WHOLE.
+- Every production file sha256 IDENTICAL before/after — paste the five hashes from the WO-030 report
+  (`kraken_v2_book.py` `b06c347e…`, `factory.py` `103a8ba7…`, `registry.py` `5bf833c7…`,
+  `live_capture.py` `dab18f67…`, `logkit/decision.py` `3d153a11…`).
+- `lint-imports` 6/6 · `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 ·
+  `preflight_path_check.py` pass.
+- Commit, push, local == remote, CI green BOTH legs via `gh run view` (paste the run number — real,
+  not a placeholder).
+- Snapshot the gate ledger into `evidence/WO-029/` via `tools/snapshot_gate_ledger.py`.
+- `evidence/WO-029/batch_partition.md` committed.
+- Append a WO-029 (pass two batch A) block to `progress.md`.
+
+## §8 REPORT — `WO-029-BATCH-A-REPORT.md`
+The §2.0 full 26-enumeration at HEAD with construction-path column and the A/B/C partition; per-race
+conversion table; the §3 determinism proof (5 seeds + the representative real-control demonstration,
++ race #5's through-the-runner proof if applicable); the §4 ledger-bite proof verbatim; the five
+unchanged production sha256s; `/context` at start and seam; the §7 gate output; the CI run number;
+every attempt; any STOP.
+
+**THEN STOP.** Batch B re-reads the committed partition.
