@@ -395,7 +395,7 @@ so this needs a ruling before batch B, not after.
 | `evidence/WO-029/batch_partition.md` committed | **PASS** — committed at `d0450fa`; re-verified here |
 | Snapshot the gate ledger into `evidence/WO-029/` via `tools/snapshot_gate_ledger.py` | **PASS** |
 | Append a WO-029 (pass two batch A) block to `progress.md` | **PASS** |
-| Commit, push, local == remote, CI green BOTH legs | <!--CI--> |
+| Commit, push, local == remote, CI green BOTH legs | **PASS** — commit `f0660e3`, pushed; `git rev-parse HEAD` == `git rev-parse origin/master` == `f0660e3903614072d3f011a1266f9f0e3c09a56e`. CI run **`30279805350`** on `f0660e3`: `test (3.11) → success`, `test (3.14) → success`. |
 | `/context` at START and at the commit seam (§0.6) | **NOT DONE** — see §0. An agent turn cannot invoke a user-side slash command; no number was fabricated. |
 
 
