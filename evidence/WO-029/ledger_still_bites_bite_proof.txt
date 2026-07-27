@@ -1,0 +1,44 @@
+WO-029 §4 BITE PROOF — THE GATE LEDGER STILL BITES AFTER BATCH A (4 artifacts, sha256)
+Mutated file: tests\integration\test_live_capture.py
+Victim race : race 1 — tests/integration/test_live_capture.py::test_runner_drives_instrumented_transport_end_to_end
+Mutation    : wall from a SECOND AdvancingClock -> both clocks injected, tokens MISMATCHED
+Net under test: WO-023 §4 gate (COHERENCE branch) + WO-024/025 §3 session-end ledger
+sha256 BEFORE: 843f5c5866804cd322cf1395ba14652279fd4f9cb4c3d660c46ffd44a53deb5c
+
+-- ARTIFACT 1 — PRISTINE (the net is quiet because the batch is correct) --
+  returncode                 0
+  summary                    ============================= 10 passed in 1.25s ==============================
+  gate_refused_coherence     False
+  ledger_assertion_fired     False
+  ledger_names_the_nodeid    False
+  EXPECT: returncode 0, 10 passed, no refusal, no ledger violation
+
+  sha256 WHILE MUTATED: 7d5af1094192e80fa84a5f6ac5ccd9f7dd12a68e31d289fab233ac3d03afafc4
+
+-- ARTIFACT 2 — MUTATED (the bite: an incoherent pair must NOT pass silently) --
+  returncode                 1
+  summary                    ==================== 1 failed, 9 passed, 1 error in 0.79s =====================
+  gate_refused_coherence     True
+  ledger_assertion_fired     True
+  ledger_names_the_nodeid    True
+  EXPECT: returncode != 0, gate REFUSED COHERENCE, ledger violation naming the nodeid
+
+  VERBATIM — the ledger's session-end assertion:
+    E   AssertionError: GATE LEDGER VIOLATION.
+            (1) refusals from UNMARKERED tests (a real gate firing): [('tests/integration/test_live_capture.py::test_runner_drives_instrumented_transport_end_to_end', 'REFUSED_COHERENCE')]
+            (2) STALE markers (markered tests that never refused): []
+            markered set: []. See C:\Projects\bot\trading-system\.artifacts\gate_ledger\20260727T145220Z-d0450fa.txt.
+
+-- ARTIFACT 3 — RESTORED --
+  returncode                 0
+  summary                    ============================= 10 passed in 1.15s ==============================
+  gate_refused_coherence     False
+  ledger_assertion_fired     False
+  ledger_names_the_nodeid    False
+  EXPECT: returncode 0, 10 passed, net quiet again
+
+-- ARTIFACT 4 — sha256 EXACT-RESTORE --
+sha256 AFTER:  843f5c5866804cd322cf1395ba14652279fd4f9cb4c3d660c46ffd44a53deb5c
+IDENTICAL: YES
+
+VERDICT: PASS

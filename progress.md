@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-27 (WO-029 §2.0 + §2.0-bis LANDED — the 26-race A/B/C partition committed + the self-advancing `AdvancingClock` deadline fixture built & bite-proved; batch A CONVERSION (test_live_capture.py) is the remainder, a fresh session, re-reading the partition + using the fixture. SHIP IMPACT NO — 218 unchanged, production byte-identical)
+**Last Updated**: 2026-07-27 (**WO-029 BATCH A COMPLETE** — `test_live_capture.py` converts WHOLE: all five races (1-5) now inject a coherent `AdvancingClock` pair, race 4 via the self-advancing fixture, race 5 through the WO-030 runner seam. SHIP IMPACT NO — 218 unchanged, production byte-identical, ZERO assert statements touched. **Two §6 items need a ruling BEFORE batch B.**)
+**WO-029 BATCH A** (the §2/§3/§4 remainder; base = this WO's own §2.0-bis seam `d0450fa`): §1 218/218 both interpreters at HEAD. §2.0 partition RE-DERIVED not re-read (`tools/wo029_reverify_partition.py` → 30/30 identifiers land at their stated file:line; 26/3/1 re-confirmed; race #5 in the 26) — evidence `partition_reverified_at_head.txt`. **§2:** all five races take `monotonic_clock=clk.monotonic` + `_wall_clock = clk.wall` (one `AdvancingClock`, shared token, `CLOCK_DELTA=0.01`); races 1/2/3/5 also take the runner's `clock=` bucketing seam. All five were ALREADY transport-migrated (1-4 WO-024, 5 WO-028), so no transport migration rode along. **Termination is still the DEADLINE for every race** — the deliberate deviation from the partition's own "scripted clean-close" plan (§6 candidate below). All five `PROCEED_COHERENT` in the ledger. **NO assertion touched: 29 assert statements before and after, none in the diff** (92 insertions / 15 deletions, every deletion a constructor line re-emitted with a clock argument). **§3:** 5 seeds (20260802-06) + deterministic × both interpreters, all 218; plus the REAL-CONTROL measurement — sweeping delta 0.05→0.01→0.002 moves the observed capture window 2→11→58 frames, each reproducing EXACTLY on repeat, while emissions stay pinned at 2 (`clock_control_proof.txt`); plus race #5's through-the-runner proof by IDENTITY at the far end (`factory.get_active_feed()._monotonic_clock is clk.monotonic`), corroborated independently by its `PROCEED_COHERENT` ledger line. **§4:** ledger-still-bites bite proof — race 1's wall swapped to a SECOND AdvancingClock (mismatched token) → gate REFUSES COHERENCE **and** the session-end ledger assertion names the nodeid; 4 artifacts, sha256 exact-restore. **§6 — TWO ITEMS AWAITING A RULING, both of which change how batches B/C should be done:** (1) proposed decision-log entry *"a conversion preserves the PATH, not just the assertions"* — the frozen-clock plan would have kept every assertion green while silently moving races 1-3 off the deadline branch onto the venue-close branch, a coverage loss no assertion can report; (2) §2's "a conversion leaving ANY real-time dependency is incomplete" read literally is unsatisfiable (the adapter holds non-injectable real-clock reads for keepalive/ping/anchor/instruments), so it was read as "any real-time dependency the test's OUTCOME rests on", residuals named — if the lead means it literally, batch A is a STOP and so is every remaining batch. **§0.6 UNMET:** `/context` is a user-side slash command an agent turn cannot invoke; not reported rather than fabricated. Report: `WO-029-BATCH-A-REPORT.md`. **NEXT: batch B (13 races, 4 files) after the §6 ruling.**
 **WO-029 §2.0/§2.0-bis** (partial — the harness build; base `9c084c3`): re-derived the full 30-race table at HEAD (`evidence/WO-029/batch_partition.md`) — **26 clock-injectable confirmed** (race #5 the sole FACTORY-BUILT, via the WO-030 seam), 3 asyncio-sleep (set unchanged; audit truncated race 28's name → `..._via_protocol_ping`), 1 foundation (`test_host_suspend_recorded_diagnostic_not_terminal`). **Partition:** batch A = `test_live_capture.py` (races 1–5: 1–3 DIRECT, 4 DIRECT deadline-assertion, 5 FACTORY-BUILT); B = gap_recording+keepalive+failure_cap+failure_capture (13); C = ledger_persistence+host_suspend(#14)+protocol_ping+throughput+reconnect_to_effect+venue_close+backoff_breaker (8). **§2.0-bis:** built `AdvancingClock` (`tests/fixtures/fake_ws_transport.py`) — the frozen FakeClock made to MOVE (coherent shared token, D25 offsets, advances per monotonic read so a deadline FIRES after a determinate number of reads) — needed because race 4 asserts DEADLINE-CLOSE semantics and reframing to a scripted close is a §2 STOP. Bite-proved (`evidence/WO-029/advancing_clock_bite_proof.txt`, `tools/advancing_clock_bite_proof.py`): 4 artifacts sha256 exact-restore — FIRES (deadline ends the run after the snapshot; connect_count=1, no reconnect, capture_terminated None), does-NOT-fire-prematurely (preservation dual), necessity mutation (premature advance → emitted=0). 218 both interpreters (fixture unused so far); ruff clean, lint 6/6, contract 6/6, annotation 0, preflight pass. Production sha256 byte-identical to WO-030. **Context ran out before the conversion; committed at the clean §2.0-bis seam by the lead's choice.** NEXT (fresh session): convert test_live_capture.py's 5 races (§2), 5-seed determinism proof (§3, race #5 through the runner), ledger-still-bites bite proof (§4), acceptance.
 **WO-030**: HEAD `dd9def5` (base `64e2001`) — PRODUCTION (D38, ruling on WO-029's race #5 finding). Threaded `monotonic_clock`/`wall_clock` through `LiveCaptureRunner → create_live_capture_feed → _build_kraken_v2`, parallel to WO-028's `connect_fn`, so a factory-built adapter is clock-injectable (race #5 rejoins pass two's 26 — NOT converted here). **§2.1 decision:** wall default is `None` NOT `time.time` (the D35-2 raw-None convention — `time.time` held in `_wall_clock` reads as INJECTED and trips COHERENCE on a real capture; `time.monotonic` is safe). Verified: a real factory-built adapter reads BOTH clocks as not-injected → gate EARLY-RETURNS. **§3:** `register(live_capture=True)` generalized to require all of `_LIVE_FORWARDED_PARAMS=(connect_fn, monotonic_clock, wall_clock)`; WO-028's code RENAMED `…MISSING_CONNECT_FN` → `…MISSING_FORWARDED_PARAM` (one code for the whole contract, cites D38); bite-proved 4 artifacts A/B/C sha256 exact-restore. **§4.2** +1 factory-boundary observability test (through the runner: coherent pair+fake transport PROCEEDS; fake clock+real transport REFUSES COUPLING pre-connection). `create_feed` UNCHANGED; registry passthrough unchanged. 218 both interpreters both orders (seed 20260801), gate ledger 43 inv 0 unmarkered/0 stale, CI green both legs run `30183494157`. Five production files changed. See the **▶ WO-030** block below. Report: `WO-030-REPORT.md`.
 **AUTO-MODE NOTE:** the first production edit was DENIED by the auto-mode classifier while the bar read ON (confirming it was never off); the user cycled it off (shift+tab) and the four edits were applied one at a time, each visible — no production/auto-mode permission granted.
@@ -489,6 +490,128 @@ byte-identical).
 pass. Five production files changed (kraken_v2_book `b06c347e`, factory `103a8ba7`, registry `5bf833c7`,
 live_capture `dab18f67`, decision `3d153a11`); no other production file touched. **NEXT: WO-029 batch A, fresh
 session, re-enumerates the 26 (now including race #5) at HEAD.**
+
+---
+
+## ▶ WO-029 BATCH A COMPLETE (AUTHORITATIVE) — 2026-07-27 — pass two's first cluster: test_live_capture.py converts WHOLE
+
+> PASS TWO, BATCH A — the §2/§3/§4/§7 remainder of WO-029, whose §2.0 (partition) + §2.0-bis
+> (`AdvancingClock`) landed at `d0450fa` when the prior session ran out of context. **SHIP IMPACT: NO** —
+> tests + tools + evidence only; `git diff -- src/` is EMPTY. Base/HEAD at start `d0450fa` (NOT the
+> `9c084c3` the WO names — §1 confirmed the actual HEAD and used it, as the WO directs; `9c084c3` is
+> its parent). Report: `WO-029-BATCH-A-REPORT.md`. Evidence: `evidence/WO-029/`.
+
+**§1** 218 passed both interpreters (3.11 strict `CPython 3.11.15` via uv venv, 3.14 dev `CPython 3.14.6`),
+`-p no:randomly`, 0 f/xf/xp, before any edit.
+
+**§2.0 — the partition was RE-DERIVED, not re-read.** D34-3 ("an enumeration is only as good as its
+identifiers" — the ruling that caught race #5) forbids trusting a table written at a different HEAD.
+`tools/wo029_reverify_partition.py` parses the committed `batch_partition.md` and checks each of the 30
+races against the **commit** (`git show <ref>:<path>`, not the working tree, so a mid-conversion tree
+cannot flatter the result): **30/30 identifiers land at their stated file:line, 0 moved**; counts
+re-derive as 26 CLOCK-INJECTABLE / 3 ASYNCIO-SLEEP / 1 ALREADY-CONVERTED; the 3 excluded races match BY
+NAME; race #5 is in the 26. No STOP. **Batches B and C should re-run this instrument, not re-read the
+table.**
+
+**§2 — all five converted, and every one still ends at the DEADLINE.** Each race takes a coherent pair
+from ONE source: `monotonic_clock=clk.monotonic` at construction (through the runner for race 5) plus
+`_wall_clock = clk.wall`, shared `_coherence_token`, `CLOCK_DELTA = 0.01`. Races 1/2/3/5 also take the
+runner's own `clock=` per-minute bucketing seam. The adapter's deadline is
+`_monotonic_clock() + duration_seconds` and all THREE of its consumers read that seam, so the capture
+now ends after a fixed number of clock READS instead of a real interval.
+
+| # | path | before | gate |
+|---|---|---|---|
+| 1 `…_drives_instrumented_transport_end_to_end` | DIRECT | real 0.25s window; whether both book frames beat the deadline was a scheduler gamble — and `emitted_per_minute` was the assertion at risk | `PROCEED_COHERENT` |
+| 2 `…_persistence_is_not_optional_on_the_adapter` | DIRECT | real 0.15s window | `PROCEED_COHERENT` |
+| 3 `…_short_bounded_run_completes_with_readable_artifacts` | DIRECT | real 0.2s window; "bounded" meant a real interval | `PROCEED_COHERENT` |
+| 4 `…_clean_deadline_close_does_not_reconnect_dual` | DIRECT (deadline-ASSERTION) | both halves raced a real window; a FROZEN clock cannot convert it (its subject IS the deadline) — this is why §2.0-bis exists | `PROCEED_COHERENT` ×2 |
+| 5 `…_resolves_live_adapter_from_data_source_via_factory` | **FACTORY-BUILT** | real 0.15s window; builds NO adapter, so it needed WO-030's clock seam — the finding that produced WO-030 | `PROCEED_COHERENT` |
+
+**No transport migration rode along (0.2):** all five were already transport-injected (1-4 by WO-024
+pass one, 5 by WO-028 §5). The file's one remaining `patch("websockets.connect", …)` is in
+`test_live_capture_refuses_non_live_capable_data_source`, which is NOT one of the 30 races and injects
+no clock — untouched.
+
+**NO ASSERTION WAS TOUCHED — proved, not claimed.** 29 `assert` statements before and after; `git diff`
+contains zero assert statements (its only "assert" hits are prose in docstrings). 92 insertions / 15
+deletions, every deletion a constructor line re-emitted with a clock argument. So §0.3 owes no per-race
+bite proof — the two this WO owes are §2.0-bis's (committed `d0450fa`, re-verified) and §4's (new).
+
+**§3 — the flake is GONE, measured not asserted.** 5 seeds (**20260802, 20260803, 20260804, 20260805,
+20260806**) + deterministic × both interpreters, all **218**. Beyond "still passes": holding everything
+fixed except the injected clock's advance-per-read and measuring the OBSERVED capture window —
+delta 0.05 → 0.01 → 0.002 moves the window **2 → 11 → 58** raw frames, each reproducing EXACTLY on
+repeat, while emissions stay pinned at **2** across that 29× spread. If the host clock were still in
+charge, delta would not move the window and repeats would scatter. Race #5's injection is proved to
+reach the adapter THROUGH runner→factory→builder by IDENTITY at the far end
+(`factory.get_active_feed()._monotonic_clock is clk.monotonic`, `_wall_clock is clk.wall`, one shared
+token) — corroborated independently by its `PROCEED_COHERENT` ledger line, which can only occur if the
+gate inside the FACTORY-BUILT adapter saw the pair. `evidence/WO-029/clock_control_proof.txt`.
+
+**§4 — the net did not go slack as the population it guards grew.** Batch A moved five tests from
+"injects no clock" to "injects a coherent pair"; the existing gate+ledger was re-run against that new
+population. Mutation: race 1's wall taken from a **SECOND** `AdvancingClock` — both clocks injected,
+tokens mismatched, the precise failure a careless conversion produces (both look fake and plausible;
+only the shared token distinguishes one source from two). **Both halves fired:** the gate REFUSED
+pre-connection with `COHERENCE` (test failed) AND the session-end ledger assertion named the exact
+nodeid — so a refusal survives even if a test-level failure were swallowed. 4 artifacts, sha256
+exact-restore (`843f5c58…` before == after). Not a new guard.
+
+**§6 — TWO ITEMS AWAITING A RULING. Both change how batches B and C should be done; neither was
+written into the decision log.**
+1. **Proposed entry — *a conversion preserves the PATH, not just the assertions*.** The committed
+   partition planned races 1-3 as "frozen `FakeClock` + scripted clean-close". That plan WORKS — every
+   assertion passes under it, because none of them asserts *how* the run ended. But it would have
+   quietly moved three tests off the DEADLINE branch of `get_live_market_data` onto the
+   `ConnectionClosedOK` branch, leaving the deadline branch's end-to-end coverage resting on race 4
+   alone, with every gate green and no assertion complaining. (Race 3 is literally named
+   `test_short_bounded_run_completes_…`.) Shape: *a test's assertions do not fully specify which
+   production path it covers; a conversion that keeps every assertion passing while changing the path
+   is a coverage loss no assertion can report* — the "incidental coverage is not coverage" family, one
+   level out. Cost of avoiding it was ~zero because §2.0-bis had already built the fixture that makes a
+   deadline fire. If ratified, `batch_partition.md`'s plan for B and C should be amended.
+2. **Flagged reading of §2's "any real-time dependency".** Read literally it is unsatisfiable for all
+   26: `get_live_market_data` also holds NON-injectable real-clock reads (keepalive pacing, app-ping
+   interval, ledger anchor, `last_frame`, throughput/lag/pong instruments) and WO-030 threaded only the
+   deadline+suspend seams — so pass two would STOP on race 1 and never proceed. Read instead as "a
+   real-time dependency the test's OUTCOME rests on"; residuals named in the report (all interval reads
+   against 5s/10s thresholds in runs that now finish in milliseconds, feeding no assertion here). **If
+   the lead means it literally, batch A is a STOP and so is every remaining batch**, and the next step
+   is a production WO to thread the remaining reads.
+
+**§0.6 UNMET (disclosed, not fabricated):** `/context` is a user-side slash command an agent turn cannot
+invoke; no number was pasted at START or at the commit seam.
+
+**ATTEMPTS/failures worth the record:** (1) the first baseline run ABORTED before collection —
+`TypeError: NoneType + str` in `tools/contract_count_check.py`; root cause environmental, not a defect:
+`subprocess(text=True)` decodes import-linter's output with the parent's locale encoding (cp1252 here),
+import-linter emits `0x90`, the reader thread dies and `proc.stdout` is None. Fixed by running the
+session under `PYTHONUTF8=1`; **no repo file changed** (CI is Linux/UTF-8, unaffected). Recorded because
+the guard's failure mode points at arithmetic rather than at encoding. (2) §3 PART B first reported
+`transport_is_injected: False` / VERDICT FAIL — my instrument compared `adapter._connect_fn is
+conn.connect`, but a BOUND METHOD is a fresh object on every attribute access, so `is` is False no
+matter what was threaded; a bug in the check, not a finding about the seam (the clock seams need no such
+care — they are instance attributes holding one closure each). (3) `AdvancingClock`'s firing point was
+MEASURED with a throwaway probe before being relied on; the by-hand read-count arithmetic was off by one
+on race 1, which is why `CLOCK_DELTA` leaves a wide margin instead of sitting at the boundary. (4) Batch
+A was run under all 5 seeds on its own file BEFORE launching the ~40-minute full matrix. (5) Both
+file-mutating bite proofs were run with no suite running concurrently, restore verified against
+`git status` before the matrix started. (6) No production edit was attempted, so the auto-mode
+classifier was never engaged.
+
+**ACCEPTANCE:** **218** (batch A converts, adds/removes nothing) on {3.11 strict, 3.14 dev} ×
+{deterministic, seeds 20260802/03/04/05/06}; gate ledger **43 invocations** (unchanged from WO-030) —
+29 EARLY_RETURN, 8 PROCEED_COHERENT (6 of them batch A's), 2 PROCEED_DECLARED, 4 refusals ALL from the
+two markered gate tests → **0 unmarkered refusals, 0 stale markers**; lint-imports 6/6, contract 6/6,
+ruff clean, annotation 0, preflight pass. **Five production sha256s IDENTICAL to WO-030's**
+(kraken_v2_book `b06c347e…`, factory `103a8ba7…`, registry `5bf833c7…`, live_capture `dab18f67…`,
+decision `3d153a11…`); `conftest.py` and `fake_ws_transport.py` also unchanged (the ledger instrument
+needed no edit to guard the larger population; the fixture was used as built). ONE test file modified.
+
+**NEXT: batch B — `test_gap_recording.py` (6), `test_keepalive.py` (2), `test_failure_cap.py` (3),
+`test_failure_capture.py` (2) = 13 races — re-reading the committed partition and re-running
+`tools/wo029_reverify_partition.py` against it. Then batch C (8). BOTH should wait on the §6 ruling.**
 
 ---
 

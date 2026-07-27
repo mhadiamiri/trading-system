@@ -1,0 +1,35 @@
+WO-029 §3 — THE INJECTED CLOCK CONTROLS THE TIMING (measured, not asserted)
+
+PART A — REAL CONTROL: race 1's construction, delta is the ONLY thing that varies.
+  fixed: duration_seconds=0.25, script=[SNAPSHOT, UPDATE_MODIFY_LEVEL]+heartbeats
+  observed_window_frames = raw frames the capture consumed before the deadline ended it
+
+     delta |                  run 1 |                  run 2 | identical?
+  ---------+------------------------+------------------------+-----------
+      0.05 |     window=2 emitted=2 |     window=2 emitted=2 | YES
+      0.01 |    window=11 emitted=2 |    window=11 emitted=2 | YES
+     0.002 |    window=58 emitted=2 |    window=58 emitted=2 | YES
+
+  CONTROL      : observed window is strictly monotonic in 1/delta  -> True [2, 11, 58]
+  DETERMINISM  : each delta reproduces its run EXACTLY on repeat   -> True
+  ASSERTION    : emissions pinned at the 2 scripted book frames    -> True [2]
+  READING: halving delta lengthens the observed capture window by the corresponding factor
+  while the emitted deliverable does not move. The injected clock — not the host's wall
+  clock and not scheduler load — is what advances the time this race depends on.
+
+PART B — RACE #5's INJECTION REACHES THE ADAPTER THROUGH THE RUNNER->FACTORY->BUILDER SEAM
+  (adapter=None; the adapter below was recovered from factory.get_active_feed(),
+   i.e. it is the one the FACTORY built, not one this script constructed)
+    built_by                     KrakenV2BookAdapter
+    is_the_injected_adapter      True
+    monotonic_is_injected        True
+    wall_is_injected             True
+    transport_is_injected        True
+    shared_coherence_token       True
+    venue_name                   kraken_mainnet
+    connect_count                1
+  THROUGH-THE-SEAM: True — the factory-built adapter holds the very callables handed
+  to the runner (identity, not equality), sharing ONE coherence token. The gate's
+  disposition for this nodeid in the committed ledger snapshot is PROCEED_COHERENT.
+
+VERDICT: PASS

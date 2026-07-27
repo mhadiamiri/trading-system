@@ -1,0 +1,46 @@
+WO-029 §2.0 — the committed partition RE-VERIFIED at HEAD (d0450fa)
+Source table: evidence\WO-029\batch_partition.md (derived at base 9c084c3)
+Identifiers are re-derived, not trusted (D34-3: an enumeration is only as good as its
+identifiers — the discipline that caught race #5). Lines read from the COMMIT, not the
+working tree, so a mid-conversion tree cannot flatter the result.
+
+    #  status         file:line -> test
+    1  OK             test_live_capture.py:59 -> test_runner_drives_instrumented_transport_end_to_end
+    2  OK             test_live_capture.py:96 -> test_runner_persistence_is_not_optional_on_the_adapter
+    3  OK             test_live_capture.py:111 -> test_short_bounded_run_completes_with_readable_artifacts
+    4  OK             test_live_capture.py:136 -> test_clean_deadline_close_does_not_reconnect_dual
+    5  OK             test_live_capture.py:190 -> test_runner_resolves_live_adapter_from_data_source_via_factory
+    6  OK             test_gap_recording.py:80 -> test_keepalive_reconnect_gap_recorded
+    7  OK             test_gap_recording.py:113 -> test_checksum_resync_gap_recorded
+    8  OK             test_gap_recording.py:139 -> test_breaker_retry_ladder_recorded_on_reconnect_gap
+    9  OK             test_gap_recording.py:169 -> test_venue_disconnect_gap_recorded
+   10  OK             test_gap_recording.py:229 -> test_overlapping_gaps_union_and_collective_close
+   11  OK             test_gap_recording.py:272 -> test_ledger_reports_incomplete_gap
+   12  OK             test_ledger_persistence.py:47 -> test_gap_ledger_persisted_readable_from_disk
+   13  OK             test_host_suspend.py:46 -> test_host_suspend_recorded_diagnostic_not_terminal
+   14  OK             test_host_suspend.py:94 -> test_no_host_suspend_under_normal_timing
+   15  OK             test_keepalive.py:42 -> test_heartbeat_absence_triggers_reconnect
+   16  OK             test_keepalive.py:72 -> test_application_ping_pong_keeps_a_quiet_link_alive
+   17  OK             test_failure_cap.py:45 -> test_count_cap_keeps_first_n_counts_all_announces
+   18  OK             test_failure_cap.py:74 -> test_byte_cap_binds_independently
+   19  OK             test_failure_cap.py:95 -> test_capped_failures_get_one_line_summaries
+   20  OK             test_failure_capture.py:52 -> test_checksum_failure_capture_has_every_ruled_field
+   21  OK             test_failure_capture.py:101 -> test_every_checksum_failure_captured_not_positionally_sampled
+   22  OK             test_protocol_ping.py:53 -> test_protocol_ping_params_set_deliberately
+   23  OK             test_protocol_ping.py:71 -> test_protocol_level_close_recovers
+   24  OK             test_throughput.py:25 -> test_receive_to_process_latency_recorded_through_production_path
+   25  OK             test_reconnect_to_effect.py:44 -> test_five_real_failures_reconnect_and_emission_resumes
+   26  OK             test_venue_close_path.py:35 -> test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly
+   27  OK             test_backoff_breaker.py:59 -> test_transient_reopen_failure_retries_under_backoff_then_emission_resumes
+   28  OK             test_pong_observer.py:25 -> test_pong_observer_records_rtt_distribution_via_protocol_ping
+   29  OK             test_pong_observer.py:49 -> test_absent_pongs_are_a_signal_not_gappiness
+   30  OK             test_lag_sampler.py:27 -> test_starved_lag_sampler_self_reports_degradation
+
+  identifiers verified at their stated line : 30/30
+  moved / missing                           : none
+  category counts                           : {'CLOCK-INJECTABLE': 26, 'ALREADY-CONVERTED': 1, 'ASYNCIO-SLEEP': 3}  (expected {'CLOCK-INJECTABLE': 26, 'ASYNCIO-SLEEP': 3, 'ALREADY-CONVERTED': 1}) -> True
+  the 3 asyncio-sleep races, BY NAME        : True
+  race #5 is in the 26 (CLOCK-INJECTABLE)   : True
+  total races in the table                  : 30 / distinct names 30
+
+VERDICT: PASS — the partition stands at this HEAD; batch A = test_live_capture.py races 1-5, and it converts WHOLE.
