@@ -84,10 +84,16 @@ def main():
 
     out += ["=" * 78, f"ALL THREE PROOFS: {'OK' if all_ok else 'FAIL'}"]
     text = "\n".join(out)
-    dest = os.path.join(REPO, "evidence", "WO-013", "emission_bite_proofs.txt")
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    with open(dest, "w", encoding="utf-8") as f:
-        f.write(text + "\n")
+    # WO-032 §4.1 — an INSTRUMENT writes to a git-ignored, run-scoped `.artifacts/` path and NEVER
+    # into `evidence/` (WO-026 §2's doctrine, generalized). Evidence is a DELIBERATE snapshot, not a
+    # side effect of running a tool. Guarded: tests/test_evidence_write_boundary.py.
+    from datetime import datetime, timezone
+    dest_dir = os.path.join(REPO, ".artifacts", "emission_bite_proof")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".txt")
+    for _p in (dest, os.path.join(dest_dir, "latest.txt")):
+        with open(_p, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
     print(text)
     print(f"\n[written] {os.path.relpath(dest, REPO)}")
     sys.exit(0 if all_ok else 1)

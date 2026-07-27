@@ -38,7 +38,10 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-27 (**WO-029 BATCH A COMPLETE** — `test_live_capture.py` converts WHOLE: all five races (1-5) now inject a coherent `AdvancingClock` pair, race 4 via the self-advancing fixture, race 5 through the WO-030 runner seam. SHIP IMPACT NO — 218 unchanged, production byte-identical, ZERO assert statements touched. **Two §6 items need a ruling BEFORE batch B.**)
+**Last Updated**: 2026-07-27 (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
+**WO-032**: HEAD (this commit) — see the **▶ WO-032** block below. §1 name-keyed verdict + §1.3 bite proof; §2 the D39 partition amendment committed; §3/§4.4 three decision docs (D39 ×2, **D40** for the guard-reach doctrine); §4 all 11 `evidence/`-writing `tools/` scripts moved to git-ignored `.artifacts/`, plus `tests/test_evidence_write_boundary.py` (4 tests) and its bite proof. Two instrument defects self-caught mid-build and reported. Five production sha256s identical.
+**WO-031**: STOPPED at §2, no classification produced — the D39 amendment existed only in `instructions.md`. §1 baseline verified (218/218, batch-B membership confirmed) and reusable. Surfaced Findings 3 (stale-by-construction reverify verdict) and 4 (live WO-026 regression). See the **▶ WO-031** block below.
+**WO-029 BATCH A** (prior): (**COMPLETE** — `test_live_capture.py` converts WHOLE: all five races (1-5) now inject a coherent `AdvancingClock` pair, race 4 via the self-advancing fixture, race 5 through the WO-030 runner seam. SHIP IMPACT NO — 218 unchanged, production byte-identical, ZERO assert statements touched. **Two §6 items need a ruling BEFORE batch B.**)
 **WO-029 BATCH A**: HEAD `f0660e3` (base = this WO's own §2.0-bis seam `d0450fa`); CI green both legs run `30279805350`. §1 218/218 both interpreters at HEAD. §2.0 partition RE-DERIVED not re-read (`tools/wo029_reverify_partition.py` → 30/30 identifiers land at their stated file:line; 26/3/1 re-confirmed; race #5 in the 26) — evidence `partition_reverified_at_head.txt`. **§2:** all five races take `monotonic_clock=clk.monotonic` + `_wall_clock = clk.wall` (one `AdvancingClock`, shared token, `CLOCK_DELTA=0.01`); races 1/2/3/5 also take the runner's `clock=` bucketing seam. All five were ALREADY transport-migrated (1-4 WO-024, 5 WO-028), so no transport migration rode along. **Termination is still the DEADLINE for every race** — the deliberate deviation from the partition's own "scripted clean-close" plan (§6 candidate below). All five `PROCEED_COHERENT` in the ledger. **NO assertion touched: 29 assert statements before and after, none in the diff** (92 insertions / 15 deletions, every deletion a constructor line re-emitted with a clock argument). **§3:** 5 seeds (20260802-06) + deterministic × both interpreters, all 218; plus the REAL-CONTROL measurement — sweeping delta 0.05→0.01→0.002 moves the observed capture window 2→11→58 frames, each reproducing EXACTLY on repeat, while emissions stay pinned at 2 (`clock_control_proof.txt`); plus race #5's through-the-runner proof by IDENTITY at the far end (`factory.get_active_feed()._monotonic_clock is clk.monotonic`), corroborated independently by its `PROCEED_COHERENT` ledger line. **§4:** ledger-still-bites bite proof — race 1's wall swapped to a SECOND AdvancingClock (mismatched token) → gate REFUSES COHERENCE **and** the session-end ledger assertion names the nodeid; 4 artifacts, sha256 exact-restore. **§6 — TWO ITEMS AWAITING A RULING, both of which change how batches B/C should be done:** (1) proposed decision-log entry *"a conversion preserves the PATH, not just the assertions"* — the frozen-clock plan would have kept every assertion green while silently moving races 1-3 off the deadline branch onto the venue-close branch, a coverage loss no assertion can report; (2) §2's "a conversion leaving ANY real-time dependency is incomplete" read literally is unsatisfiable (the adapter holds non-injectable real-clock reads for keepalive/ping/anchor/instruments), so it was read as "any real-time dependency the test's OUTCOME rests on", residuals named — if the lead means it literally, batch A is a STOP and so is every remaining batch. **§0.6 UNMET:** `/context` is a user-side slash command an agent turn cannot invoke; not reported rather than fabricated. Report: `WO-029-BATCH-A-REPORT.md`. **NEXT: batch B (13 races, 4 files) after the §6 ruling.**
 **WO-029 §2.0/§2.0-bis** (partial — the harness build; base `9c084c3`): re-derived the full 30-race table at HEAD (`evidence/WO-029/batch_partition.md`) — **26 clock-injectable confirmed** (race #5 the sole FACTORY-BUILT, via the WO-030 seam), 3 asyncio-sleep (set unchanged; audit truncated race 28's name → `..._via_protocol_ping`), 1 foundation (`test_host_suspend_recorded_diagnostic_not_terminal`). **Partition:** batch A = `test_live_capture.py` (races 1–5: 1–3 DIRECT, 4 DIRECT deadline-assertion, 5 FACTORY-BUILT); B = gap_recording+keepalive+failure_cap+failure_capture (13); C = ledger_persistence+host_suspend(#14)+protocol_ping+throughput+reconnect_to_effect+venue_close+backoff_breaker (8). **§2.0-bis:** built `AdvancingClock` (`tests/fixtures/fake_ws_transport.py`) — the frozen FakeClock made to MOVE (coherent shared token, D25 offsets, advances per monotonic read so a deadline FIRES after a determinate number of reads) — needed because race 4 asserts DEADLINE-CLOSE semantics and reframing to a scripted close is a §2 STOP. Bite-proved (`evidence/WO-029/advancing_clock_bite_proof.txt`, `tools/advancing_clock_bite_proof.py`): 4 artifacts sha256 exact-restore — FIRES (deadline ends the run after the snapshot; connect_count=1, no reconnect, capture_terminated None), does-NOT-fire-prematurely (preservation dual), necessity mutation (premature advance → emitted=0). 218 both interpreters (fixture unused so far); ruff clean, lint 6/6, contract 6/6, annotation 0, preflight pass. Production sha256 byte-identical to WO-030. **Context ran out before the conversion; committed at the clean §2.0-bis seam by the lead's choice.** NEXT (fresh session): convert test_live_capture.py's 5 races (§2), 5-seed determinism proof (§3, race #5 through the runner), ledger-still-bites bite proof (§4), acceptance.
 **WO-030**: HEAD `dd9def5` (base `64e2001`) — PRODUCTION (D38, ruling on WO-029's race #5 finding). Threaded `monotonic_clock`/`wall_clock` through `LiveCaptureRunner → create_live_capture_feed → _build_kraken_v2`, parallel to WO-028's `connect_fn`, so a factory-built adapter is clock-injectable (race #5 rejoins pass two's 26 — NOT converted here). **§2.1 decision:** wall default is `None` NOT `time.time` (the D35-2 raw-None convention — `time.time` held in `_wall_clock` reads as INJECTED and trips COHERENCE on a real capture; `time.monotonic` is safe). Verified: a real factory-built adapter reads BOTH clocks as not-injected → gate EARLY-RETURNS. **§3:** `register(live_capture=True)` generalized to require all of `_LIVE_FORWARDED_PARAMS=(connect_fn, monotonic_clock, wall_clock)`; WO-028's code RENAMED `…MISSING_CONNECT_FN` → `…MISSING_FORWARDED_PARAM` (one code for the whole contract, cites D38); bite-proved 4 artifacts A/B/C sha256 exact-restore. **§4.2** +1 factory-boundary observability test (through the runner: coherent pair+fake transport PROCEEDS; fake clock+real transport REFUSES COUPLING pre-connection). `create_feed` UNCHANGED; registry passthrough unchanged. 218 both interpreters both orders (seed 20260801), gate ledger 43 inv 0 unmarkered/0 stale, CI green both legs run `30183494157`. Five production files changed. See the **▶ WO-030** block below. Report: `WO-030-REPORT.md`.
@@ -613,6 +616,124 @@ needed no edit to guard the larger population; the fixture was used as built). O
 **NEXT: batch B — `test_gap_recording.py` (6), `test_keepalive.py` (2), `test_failure_cap.py` (3),
 `test_failure_capture.py` (2) = 13 races — re-reading the committed partition and re-running
 `tools/wo029_reverify_partition.py` against it. Then batch C (8). BOTH should wait on the §6 ruling.**
+
+---
+
+## ▶ WO-031 STOPPED at §2 (no commit) — 2026-07-27 — the D39 amendment was never committed
+
+> Batch-B classification WO. Hit its own PRE-COMMITTED STOP at §2 and produced no classification.
+> Report: `WO-031-BATCH-B-CLASSIFICATION-REPORT.md` (committed by WO-032 as the record of the STOP).
+
+**The STOP:** §2 required confirming that D39's amendment to `evidence/WO-029/batch_partition.md`'s
+B/C plan had landed. It had not. Four independent checks: the file had **exactly one commit**
+(`d0450fa`, pre-ratification); working tree identical to HEAD; the phrase the amendment was to STRIKE
+("terminate via scripted clean-close") **still present**; and the amendment's own language
+("own termination branch", "asserted not assumed") found **only inside `instructions.md`** — zero hits
+in `evidence/`, `docs/`, `progress.md`, any report, or any untracked file. No D39 decision doc existed
+either. Exactly the case §2's parenthetical names: *"the amendment was described but not committed."*
+Per §0.1 a STOP here is an EXPECTED OUTCOME. §3/§4 not attempted — classifying against a ruling that
+exists in no committed artifact is the built-vs-operated failure (D24) the §0.7 table exists to catch.
+
+**§1 completed before the stop (verified, reusable):** HEAD `3410435` (docs-only on `f0660e3` —
+2 files, no code); **218/218 both interpreters**, 0 f/xf/xp; batch-B membership matches the committed
+partition exactly (13 races, 4 files); all five static gates pass; five production sha256s unchanged.
+
+**Two findings, independent of the STOP:**
+- **Finding 3 — `wo029_reverify_partition.py` was stale-by-construction.** Returned 25/30 / VERDICT
+  FAIL, not 30/30. The five misses were batch A's own races, moved by batch A's own conversion; all
+  resolved by name, and **all 13 batch-B identifiers landed exactly**. Its PASS condition required
+  every race at its ORIGINAL line, so it would have failed for batch B (+5 more) and C (+18 more) too.
+  It also printed a hardcoded reassuring trailing sentence after a FAIL verdict. Corroboration: the
+  committed `partition_reverified_at_head.txt` header read `RE-VERIFIED at HEAD (d0450fa)` — WO-029's
+  "30/30" was measured BEFORE its own conversion and carried across the commit that invalidated it.
+- **Finding 4 — a live WO-026 regression.** `wo029_reverify_partition.py` wrote straight into
+  `evidence/WO-029/partition_reverified_at_head.txt`. Running it **as §1 instructed** silently
+  overwrote WO-029's committed PASS record into a FAIL record; reverted via `git checkout`. WO-026's
+  guard covers only the conftest ledger path, so a `tools/` script reintroduced the banned pattern
+  with no guard firing — caught in a changed-files list, the same detection mode as the original.
+
+Both are repaired by WO-032 below.
+
+---
+
+## ▶ WO-032 COMPLETE (AUTHORITATIVE) — 2026-07-27 — unblock batch B: instrument fixed, D39 committed, guard generalized
+
+> The repair WO for WO-031's STOP and its two findings. **SHIP IMPACT: NO** — `tools/`, `evidence/`,
+> `docs/`, and one new test file. Every `src/` production file byte-unchanged. Base HEAD `3410435`.
+> Report: `WO-032-REPORT.md`. Decision docs: three, below.
+
+**§1 — the reverify verdict re-keyed on NAME (Finding 3).** `tools/wo029_reverify_partition.py` now
+PASSES when all 30 races RESOLVE BY NAME (30 distinct, categories 26/3/1, the 3 asyncio races by name,
+race #5 in the 26); a moved line is reported as `MOVED->n` and is **informational**; an **unresolvable
+name is still a hard FAIL**. The hardcoded trailing sentence is gone — on FAIL the last line now states
+what broke and names the race, instead of reassuring that "the partition stands…converts WHOLE"
+(instrument-competence family). It gained a `--table` flag. **Result at HEAD: 30/30 by name, VERDICT
+PASS, exit 0** (was 25/30 / FAIL for an intact partition).
+**§1.3 bite proof** (`tools/wo032_namekey_bite_proof.py`, 4 artifacts, sha256 exact-restore, both
+directions): A1 preservation dual — the pristine table with post-conversion moved lines PASSES (the
+false FAIL is gone); A2 the bite — one race renamed to a nonexistent test → **FAIL, returncode 1, the
+verdict NAMING race #6**; A3 restored → PASS; A4 sha256 IDENTICAL. **The verdict was re-keyed, not
+weakened.**
+
+**§2 — the D39 partition amendment COMMITTED** (the artifact WO-031 stopped for).
+`evidence/WO-029/batch_partition.md`: batch A's "inject FakeClock at construction, terminate via
+scripted clean-close" **struck** and replaced with what WO-029 actually did (all five converted on the
+DEADLINE branch via `AdvancingClock`, asserted); batches B and C now carry the ratified requirement —
+*keep the race on its own production termination branch; the branch exercised before and after is part
+of acceptance, asserted not assumed; no scripted-clean-close substitution*. **Annotated, not silently
+rewritten:** a dated AMENDMENT section records what changed and why, plus a note that the table's line
+numbers are deliberately NOT refreshed per batch (the tool keys on name now).
+
+**§3 + §4.4 — three decision docs written** (D39 had been ratified but never committed as docs):
+`2026-07-27-a-conversion-preserves-the-path-not-just-the-assertions.md` (D39 item 1 — the conversions-
+layer arrival of the incidental-coverage family r19, carrying D39's tightened acceptance criterion
+verbatim); `2026-07-27-a-residual-clock-read-is-classified-not-waived.md` (D39 — the operative METHOD:
+enumerate every real-clock read per race, classify outcome-bearing vs incidental, convert only if all
+incidental, any outcome-bearing read on a non-injectable seam is a pre-committed STOP; records
+seam-sized-to-measurement as a **ruled asymmetry, not a place work stopped**, and names `test_keepalive`
+as the expected collision in advance); `2026-07-27-a-doctrine-needs-a-guard-that-reaches-every-producer.md`
+(**D40**, next free — D39 is taken and no `src/` string cites D40).
+
+**§4 — the evidence-write prohibition generalized (Finding 4).** **The inventory was ELEVEN, not one**
+(WO-025's inventory-was-too-narrow lesson, again): `wo029_reverify_partition`, `wo029_clock_control_proof`,
+`wo029_ledger_still_bites`, `advancing_clock_bite_proof`, `registration_validation_bite_proof`,
+`containment_bite_proof`, `emission_bite_proof`, `instrument_mismatch_bite_proof`,
+`vocabulary_enforcement_bite_proof`, `vocabulary_scan_bite_proof`, `wire_string_bite_proof` — every
+bite-proof instrument in the tree wrote into `evidence/`. All 11 now write a run-scoped
+`<utc-stamp>.txt` + `latest.txt` under git-ignored `.artifacts/<slug>/`. Two scripts were examined and
+**deliberately left alone**: `snapshot_gate_ledger.py` (writing into evidence/ IS its purpose — the
+deliberate snapshot step) and `replay_checksum_capture.py` (it only READS evidence/).
+**§4.2 the guard** — `tests/test_evidence_write_boundary.py`, 4 tests, AST scan over every **tracked**
+`tools/*.py`, failing on any write whose target resolves inside `evidence/`, naming the script AND the
+resolved path. **Write-directed**: reads stay legal (the reverify tool legitimately reads the partition
+table). Docstrings stripped before scanning; one examined exemption with an honesty test forbidding a
+stale entry; a self-test that the detector fires on the exact Finding-4 shape; and a test pinning that
+the WO-026 conftest guard still exists (the two are belt-and-suspenders — the static scan cannot
+evaluate a runtime-computed directory).
+**§4.3 bite proof** (`tools/wo032_evidence_write_guard_bite_proof.py`, 4 artifacts, sha256 exact-restore):
+A1 a throwaway `tools/` script (`git add -N`'d, because the guard scans TRACKED scripts) pointed into
+`evidence/` → guard **FAILS naming script and path**; A2 preservation dual — the same script pointed at
+`.artifacts/` → **PASSES** (the guard bans the destination, not writing); A3 restored → PASSES;
+A4 guard sha256 IDENTICAL, no leftovers.
+
+**TWO INSTRUMENT DEFECTS FOUND BY THE GUARDS THEMSELVES, mid-build** (reported, not hidden): (1) the
+§4.2 honesty test failed on first run, reporting the one known deliberate writer as exempt-but-not-
+writing — the detector was not propagating taint through an intermediate (`dest = dest_dir / name`,
+the exact two-step shape `snapshot_gate_ledger.py` uses); fixed with a fixpoint and a regression case.
+(2) The §1.3 bite proof's first run FAILED its own sha256 exact-restore — a text-mode round-trip on
+Windows translated newlines, so "restored" was a different byte sequence; fixed to binary I/O. Both
+were caught by the checks rather than by review.
+
+**ACCEPTANCE:** **222** = 218 + 4 (the §4.2 guard's tests; nothing else added, removed, split or
+merged) on {3.11 strict, 3.14 dev} × deterministic, 0 f/xf/xp. `wo029_reverify_partition.py` → **PASS,
+30/30 by name**, writing to `.artifacts/`. lint-imports 6/6, contract 6/6, ruff clean, annotation 0,
+preflight pass. All 20 `tools/` scripts compile; `advancing_clock_bite_proof.py` re-run end-to-end
+post-edit → VERDICT PASS, fixture sha256 `7b17732c…` restored, and it no longer touches `evidence/`.
+**Five production sha256s IDENTICAL** (kraken_v2_book `b06c347e…`, factory `103a8ba7…`, registry
+`5bf833c7…`, live_capture `dab18f67…`, decision `3d153a11…`); `git diff -- src/` empty.
+
+**NEXT: WO-031 re-runs from §1** against the now-committed amended partition and the fixed,
+name-keyed, `.artifacts/`-writing reverify tool. Its §1 baseline is already verified and reusable.
 
 ---
 

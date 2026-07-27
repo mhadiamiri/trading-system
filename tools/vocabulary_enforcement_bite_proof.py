@@ -72,10 +72,16 @@ def main():
                f"A4 sha256-exact={exact}  => {'OK' if ok else 'FAIL'}")
 
     text = "\n".join(out)
-    dest = os.path.join(REPO, "evidence", "WO-013", "enforcement_bite_proof.txt")
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    with open(dest, "w", encoding="utf-8") as f:
-        f.write(text + "\n")
+    # WO-032 §4.1 — an INSTRUMENT writes to a git-ignored, run-scoped `.artifacts/` path and NEVER
+    # into `evidence/` (WO-026 §2's doctrine, generalized). Evidence is a DELIBERATE snapshot, not a
+    # side effect of running a tool. Guarded: tests/test_evidence_write_boundary.py.
+    from datetime import datetime, timezone
+    dest_dir = os.path.join(REPO, ".artifacts", "vocabulary_enforcement_bite_proof")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".txt")
+    for _p in (dest, os.path.join(dest_dir, "latest.txt")):
+        with open(_p, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
     assert sha256(SRC) == before, "SRC NOT RESTORED — aborting"
     print(text)
     print(f"\n[written] {os.path.relpath(dest, REPO)}")

@@ -25,7 +25,10 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "tests", "fixtures", "fake_ws_transport.py")
-OUT = os.path.join(REPO, "evidence", "WO-029", "advancing_clock_bite_proof.txt")
+# WO-032 §4.1 — an INSTRUMENT writes to a git-ignored, run-scoped `.artifacts/` path and NEVER into
+# `evidence/` (WO-026 §2's doctrine, generalized past the gate ledger). Evidence is a DELIBERATE
+# snapshot, not a side effect of running a tool. Guarded: tests/test_evidence_write_boundary.py.
+ARTIFACT_DIR = os.path.join(REPO, ".artifacts", "advancing_clock_bite_proof")
 
 ANCHOR = "            self._counter += self._delta      # advance AFTER reading: the deadline-set read sees `start`"
 WEAK = "            self._counter += self._delta * 1_000_000      # WEAKENED: fires prematurely (before events)"
@@ -125,9 +128,14 @@ def main():
     verdict = "PASS" if (fires_ok and notp_ok and mut_ok and after == before) else "FAIL"
     out += [f"VERDICT: {verdict}"]
 
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    open(OUT, "w", encoding="utf-8").write("\n".join(out) + "\n")
+    from datetime import datetime, timezone          # WO-032 §4.1 — run-scoped artifact name
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+    _body = "\n".join(out) + "\n"
+    _run = os.path.join(ARTIFACT_DIR, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".txt")
+    for _p in (_run, os.path.join(ARTIFACT_DIR, "latest.txt")):
+        open(_p, "w", encoding="utf-8").write(_body)
     print("\n".join(out))
+    print(f"\n[WO-032 §4.1] written to {os.path.relpath(_run, REPO)} (git-ignored)")
     return 0 if verdict == "PASS" else 1
 
 

@@ -50,17 +50,49 @@ truncation the audit applied to race 5's `..._via_factory`.)
 
 ## The A/B/C partition (by test file — no file split across batches)
 
-- **BATCH A (this WO):** `test_live_capture.py` — races **1, 2, 3, 4, 5**. 1–3 DIRECT (inject FakeClock
-  at construction, terminate via scripted clean-close); **4** DIRECT deadline-assertion (uses the new
-  `AdvancingClock`, §2.0-bis, to fire the deadline deterministically); **5** FACTORY-BUILT (inject the
-  coherent pair + transport THROUGH the runner). Sizing: the WO highlights this file as "converts
-  whole"; it is the one file exercising both the DIRECT and FACTORY-BUILT paths plus the deadline
-  fixture, so it is the natural, self-contained batch A.
+- **BATCH A (this WO):** `test_live_capture.py` — races **1, 2, 3, 4, 5**. 1–3 DIRECT; **4** DIRECT
+  deadline-assertion (uses the new `AdvancingClock`, §2.0-bis, to fire the deadline deterministically);
+  **5** FACTORY-BUILT (inject the coherent pair + transport THROUGH the runner). **All five converted
+  on their OWN termination branch — the DEADLINE — asserted, via `AdvancingClock`.** Sizing: the WO
+  highlights this file as "converts whole"; it is the one file exercising both the DIRECT and
+  FACTORY-BUILT paths plus the deadline fixture, so it is the natural, self-contained batch A.
 - **BATCH B (named, not touched):** `test_gap_recording.py` (6: races 6–11), `test_keepalive.py`
   (2: 15–16), `test_failure_cap.py` (3: 17–19), `test_failure_capture.py` (2: 20–21) = **13 races**.
+  **Conversion requirement (D39 item 1, ratified):** each race must KEEP its own production
+  termination branch (deadline / venue-close / failure-cap / breaker), and the branch exercised
+  before and after is part of acceptance — **asserted, not assumed**. No scripted-clean-close
+  substitution.
 - **BATCH C (named, not touched):** `test_ledger_persistence.py` (1: 12), `test_host_suspend.py`
   (1: race 14 — the non-foundation one), `test_protocol_ping.py` (2: 22–23), `test_throughput.py`
   (1: 24), `test_reconnect_to_effect.py` (1: 25), `test_venue_close_path.py` (1: 26),
   `test_backoff_breaker.py` (1: 27) = **8 races**.
+  **Same conversion requirement as batch B (D39 item 1):** keep the race on its own termination
+  branch; the branch exercised before and after is asserted, not assumed.
 
 Batch A (5) + B (13) + C (8) = **26**. Later batches re-read THIS artifact and re-enumerate against it.
+
+---
+
+## AMENDMENT — 2026-07-27 (WO-032 §2, implementing D39 item 1)
+
+**Annotated, not silently rewritten.** This artifact was committed at `d0450fa`, BEFORE batch A ran
+and before D39 was ratified. Two things above have been amended; the record of why is here.
+
+1. **Batch A's entry no longer reads "inject FakeClock at construction, terminate via scripted
+   clean-close."** That was the *plan*; it is not what WO-029 did. All five races converted on the
+   DEADLINE branch using the self-advancing `AdvancingClock`. The frozen-clock plan would have kept
+   every assertion green while moving races 1–3 off the deadline branch onto the `ConnectionClosedOK`
+   branch — a coverage loss no assertion could report. The entry now records what happened.
+
+2. **Batches B and C carry the ratified conversion requirement** (D39 item 1): a conversion must keep
+   the race on its own production termination branch, and the branch exercised before and after is
+   part of acceptance — asserted, not assumed.
+
+Ratified after `d0450fa`; committed here in WO-032. See
+`docs/decisions/2026-07-27-a-conversion-preserves-the-path-not-just-the-assertions.md`.
+
+**Note on the line numbers in the table above.** They were derived at base `9c084c3` and are NOT
+refreshed after each batch converts — batch A's conversion moved races 1–5 in `test_live_capture.py`.
+This is expected and harmless: `tools/wo029_reverify_partition.py` keys its verdict on the test NAME
+(WO-032 §1), reports a moved line as informational, and hard-FAILS only on a name that no longer
+resolves. The line numbers remain useful as a starting point, not as identity.

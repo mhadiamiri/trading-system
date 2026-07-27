@@ -44,7 +44,10 @@ from tests.fixtures.kraken_v2_raw_frames import (                     # noqa: E4
     SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL,
 )
 
-OUT = os.path.join(REPO, "evidence", "WO-029", "clock_control_proof.txt")
+# WO-032 §4.1 — an INSTRUMENT writes to a git-ignored, run-scoped `.artifacts/` path and NEVER into
+# `evidence/` (WO-026 §2's doctrine, generalized past the gate ledger). Evidence is a DELIBERATE
+# snapshot, not a side effect of running a tool. Guarded: tests/test_evidence_write_boundary.py.
+ARTIFACT_DIR = os.path.join(REPO, ".artifacts", "wo029_clock_control_proof")
 DURATION = 0.25                       # race 1's capture window
 DELTAS = (0.05, 0.01, 0.002)          # advance per monotonic read: coarse -> fine
 
@@ -181,9 +184,14 @@ def main():
     verdict = "PASS" if (controls and repeatable and emissions_pinned and part_b_ok) else "FAIL"
     out.append(f"VERDICT: {verdict}")
 
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    open(OUT, "w", encoding="utf-8").write("\n".join(out) + "\n")
+    from datetime import datetime, timezone          # WO-032 §4.1 — run-scoped artifact name
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+    _body = "\n".join(out) + "\n"
+    _run = os.path.join(ARTIFACT_DIR, datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".txt")
+    for _p in (_run, os.path.join(ARTIFACT_DIR, "latest.txt")):
+        open(_p, "w", encoding="utf-8").write(_body)
     print("\n".join(out))
+    print(f"\n[WO-032 §4.1] written to {os.path.relpath(_run, REPO)} (git-ignored)")
     return 0 if verdict == "PASS" else 1
 
 
