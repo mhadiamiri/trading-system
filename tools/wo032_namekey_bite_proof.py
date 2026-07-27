@@ -37,8 +37,9 @@ def sha256(path):
     return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
-def run_tool():
-    p = subprocess.run([sys.executable, TOOL], cwd=REPO, capture_output=True, text=True,
+def run_tool(table=None):
+    cmd = [sys.executable, TOOL] + (["--table", table] if table else [])
+    p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True,
                        encoding="utf-8", errors="replace",
                        env={**os.environ, "PYTHONUTF8": "1"})
     verdict = next((ln for ln in (p.stdout or "").splitlines() if ln.startswith("VERDICT:")), "<none>")
@@ -68,12 +69,23 @@ def main():
             "  => the line-keyed FALSE FAIL is gone: a partition intact by name PASSES.", ""]
 
     # ARTIFACT 2 — the bite: a race name that resolves to nothing must FAIL, and be NAMED.
+    #
+    # The mutation is applied to a COPY under .artifacts/, never to the committed table (which the
+    # WO's own wording asks for: "mutate the partition table's COPY"). An earlier revision mutated
+    # the committed file in place and restored it byte-exactly — that restored correctly, but it
+    # still made this script a `tools/` script that WRITES INTO evidence/, and the §4.2 guard
+    # rightly failed it. Routing through --table removes the write entirely rather than exempting
+    # it, and makes the exact-restore check stronger: the committed table is never opened for
+    # writing at all, so ARTIFACT 4 proves untouched rather than put-back.
     assert ANCHOR.encode() in pristine, f"anchor {ANCHOR!r} not in the table — aborting before mutation"
-    open(TABLE, "wb").write(pristine.replace(ANCHOR.encode(), BROKEN.encode(), 1))
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+    mutated = os.path.join(ARTIFACT_DIR, "mutated_table_copy.md")
+    open(mutated, "wb").write(pristine.replace(ANCHOR.encode(), BROKEN.encode(), 1))
     try:
-        rc2, v2, r2 = run_tool()
+        rc2, v2, r2 = run_tool(mutated)
     finally:
-        open(TABLE, "wb").write(pristine)
+        if os.path.exists(mutated):
+            os.remove(mutated)
     names_it = BROKEN in v2
     out += ["-- ARTIFACT 2 — THE BITE (one race renamed to a nonexistent test) --",
             f"  mutation   : {ANCHOR}  ->  {BROKEN}",
@@ -91,14 +103,19 @@ def main():
             f"  {r3}",
             f"  {v3}", ""]
 
-    # ARTIFACT 4 — sha256 exact-restore.
+    # ARTIFACT 4 — sha256 exact-restore (here: proof the committed table was never written at all).
     after = sha256(TABLE)
     exact = after == before
-    out += ["-- ARTIFACT 4 — sha256 EXACT-RESTORE --",
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", os.path.relpath(TABLE, REPO)],
+                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    out += ["-- ARTIFACT 4 — sha256 EXACT-RESTORE (committed table NEVER opened for writing) --",
             f"  sha256 AFTER  : {after}",
-            f"  IDENTICAL     : {exact}", ""]
+            f"  IDENTICAL     : {exact}",
+            f"  git status    : {dirty or 'clean'}",
+            "  => the mutation lived in a .artifacts/ copy; this script writes nothing under",
+            "     evidence/, so tests/test_evidence_write_boundary.py passes on it.", ""]
 
-    ok = (rc1 == 0 and rc2 == 1 and rc3 == 0 and names_it and exact
+    ok = (rc1 == 0 and rc2 == 1 and rc3 == 0 and names_it and exact and not dirty
           and "PASS" in v1 and "FAIL" in v2 and "PASS" in v3)
     verdict = "PASS" if ok else "FAIL"
     out += [f"VERDICT: {verdict}"]
@@ -111,7 +128,7 @@ def main():
         open(p, "w", encoding="utf-8").write(body)
     print(body, end="")
     print(f"\n[WO-032 §4.1] written to {os.path.relpath(run_path, REPO)} (git-ignored)")
-    assert exact, "TABLE NOT RESTORED — aborting"
+    assert exact and not dirty, "COMMITTED TABLE WAS MODIFIED — aborting"
     return 0 if ok else 1
 
 

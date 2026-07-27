@@ -85,12 +85,19 @@ check pass is to stop checking.
 
 | Artifact | What | Result |
 |---|---|---|
-| **1 — PRESERVATION DUAL** (local, direct) | pristine table, races 1–5 at post-conversion moved lines | `returncode 0`, `30/30`, **PASS** — the false FAIL is gone |
-| **2 — THE BITE** | rename race 6 to `test_this_race_does_not_exist_anywhere` | `returncode 1`, `29/30`, **FAIL**, verdict NAMES it: *"1 name(s) do not resolve to any test: #6 test_this_race_does_not_exist_anywhere (expected in test_gap_recording.py)"* |
-| **3 — RESTORED** | table back | `returncode 0`, `30/30`, PASS |
-| **4 — sha256 EXACT-RESTORE** | `a266ee91…` before, `a266ee91…` after | **IDENTICAL: True** |
+| **1 — PRESERVATION DUAL** (local, direct) | the committed table, races 1–5 at post-conversion moved lines | `returncode 0`, `30/30`, **PASS** — the false FAIL is gone |
+| **2 — THE BITE** | a **copy** with race 6 renamed to `test_this_race_does_not_exist_anywhere`, fed via `--table` | `returncode 1`, `29/30`, **FAIL**, verdict NAMES it: *"1 name(s) do not resolve to any test: #6 test_this_race_does_not_exist_anywhere (expected in test_gap_recording.py)"* |
+| **3 — RESTORED** | committed table again | `returncode 0`, `30/30`, PASS |
+| **4 — sha256 EXACT-RESTORE** | `78ec210c…` before and after; `git status` clean | **IDENTICAL: True** — the committed table was **never opened for writing** |
 
 **The verdict was re-keyed, not weakened.**
+
+**The mutation lives in a `.artifacts/` copy, not in the committed file** — which is what §1.3's own
+wording asks for ("mutate the partition table's **copy**"). The first revision mutated the committed
+table in place and restored it byte-exactly; that restored correctly, but it made this script a
+`tools/` script that writes into `evidence/`, and **the §4.2 guard failed it in CI**. See §Attempts 10.
+Routing through the new `--table` flag removes the write instead of exempting it, and strengthens
+artifact 4 from *put-back* to *never touched*.
 
 ---
 
@@ -299,6 +306,34 @@ the add would prove nothing about the real population.
 9. **`PYTHONUTF8=1` on every invocation** — without it `contract_count_check.py` aborts the session at
    `pytest_sessionstart` with a `TypeError` that is really a cp1252 decode failure. Environmental; CI
    is Linux/UTF-8. No repo file was changed for it.
+10. **THE FIRST COMMIT (`1b52c53`) FAILED CI ON BOTH LEGS — and the new guard was the thing that
+    failed it, correctly.** This is the most important entry here, in two parts.
+
+    **What failed.** `tests/test_evidence_write_boundary.py::test_no_tools_script_writes_into_evidence`
+    flagged **my own §1.3 bite proof**:
+    ```
+    tools/wo032_namekey_bite_proof.py:72  open(..., "wb")  ->  TABLE
+        resolves to: TABLE = os.path.join(REPO, 'evidence', 'WO-029', 'batch_partition.md')
+    ```
+    The bite proof mutated the committed partition table in place and restored it byte-exactly. The
+    restore was correct and sha256-verified — but the script still *wrote into `evidence/`*, which is
+    exactly what the guard bans, and the guard cannot distinguish "authors evidence" from "mutates and
+    puts back". **Fixed by removing the write, not by exempting it:** the mutation now goes to a
+    `.artifacts/` copy fed through the `--table` flag. §1.3's own text asked for "the partition
+    table's COPY"; the first revision did not follow it, and the guard caught the discrepancy.
+
+    **Why local acceptance did not catch it — a real gap in my verification.** The guard scans
+    **TRACKED** scripts (`git ls-files tools`). When I ran the local 222/222 matrix, the new
+    `tools/wo032_*.py` files were still **untracked**, so the guard's population did not include them.
+    `git add` changed the population, and CI was the first run where the guard saw its own author's
+    scripts. **A guard whose population is defined by the index is not fully exercised until the
+    files are staged** — the local run was green against a smaller world. This is the
+    *verification-steps-can-host-the-defect* family, and the correct standing habit is: for any
+    index-scoped guard, run acceptance **after** `git add`, not before. Both interpreter legs were
+    re-run post-fix with everything tracked, which is the run reported in §6.
+
+    Recorded rather than quietly fixed because the guard's first real-world bite was against the WO
+    that built it, and it worked.
 
 ---
 
