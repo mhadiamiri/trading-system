@@ -252,6 +252,66 @@ the add would prove nothing about the real population.
 
 ---
 
+## §FINDING (code wins, §0.1) — a "legitimate BOUND" in the WO-023 audit is actually a race
+
+**This needs a ruling. It changes a denominator the pass-two plan rests on.**
+
+**What happened.** CI on `e7da7cf` went green on 3.11 and **failed on 3.14 in the RANDOMIZED order**
+(`--randomly-seed=2050525690`):
+
+```
+tests/integration/test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture FAILED
+    with pytest.raises(RuntimeError, match="injected unhandled crash"):
+E   Failed: DID NOT RAISE RuntimeError
+```
+
+**The audit classified this test as safe.** `evidence/WO-023/wall_clock_race_audit.txt` lists it at
+`test_ledger_persistence.py:82` among the **7 legitimate BOUNDS** — the bucket explicitly excluded
+from the 30 structural races — with the note:
+
+> `dur=0.25, injected crash ends it`
+
+That reasoning is **false**. The scripted connection yields `[SNAPSHOT, corrupted, crash]`; the crash
+only ends the run if the loop drains the *third* frame before the real 0.25 s deadline expires. If the
+deadline wins, the capture closes cleanly, no `RuntimeError` propagates, and `pytest.raises` fails.
+
+**Proved deterministically, not inferred**, against the **pre-WO-032 baseline worktree** at `3410435`
+(where `git diff 3410435 HEAD -- src/ tests/integration/test_ledger_persistence.py` is **empty** — so
+nothing WO-032 touched is involved):
+
+| Case | Clock | Result |
+|---|---|---|
+| A | real, `duration=0.25` (as the test runs) | `RuntimeError` **RAISED** — the fast-machine outcome |
+| B | real, deadline reached immediately | **NO EXCEPTION** — deadline ended the capture cleanly |
+| C | `AdvancingClock(delta=0.2)`, coherent pair | **NO EXCEPTION** — deterministic reproduction of the CI symptom |
+| D | `AdvancingClock(delta=0.0001)`, coherent pair | `RuntimeError` **RAISED** — preservation dual |
+
+C and D differ **only in the advance rate of an injected coherent clock**. The test's *outcome* — not
+merely its speed — rests on a real-clock deadline read. Under D39's ratified method that read is
+**OUTCOME-BEARING**, and this test is therefore a **race**, not a bound.
+
+**Why it surfaced now, and why it is not caused by WO-032.** WO-032 changed the collected test count
+from 218 to 222, which changes pytest-randomly's ordering, which changed the scheduling profile on a
+loaded runner. It touched neither the test, the adapter, nor any timing. CPU-saturation alone at the
+baseline did not reproduce it (12/12 passed), which is consistent with an order-sensitive race rather
+than a pure load threshold.
+
+**Consequences the lead should weigh:**
+1. **The "7 legitimate bounds" bucket is not trustworthy.** It was justified by prose reasoning of
+   exactly the kind falsified here ("X ends it" — true only if X wins a race). If one of seven is
+   wrong, the bucket needs the same per-read D39 classification the 26 are getting. The pass-two
+   denominator may be larger than 26.
+2. This test is in `test_ledger_persistence.py`, a **batch C** file. Converting it here would breach
+   the batch fence and this WO's own §0.2, so **it was not converted** — reported instead.
+3. **CI green was reached by re-running the failed leg** (run `30304749145`). That is recorded plainly
+   rather than presented as a clean first pass: the failure was real, is now explained, and is
+   pre-existing. Re-running a known-flaky unconverted test is not the same as fixing it.
+
+**Recommended next step:** fold this test — and a re-examination of all 7 bounds — into WO-031's
+batch-B classification WO, or a small dedicated WO, before batch C is planned.
+
+---
+
 ## §Judgement — two calls made, both reported rather than resolved silently
 
 1. **Committing `WO-031-BATCH-B-CLASSIFICATION-REPORT.md`.** WO-032 does not instruct it, and the
@@ -339,11 +399,16 @@ the add would prove nothing about the real population.
 
 ## §CI
 
-Commit, push, and CI result are recorded below at close.
+- **Commits:** `1b52c53` (the WO) + `e7da7cf` (the §1.3 fix, §Attempts 10)
+- **Local == remote:** `e7da7cf22813db7ba13797185b7d01f8d1e7c921` == `origin/master`
+- **CI run `30304749145`** on `e7da7cf` — **`test (3.11)` success · `test (3.14)` success**
 
-- **Commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+**Stated plainly:** run `30303655080` on `1b52c53` failed **both** legs — the new guard correctly
+caught this WO's own bite proof (§Attempts 10). Run `30304749145` on `e7da7cf` then failed the 3.14
+leg only, on the **pre-existing, now-proven** `test_ledger_persistence.py` race documented at
+§FINDING; **the failed leg was re-run** and both legs are green. Two of the three CI attempts in this
+WO failed, one for a real defect this WO introduced and fixed, one for a defect it did not introduce
+and was not scoped to fix.
 
 **THEN STOP.** WO-031 (batch B classification) re-runs from §1 against the now-committed amended
 partition and the fixed, name-keyed, `.artifacts/`-writing reverify tool.

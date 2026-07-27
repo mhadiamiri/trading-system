@@ -39,7 +39,8 @@
 # Trading System - Project Progress
 
 **Last Updated**: 2026-07-27 (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
-**WO-032**: HEAD (this commit) — see the **▶ WO-032** block below. §1 name-keyed verdict + §1.3 bite proof; §2 the D39 partition amendment committed; §3/§4.4 three decision docs (D39 ×2, **D40** for the guard-reach doctrine); §4 all 11 `evidence/`-writing `tools/` scripts moved to git-ignored `.artifacts/`, plus `tests/test_evidence_write_boundary.py` (4 tests) and its bite proof. Two instrument defects self-caught mid-build and reported. Five production sha256s identical.
+**⚠ OPEN FOR THE LEAD (WO-032 §FINDING):** the WO-023 audit's **"7 legitimate BOUNDS"** bucket contains at least one real race — `test_incremental_persist_survives_unhandled_exception_mid_capture` (`test_ledger_persistence.py:82`), proved OUTCOME-BEARING on the real-clock deadline at the pre-WO-032 baseline. The bucket was justified by the same style of prose reasoning that was falsified, so **the pass-two denominator may exceed 26.** Re-examine all 7 under D39's method before batch C.
+**WO-032**: HEAD `e7da7cf` (base `3410435`); CI green both legs run `30304749145` — see the **▶ WO-032** block below. §1 name-keyed verdict + §1.3 bite proof; §2 the D39 partition amendment committed; §3/§4.4 three decision docs (D39 ×2, **D40** for the guard-reach doctrine); §4 all 11 `evidence/`-writing `tools/` scripts moved to git-ignored `.artifacts/`, plus `tests/test_evidence_write_boundary.py` (4 tests) and its bite proof. Two instrument defects self-caught mid-build and reported. Five production sha256s identical.
 **WO-031**: STOPPED at §2, no classification produced — the D39 amendment existed only in `instructions.md`. §1 baseline verified (218/218, batch-B membership confirmed) and reusable. Surfaced Findings 3 (stale-by-construction reverify verdict) and 4 (live WO-026 regression). See the **▶ WO-031** block below.
 **WO-029 BATCH A** (prior): (**COMPLETE** — `test_live_capture.py` converts WHOLE: all five races (1-5) now inject a coherent `AdvancingClock` pair, race 4 via the self-advancing fixture, race 5 through the WO-030 runner seam. SHIP IMPACT NO — 218 unchanged, production byte-identical, ZERO assert statements touched. **Two §6 items need a ruling BEFORE batch B.**)
 **WO-029 BATCH A**: HEAD `f0660e3` (base = this WO's own §2.0-bis seam `d0450fa`); CI green both legs run `30279805350`. §1 218/218 both interpreters at HEAD. §2.0 partition RE-DERIVED not re-read (`tools/wo029_reverify_partition.py` → 30/30 identifiers land at their stated file:line; 26/3/1 re-confirmed; race #5 in the 26) — evidence `partition_reverified_at_head.txt`. **§2:** all five races take `monotonic_clock=clk.monotonic` + `_wall_clock = clk.wall` (one `AdvancingClock`, shared token, `CLOCK_DELTA=0.01`); races 1/2/3/5 also take the runner's `clock=` bucketing seam. All five were ALREADY transport-migrated (1-4 WO-024, 5 WO-028), so no transport migration rode along. **Termination is still the DEADLINE for every race** — the deliberate deviation from the partition's own "scripted clean-close" plan (§6 candidate below). All five `PROCEED_COHERENT` in the ledger. **NO assertion touched: 29 assert statements before and after, none in the diff** (92 insertions / 15 deletions, every deletion a constructor line re-emitted with a clock argument). **§3:** 5 seeds (20260802-06) + deterministic × both interpreters, all 218; plus the REAL-CONTROL measurement — sweeping delta 0.05→0.01→0.002 moves the observed capture window 2→11→58 frames, each reproducing EXACTLY on repeat, while emissions stay pinned at 2 (`clock_control_proof.txt`); plus race #5's through-the-runner proof by IDENTITY at the far end (`factory.get_active_feed()._monotonic_clock is clk.monotonic`), corroborated independently by its `PROCEED_COHERENT` ledger line. **§4:** ledger-still-bites bite proof — race 1's wall swapped to a SECOND AdvancingClock (mismatched token) → gate REFUSES COHERENCE **and** the session-end ledger assertion names the nodeid; 4 artifacts, sha256 exact-restore. **§6 — TWO ITEMS AWAITING A RULING, both of which change how batches B/C should be done:** (1) proposed decision-log entry *"a conversion preserves the PATH, not just the assertions"* — the frozen-clock plan would have kept every assertion green while silently moving races 1-3 off the deadline branch onto the venue-close branch, a coverage loss no assertion can report; (2) §2's "a conversion leaving ANY real-time dependency is incomplete" read literally is unsatisfiable (the adapter holds non-injectable real-clock reads for keepalive/ping/anchor/instruments), so it was read as "any real-time dependency the test's OUTCOME rests on", residuals named — if the lead means it literally, batch A is a STOP and so is every remaining batch. **§0.6 UNMET:** `/context` is a user-side slash command an agent turn cannot invoke; not reported rather than fabricated. Report: `WO-029-BATCH-A-REPORT.md`. **NEXT: batch B (13 races, 4 files) after the §6 ruling.**
@@ -731,6 +732,34 @@ preflight pass. All 20 `tools/` scripts compile; `advancing_clock_bite_proof.py`
 post-edit → VERDICT PASS, fixture sha256 `7b17732c…` restored, and it no longer touches `evidence/`.
 **Five production sha256s IDENTICAL** (kraken_v2_book `b06c347e…`, factory `103a8ba7…`, registry
 `5bf833c7…`, live_capture `dab18f67…`, decision `3d153a11…`); `git diff -- src/` empty.
+
+**CI:** commits `1b52c53` + `e7da7cf`; **CI GREEN BOTH LEGS run `30304749145`** on `e7da7cf`
+(`test (3.11) success`, `test (3.14) success`); local == remote. **Stated plainly: two of three CI
+attempts failed.** Run `30303655080` failed BOTH legs — **the new guard caught this WO's own §1.3 bite
+proof** writing into `evidence/` (it mutated the committed table in place and restored it byte-exactly;
+correct restore, still a banned write). Fixed by routing the mutation through a `.artifacts/` copy via
+the new `--table` flag — removing the write rather than exempting it, which is what §1.3's own wording
+("mutate the partition table's COPY") asked for. **Local acceptance had missed it because the guard
+scans TRACKED scripts and the new `tools/wo032_*.py` were still untracked when the 222/222 matrix ran
+— standing habit recorded: for an index-scoped guard, run acceptance AFTER `git add`.**
+
+**⚠ §FINDING AWAITING A RULING — a "legitimate BOUND" in the WO-023 audit is actually a RACE.** CI run
+`30304749145` first failed the 3.14 leg in RANDOMIZED order (seed `2050525690`):
+`test_ledger_persistence.py::test_incremental_persist_survives_unhandled_exception_mid_capture` →
+`Failed: DID NOT RAISE RuntimeError`. The audit lists this test at `test_ledger_persistence.py:82`
+among the **7 legitimate BOUNDS** (excluded from the 30 races) with the note *"dur=0.25, injected crash
+ends it"* — **false**: the crash only ends the run if the loop drains the 3rd scripted frame before the
+real 0.25s deadline; if the deadline wins, the capture closes cleanly and `pytest.raises` fails.
+**Proved deterministically at the pre-WO-032 baseline `3410435`** (where `src/` and that test are
+byte-identical to HEAD): real clock @0.25 RAISES; `AdvancingClock(delta=0.2)` → NO EXCEPTION
+(reproduces the CI symptom); `AdvancingClock(delta=0.0001)` → RAISES (preservation dual). C and D differ
+only in an injected clock's advance rate, so the **outcome** rests on a real-clock read — D39
+**OUTCOME-BEARING**, i.e. a race. **Not caused by WO-032** (which changed only the collected count
+218→222, hence the random order); **not converted** (batch C's file — the fence and §0.2 forbid it);
+**CI green was reached by re-running the failed leg**, recorded plainly rather than as a clean pass.
+**Consequence: the "7 legitimate bounds" bucket was justified by exactly the prose reasoning falsified
+here, so the pass-two denominator may exceed 26.** Recommend re-examining all 7 under D39's method
+before batch C is planned.
 
 **NEXT: WO-031 re-runs from §1** against the now-committed amended partition and the fixed,
 name-keyed, `.artifacts/`-writing reverify tool. Its §1 baseline is already verified and reusable.
