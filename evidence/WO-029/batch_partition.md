@@ -144,3 +144,45 @@ Three ratified amendments landed here, annotated rather than silently applied.
    every WO's §1 confirms the artifacts it reads reflect all rulings made since they were written.
    **This file is the specimen** — it sat at "batch C = 8" through two WOs after the ruling that made
    it 9, and WO-031's original §2 STOP was the same failure one artifact earlier.
+
+---
+
+## AMENDMENT — 2026-07-28 (WO-037 §2.1) — **PASS TWO IS CLOSED. Option 4 ruled.**
+
+WO-036 attempted the keepalive seam that would have converted races 6, 15 and 16, and **STOPPED at its
+red-line precheck**: their outcome-bearing read `last_frame` is not a pacing-only variable. It is the
+**`open_monotonic` opening bound of three of the five ruled gap causes** (`kraken_v2_book.py:2674`
+KEEPALIVE_RECONNECT, `:2708` VENUE_DISCONNECT 4b, `:2765` VENUE_DISCONNECT 4c) and the recv-return
+timestamp of the throughput **latency instrument** (`:2817`).
+
+**RULED — Option 4. Races 6, 15 and 16 are DECLARED NOT-CLOCK-CONVERTIBLE**, the same disposition the
+three `asyncio.sleep` races already carry. The rationale, verbatim as ruled:
+
+> *Making three test conversions deterministic is not worth any change to how the corpus records gap
+> windows; options that inject fake time into `open_monotonic` are not a cost-benefit calculation but
+> the red line doing what red lines do.*
+
+Option 3 (splitting `last_frame` in production into a pacing clock and a gap/instrument stamp) carries
+an **additional** defect beyond its size: it would decouple what `:2667` deliberately made identical —
+the gap opens *when emission actually stopped*, not *when the threshold tripped*. That identity is the
+semantic, not an implementation convenience.
+
+### Pass two, final disposition — denominator 30
+
+| Disposition | Count | Which |
+|---|---|---|
+| **CONVERTED** | **24** | batch A 5 (races 1–5) · batch B 10 (7, 8, 9, 10, 11, 17, 18, 19, 20, 21) · batch C 9 (12, 14, 22, 23, 24, 25, 26, 27, **35**) |
+| **NOT-CLOCK-CONVERTIBLE — keepalive-blocked** | **3** | **6, 15, 16** (this amendment) |
+| **NOT-CLOCK-CONVERTIBLE — asyncio.sleep** | **3** | 28, 29, 30 (D35) |
+| | **30** | |
+
+(The 24 + 3 + 3 = 30 accounting counts the audit's 30 races with entry 35 substituted for race 13, the
+foundation test converted before pass two began — see the table above, which lists 31 rows for that
+reason. Clock-injectable was **27**; **24 converted, 3 declared not-convertible.**)
+
+**Races 6, 15 and 16 remain on the flake-doctrine `diagnose-before-rerun` discipline** — the interim
+mitigation for exactly this residue: timing-sensitivity that a structural fix should not chase. A
+failure in one of them is investigated, never re-run away.
+
+See `docs/decisions/2026-07-28-races-6-15-16-not-clock-convertible.md` and
+`docs/decisions/2026-07-28-outcome-bearing-for-whom-consumed-by-what.md`.
