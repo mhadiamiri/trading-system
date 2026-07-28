@@ -24,7 +24,10 @@ from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
+
+# WO-035 §3 (batch C): the deadline fires after a determinate number of monotonic reads.
+_READS_BEFORE_DEADLINE = 50
 
 
 async def _no_sleep(_delay):
@@ -41,7 +44,13 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
-    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_a.connect)
+    # WO-035 §3 — race 26, HALF 1. Terminates on the DEADLINE branch (socket 2 heartbeats keep the
+    # link up after the reconnect); kept, and asserted below by `len(emitted_a) == 2` — the
+    # post-reconnect emission must land before the run ends.
+    clk_a = AdvancingClock(delta=0.25 / _READS_BEFORE_DEADLINE)
+    adapter_a = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_a.connect,
+                                    monotonic_clock=clk_a.monotonic)
+    adapter_a._wall_clock = clk_a.wall
     adapter_a._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter_a._reconnect_sleep = _no_sleep
 
@@ -66,7 +75,16 @@ async def test_venue_close_unexpected_reconnects_expected_shuts_down_cleanly(cap
         {"frames": [SNAPSHOT_FRAME, expected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
-    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_b.connect)
+    # WO-035 §3 — race 26, HALF 2. This half terminates on the VENUE-CLOSE branch, NOT the deadline:
+    # the clean 1000 close ends the run. That distinction is the point of the dual, so the conversion
+    # must not let the deadline pre-empt it. The same wide margin does that — the clean close arrives
+    # on recv #2 of ~50 available reads — and the branch is asserted below by `connect_count == 1`
+    # plus `len(emitted_b) == 1`: a deadline-ended run would have kept the socket and emitted no
+    # differently, so the CLOSE is what ends it.
+    clk_b = AdvancingClock(delta=0.25 / _READS_BEFORE_DEADLINE)
+    adapter_b = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory_b.connect,
+                                    monotonic_clock=clk_b.monotonic)
+    adapter_b._wall_clock = clk_b.wall
     adapter_b._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter_b._reconnect_sleep = _no_sleep
 

@@ -37,7 +37,11 @@ from websockets.exceptions import ConnectionClosedError
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
+
+# WO-035 §3 (batch C): the deadline fires after a determinate number of monotonic reads. See
+# test_ledger_persistence.py for the full rationale; 50 leaves a wide margin over the recvs needed.
+_READS_BEFORE_DEADLINE = 50
 
 
 async def _no_sleep(_delay):
@@ -53,7 +57,11 @@ def _close_1011():
 async def test_protocol_ping_params_set_deliberately():
     """The deliberate protocol-ping config reaches websockets.connect (not the library defaults)."""
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    # WO-035 §3 — race 22. Terminates on the DEADLINE branch (heartbeats keep the link up); kept.
+    clk = AdvancingClock(delta=0.05 / _READS_BEFORE_DEADLINE)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect,
+                                  monotonic_clock=clk.monotonic)
+    adapter._wall_clock = clk.wall
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
     async for _ in adapter.get_live_market_data(duration_seconds=0.05):
@@ -82,7 +90,13 @@ async def test_protocol_level_close_recovers(caplog):
     socket2 = {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}
     factory = ScriptedConnectionFactory([socket1, socket2])
 
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    # WO-035 §3 — race 23. Terminates on the DEADLINE branch (socket 2 heartbeats keep the link up
+    # after recovery), kept: the injected clock fires the SAME deadline rather than substituting a
+    # scripted close, so the post-recovery emission still has to land inside the window.
+    clk = AdvancingClock(delta=0.25 / _READS_BEFORE_DEADLINE)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect,
+                                  monotonic_clock=clk.monotonic)
+    adapter._wall_clock = clk.wall
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
     adapter._reconnect_sleep = _no_sleep
 

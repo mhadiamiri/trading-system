@@ -29,7 +29,7 @@ import pytest
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
 from unittest.mock import patch
 
 
@@ -55,7 +55,16 @@ async def test_five_real_failures_reconnect_and_emission_resumes():
     socket2 = [SNAPSHOT_FRAME]
     factory = ScriptedConnectionFactory([socket1, socket2])
 
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    # WO-035 §3 — race 25. Terminates on the DEADLINE branch, kept.
+    #
+    # The window has to outlast six frames on socket 1 plus the reconnect plus the fresh snapshot —
+    # against the real clock that ordering was a gamble on scheduler load. delta = 0.1/50 leaves ~50
+    # monotonic reads for the ~8 recvs the script needs, so the emission-resumed end state below is
+    # reached by construction rather than by winning a race.
+    clk = AdvancingClock(delta=0.1 / 50)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect,
+                                  monotonic_clock=clk.monotonic)
+    adapter._wall_clock = clk.wall
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
     # WO-014b-2: under keepalive a silent link no longer ENDS the capture (it would

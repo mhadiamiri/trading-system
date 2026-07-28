@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
+**Last Updated**: 2026-07-28 (**WO-035 COMPLETE — BATCH C CONVERTED. Pass two's last conversion batch is done: 24 of 27 clock-injectable races are now deterministic.** The three D42 amendments landed first as their own commit `daaf5f5` (batch C 8→9, node-ID identifiers, the standing artifact-ruling doctrine), then all 9 races converted on their own termination branches — 7 deadline, entry 35 on the **CRASH** branch, race 26 keeping **both** its deadline and venue-close halves. All `PROCEED_COHERENT`; **zero assertions touched** (counts identical, no assert line in the diff); 222 × 12 runs (2 interpreters × deterministic + 5 seeds). Every `src/` file byte-unchanged. **NEXT: the keepalive seam WO closes batch B's last 3.** See the **▶ WO-035** block below.)
+**Prior — 2026-07-28** (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
 **Prior — 2026-07-28** (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
 **Prior — 2026-07-28** (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
 **Prior — 2026-07-27** (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
@@ -954,6 +955,73 @@ gate-ledger dispositions and ledger-bite proof **NOT DONE** — §3/§4 never be
 canonical (already committed, no further measurement needed); (2) amend `batch_partition.md` — fold
 entry 35 in so batch C reads 9, and restate its identifiers as node IDs; (3) optionally rewire
 `wo029_reverify_partition.py` onto the table; then WO-034 resumes at §3.**
+
+---
+
+## ▶ WO-035 COMPLETE (AUTHORITATIVE) — 2026-07-28 — D42 amendments landed + BATCH C CONVERTED (the last batch)
+
+> Base HEAD `e3fa557`. **SHIP IMPACT: NO** — tests, evidence, docs, tools; every `src/` file
+> byte-unchanged. Report: `WO-035-REPORT.md`. Evidence: `evidence/WO-035/` (conversion detail + gate
+> ledger snapshot). **Batch C is pass two's LAST conversion batch: 24 of 27 clock-injectable races
+> are now converted**; batch B's 3 (races 6/15/16) await the keepalive seam WO.
+
+**§1 — the D42 standing check FIRED on its first outing.** `batch_partition.md` still read
+`= 8 races` for batch C: the amendment D40/D41 ratified had never reached the tree. Per §0.6 it was
+landed before §3 read it. 222 both interpreters; reverify PASS; batch C's 9 members stated by
+**canonical node ID** (four of them — 24, 26, 27, 35 — carried truncated prose identifiers, which is
+why WO-034 stopped).
+
+**§2 — three amendments landed as their OWN commit `daaf5f5`** (verifiable independent of the
+conversion): batch C **8 → 9** with entry 35 folded in and its BOUND→RACE reclassification noted
+(clock-injectable 26→**27**, bounds 7→**6**); race identifiers **restated as pytest NODE IDs** with the
+prose `file:line`+name columns **retained as superseded history, not deleted**, all nine truncations
+marked; and `docs/decisions/2026-07-27-a-ruling-is-not-in-force-until-its-artifact-is-committed.md`
+carrying D42's standing step and the regeneration rule verbatim with three specimens.
+**Consequence handled, not left broken:** the restatement changed the table shape
+`wo029_reverify_partition.py` parses, so it matched **zero rows and FAILED**; its regex now keys on the
+node-ID column and expects 31 rows / 27 clock-injectable → **PASS 31/31, counts 27/3/1**.
+
+**§3 — all 9 converted.** All **DIRECT**; **no transport migration rode along** (all were already on
+`connect_fn` from WO-024). Time driver before→after for every race: real `time.monotonic()` deadline →
+injected **coherent `AdvancingClock` pair** (shared `_coherence_token`), **delta = duration/50** so the
+deadline fires after a determinate ~50 monotonic reads — scaled per race rather than a single global
+constant, because batch A's fixed 0.01 would leave race 22's 0.05s window only ~5 reads.
+**Termination branches KEPT and asserted:** DEADLINE for 12/14/22/23/24/25/27 and race 26 half 1;
+**CRASH** for **entry 35** (the injected `RuntimeError` propagates out — not the deadline, not a
+scripted close); **VENUE-CLOSE** for **race 26 half 2** (the clean 1000 close ends the run — the dual's
+entire content is that the two closes take different paths, so the conversion had to keep half 2 off
+the deadline). **All nine `PROCEED_COHERENT`.**
+**NO ASSERTION WEAKENED, proved mechanically:** assert counts identical per file (15/11/7/8/7/8/18
+before and after) and **zero `+assert`/`-assert` lines in the diff** — 125 insertions / 18 deletions,
+every deletion a constructor line re-emitted with clock arguments.
+**Apparatus-honesty (D41) per race**, two worth noting: **race 24** keeps the throughput record's
+stamps on the REAL `time.monotonic()` (the injected clock drives only the deadline), so the latency
+assertions still measure real receive-to-process latency — the clock bounds the RUN, it does not
+manufacture the LATENCIES; **race 14** ("no host suspend under normal timing") gets a coherent pair
+whose wall/monotonic divergence is zero BY CONSTRUCTION — exactly the real-clock condition asserted,
+and the coherent half of the dual whose incoherent half is the foundation suspend test.
+**Deliberate non-conversion recorded in-file:** `test_backoff_breaker.py`'s **entry 31** stays on the
+real clock — a WO-033-measured bound at 199×, not an oversight.
+
+**§4 — determinism MEASURED, not asserted.** **12 runs all 222**, 0 f/xf/xp: {3.14.6, 3.11.15} ×
+{deterministic, seeds **20260901–20260905**}. **Entry 35 control demo**
+(`tools/wo035_entry35_clock_control.py`): the clock **DECIDES** the winner — δ=0.2/0.125/0.05 →
+DEADLINE, δ=0.005 (the converted value) / 0.0005 → **CRASH**, every setting reproducing exactly on
+repeat. CRASH is the branch every green real-clock run produced, so the conversion removes the *other*
+branch rather than manufacturing an unreachable state. **Ledger still bites**
+(`tools/wo035_ledger_still_bites.py`, 4 artifacts, sha256 `41562333…` exact-restore): repointing the
+wall reader at a second `AdvancingClock` makes the gate REFUSE on COHERENCE and the session-end
+assertion FAIL **naming both batch-C nodeids**.
+
+**ACCEPTANCE:** 222 = 222 + 0 (converts, adds/removes nothing); gate ledger **43 invocations, 0
+unmarkered refusals, 0 stale markers**, sole `PROCEED_DECLARED` still the foundation suspend test;
+lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass; `test_evidence_write_boundary.py`
+4/4; **five production sha256s IDENTICAL** (`b06c347e…`, `103a8ba7…`, `5bf833c7…`, `dab18f67…`,
+`3d153a11…`), `git diff -- src/` empty.
+
+**NEXT: the keepalive seam WO closes batch B's remaining 3 (races 6/15/16), sized by WO-031 §4 to
+exactly `last_frame` + `last_ping` → all 27 done → taxonomy migration → capture-loop baseline →
+corpus preconditions.**
 
 ---
 

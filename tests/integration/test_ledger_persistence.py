@@ -14,6 +14,7 @@ redaction module.
 
 import copy
 import json
+import time
 
 import pytest
 from unittest.mock import patch
@@ -22,15 +23,30 @@ from websockets.exceptions import ConnectionClosedError
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME, UPDATE_MODIFY_LEVEL
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
+
+# WO-035 §3 (batch C) — DETERMINISTIC TIME. These captures used to be bounded by the REAL clock, so
+# whether the scripted frames finished before `duration_seconds` elapsed was a race against scheduler
+# load. Both races here now drive the deadline through an injected COHERENT `AdvancingClock` pair.
+#
+# The delta is chosen as `duration / _READS_BEFORE_DEADLINE`, so the deadline fires after a
+# DETERMINATE number of monotonic reads — the same construction gives the same firing point on every
+# run and in every order. 50 leaves a wide margin over the ~4 recv iterations these scripts need
+# (WO-029 §9 measured its firing point rather than deriving it; the margin is deliberate, not tight).
+_READS_BEFORE_DEADLINE = 50
 
 
 async def _no_sleep(_delay):
     return None
 
 
-def _live_adapter(persist_path, connect_fn=None):
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn)
+def _live_adapter(persist_path, connect_fn=None, clock=None):
+    adapter = KrakenV2BookAdapter(
+        mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=connect_fn,
+        monotonic_clock=(clock.monotonic if clock is not None else None) or time.monotonic,
+    )
+    if clock is not None:
+        adapter._wall_clock = clock.wall        # the coherent partner (shared token) — gate PROCEEDs
     adapter._reconnect_sleep = _no_sleep
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0
@@ -53,7 +69,12 @@ async def test_gap_ledger_persisted_readable_from_disk(tmp_path):
         {"frames": [SNAPSHOT_FRAME, unexpected], "on_drain": "block"},
         {"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"},
     ])
-    adapter = _live_adapter(path, connect_fn=factory.connect)
+    # WO-035 §3 — race 12 terminates on the DEADLINE branch (socket 2 heartbeats keep the link up),
+    # and that branch is KEPT: the injected clock fires the same deadline, it does not replace it
+    # with a scripted close. Asserted below via run_end + resolved, which only exist because the run
+    # reached its clean finalize after the reconnect.
+    clk = AdvancingClock(delta=0.25 / _READS_BEFORE_DEADLINE)
+    adapter = _live_adapter(path, connect_fn=factory.connect, clock=clk)
 
     async for _ in adapter.get_live_market_data(duration_seconds=0.25):
         pass
@@ -91,7 +112,20 @@ async def test_incremental_persist_survives_unhandled_exception_mid_capture(tmp_
     factory = ScriptedConnectionFactory([
         {"frames": [SNAPSHOT_FRAME, corrupted, crash], "on_drain": "block"},
     ])
-    adapter = _live_adapter(path, connect_fn=factory.connect)
+    # WO-035 §3 — ENTRY 35, the race this whole bound re-audit began with.
+    #
+    # This test asserts the CRASH wins: `pytest.raises(RuntimeError)` requires the loop to drain the
+    # THIRD scripted frame. Against the real clock that was a race — the 0.25s deadline could end the
+    # capture cleanly first, and CI observed exactly that (run 30304749145, seed 2050525690, "DID NOT
+    # RAISE"). WO-033 §3-bis measured the boundary: at AdvancingClock(delta=0.05) the gap opens but
+    # the crash never arrives; at delta<=0.01 the crash reliably wins.
+    #
+    # The conversion pins the asserted winner rather than leaving it to the real-time race: delta is
+    # 0.25/50 = 0.005, so ~50 monotonic reads are available against the ~3 recvs the crash needs. The
+    # CRASH branch is kept — the run still ends by the injected exception propagating out, not by a
+    # deadline and not by a scripted close.
+    clk = AdvancingClock(delta=0.25 / _READS_BEFORE_DEADLINE)
+    adapter = _live_adapter(path, connect_fn=factory.connect, clock=clk)
 
     with pytest.raises(RuntimeError, match="injected unhandled crash"):
         async for _ in adapter.get_live_market_data(duration_seconds=0.25):

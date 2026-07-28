@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, GAP_CAUSES
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
 
 
 class _JumpClock:
@@ -95,7 +95,17 @@ async def test_no_host_suspend_under_normal_timing():
     """Normal operation (no injected jump) records NO host-suspend gap — wall and monotonic
     track each other well within the drift bound."""
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    # WO-035 §3 — race 14. Terminates on the DEADLINE branch (heartbeats keep the link up); kept.
+    #
+    # The COHERENT pair is doubly apt here: "normal timing" IS wall and monotonic tracking each
+    # other, and AdvancingClock drives both from ONE counter with the fixed D25 offsets — so the
+    # divergence the suspend detector looks for is zero BY CONSTRUCTION, which is exactly what this
+    # test asserts. Its sibling above injects a deliberately INCOHERENT pair to manufacture a
+    # suspend; this is the coherent half of that dual.
+    clk = AdvancingClock(delta=0.2 / 50)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect,
+                                  monotonic_clock=clk.monotonic)
+    adapter._wall_clock = clk.wall
     adapter._persistence_optional = True
     adapter._heartbeat_absence_timeout = 100.0
     adapter._app_ping_interval = 100.0

@@ -18,14 +18,24 @@ from unittest.mock import patch
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, ThroughputRecord
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory
+from tests.fixtures.fake_ws_transport import AdvancingClock, ScriptedConnectionFactory
 
 
 @pytest.mark.asyncio
 async def test_receive_to_process_latency_recorded_through_production_path():
     """A real capture populates the throughput record from the recv -> process_raw_frame path."""
     factory = ScriptedConnectionFactory([{"frames": [SNAPSHOT_FRAME], "on_drain": "heartbeat"}])
-    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect)
+    # WO-035 §3 — race 24. Terminates on the DEADLINE branch (heartbeats keep the link up); kept.
+    #
+    # APPARATUS NOTE: the throughput record's own stamps stay on the REAL `time.monotonic()` — the
+    # injected clock drives only the deadline. So the assertions below still measure real
+    # receive-to-process latency through the production path; the fake clock bounds the RUN, it does
+    # not manufacture the LATENCIES being asserted on. (Were it otherwise, `lat_max >= 0.0` would be
+    # a decoupling artifact rather than a measurement — D41.)
+    clk = AdvancingClock(delta=0.1 / 50)
+    adapter = KrakenV2BookAdapter(mode=KrakenV2BookAdapter.MODE_LIVE, connect_fn=factory.connect,
+                                  monotonic_clock=clk.monotonic)
+    adapter._wall_clock = clk.wall
     adapter._persistence_optional = True  # WO-014c-3 C: fixture opt-out (no live persistence)
 
     async for _ in adapter.get_live_market_data(duration_seconds=0.1):

@@ -30,7 +30,9 @@ from unittest.mock import patch
 
 from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter, CircuitBreakerTripped
 from tests.fixtures.kraken_v2_raw_frames import SNAPSHOT_FRAME
-from tests.fixtures.fake_ws_transport import ScriptedConnectionFactory, REOPEN_FAILURE
+from tests.fixtures.fake_ws_transport import (
+    AdvancingClock, ScriptedConnectionFactory, REOPEN_FAILURE,
+)
 
 
 async def _no_sleep(_delay):
@@ -62,7 +64,17 @@ async def test_transient_reopen_failure_retries_under_backoff_then_emission_resu
     socket2 = [SNAPSHOT_FRAME]                                        # the reopen that succeeds
     # connect #1 = socket1 (initial); #2,#3 = refused reopens; #4 = socket2.
     factory = ScriptedConnectionFactory([socket1, REOPEN_FAILURE, REOPEN_FAILURE, socket2])
+    # WO-035 §3 — race 27. Terminates on the DEADLINE branch, kept.
+    #
+    # The window must outlast six frames, two refused reopens and a successful one. Against the real
+    # clock that ordering rode on scheduler load; delta = 0.1/50 gives ~50 monotonic reads for the
+    # ~9 the script needs. NOTE the sibling below (entry 31, a MEASURED bound at 199x) deliberately
+    # stays on the real clock: its breaker trips on the non-injectable `time.monotonic()` streak, and
+    # WO-033 measured that margin rather than assuming it — converting it is not in batch C.
+    clk = AdvancingClock(delta=0.1 / 50)
     adapter = _live_adapter(connect_fn=factory.connect)
+    adapter._monotonic_clock = clk.monotonic
+    adapter._wall_clock = clk.wall
 
     # Short window: under keepalive a silent link reconnects rather than ending the run, so
     # the capture ends at its deadline (well under the default ping/absence thresholds).
