@@ -261,9 +261,10 @@ already lives in a batch-C file.
 
 ## §CI
 
-- **Commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **Commit:** `aef3166`
+- **Local == remote:** `aef31668fdfee8ea32ef1c4fe4eed0efefc2c5db` == `origin/master`
+- **CI run `30316789147`** — **`test (3.11)` success · `test (3.14)` success**, green both legs on the
+  first attempt (both orders, including the randomized leg that surfaced the §3-bis bound).
 
 **THEN STOP.** §4 convicts keepalive-shaped reads → the keepalive seam WO is next, sized to exactly
 `last_frame` and `last_ping`. §3-bis's reclassification (26 → 27) escalates before it joins any batch.

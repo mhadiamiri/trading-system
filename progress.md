@@ -823,7 +823,7 @@ batch-C file.
 
 **ACCEPTANCE:** 222 both interpreters; reverify PASS 30/30 + clean tree; `test_evidence_write_boundary.py`
 4/4 (the new probe writes to `.artifacts/`); lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
-pass; `git diff -- src/ tests/` **empty**; five production sha256s IDENTICAL (`b06c347e…`, `103a8ba7…`,
+pass; `git diff -- src/ tests/` **empty**; CI GREEN BOTH LEGS run `30316789147` on `aef3166` (first attempt, both orders); local == remote; five production sha256s IDENTICAL (`b06c347e…`, `103a8ba7…`,
 `5bf833c7…`, `dab18f67…`, `3d153a11…`).
 
 **NEXT: (1) the keepalive clock-seam WO, sized to exactly `last_frame` + `last_ping` — it unblocks races
