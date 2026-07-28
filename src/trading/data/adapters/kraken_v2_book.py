@@ -1286,6 +1286,11 @@ class KrakenV2BookAdapter:
         # WO-038 §3: per-frame performance instrument (disabled by default, enabled for tests).
         # Initialized here but reset in get_live_market_data for each capture.
         self._per_frame_record = PerFrameRecord()
+        # WO-038 §3.4: BITE PROOF — test-only delay injection on the measured path.
+        # If non-zero, injects an asyncio.sleep(delay) between frame processing and
+        # frame end recording, so the instrument's measured distribution shifts by
+        # the injected amount. This proves the instrument observes the REAL loop.
+        self._test_per_frame_delay_seconds: float = 0.0
         # WO-023 §2 (RULING D34-1): the injectable DEADLINE clock. A duration is an INTERVAL and
         # D25 puts intervals on MONOTONIC, so the capture deadline runs on THIS, not on _wall_clock
         # (which is the suspend detector's wall and CAN jump — line 1136). Default time.monotonic;
@@ -2942,6 +2947,14 @@ class KrakenV2BookAdapter:
                 # single hook serves keepalive, checksum, and venue-disconnect gaps.
                 if market_states:
                     self._close_open_gaps(done_mono)
+
+                # WO-038 §3.4: BITE PROOF — inject test-only delay on measured path.
+                # If _test_per_frame_delay_seconds is non-zero, inject an asyncio.sleep
+                # BEFORE recording frame end, so the delay is INCLUDED in the measured
+                # interval. This proves the instrument observes the REAL loop: when we
+                # inject a known delay, the measured distribution shifts by that amount.
+                if self._test_per_frame_delay_seconds > 0:
+                    await asyncio.sleep(self._test_per_frame_delay_seconds)
 
                 # WO-038 §3: per-frame performance instrument — record frame end.
                 # Captured AFTER processing completes, BEFORE yield. The yield time itself
