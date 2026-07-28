@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-27 (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
+**Last Updated**: 2026-07-28 (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
+**Prior — 2026-07-27** (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
 **⚠ OPEN FOR THE LEAD (WO-032 §FINDING):** the WO-023 audit's **"7 legitimate BOUNDS"** bucket contains at least one real race — `test_incremental_persist_survives_unhandled_exception_mid_capture` (`test_ledger_persistence.py:82`), proved OUTCOME-BEARING on the real-clock deadline at the pre-WO-032 baseline. The bucket was justified by the same style of prose reasoning that was falsified, so **the pass-two denominator may exceed 26.** Re-examine all 7 under D39's method before batch C.
 **WO-032**: HEAD `e7da7cf` (base `3410435`); CI green both legs run `30304749145` — see the **▶ WO-032** block below. §1 name-keyed verdict + §1.3 bite proof; §2 the D39 partition amendment committed; §3/§4.4 three decision docs (D39 ×2, **D40** for the guard-reach doctrine); §4 all 11 `evidence/`-writing `tools/` scripts moved to git-ignored `.artifacts/`, plus `tests/test_evidence_write_boundary.py` (4 tests) and its bite proof. Two instrument defects self-caught mid-build and reported. Five production sha256s identical.
 **WO-031**: STOPPED at §2, no classification produced — the D39 amendment existed only in `instructions.md`. §1 baseline verified (218/218, batch-B membership confirmed) and reusable. Surfaced Findings 3 (stale-by-construction reverify verdict) and 4 (live WO-026 regression). See the **▶ WO-031** block below.
@@ -763,6 +764,72 @@ before batch C is planned.
 
 **NEXT: WO-031 re-runs from §1** against the now-committed amended partition and the fixed,
 name-keyed, `.artifacts/`-writing reverify tool. Its §1 baseline is already verified and reusable.
+
+---
+
+## ▶ WO-031 (REISSUED) COMPLETE (AUTHORITATIVE) — 2026-07-28 — batch-B classification + a BOUND reclassified
+
+> The re-run of WO-031 after WO-032 cleared its §2 STOP. **CLASSIFY-ONLY: converts nothing, threads no
+> seam, edits no test/src/fixture.** Base HEAD `29fb577`. **SHIP IMPACT: NO.** Report:
+> `WO-031-BATCH-B-CLASSIFICATION-REPORT.md` (SUPERSEDES the earlier STOP report; the STOP itself stays
+> on the record in the **▶ WO-031 STOPPED** block above). Evidence: `evidence/WO-031/`.
+
+**§1/§2:** HEAD `29fb577`; **222** both interpreters (3.14.6 / 3.11.15), 0 f/xf/xp. Reverify tool
+**PASS 30/30 by name**, exit 0, and **`git status` clean after the run** — the WO-032 §4 fix held (the
+same tree returned `25/30 FAIL` under the old line-keyed verdict). The D39 amendment is on the tree
+(struck phrase gone, B/C requirement present, dated AMENDMENT section) → **the WO-031-first STOP is
+cleared**. Batch B confirmed: 13 races across `test_gap_recording.py` (6–11), `test_keepalive.py`
+(15–16), `test_failure_cap.py` (17–19), `test_failure_capture.py` (20–21).
+
+**§3/§4 — THE CLASSIFICATION (`evidence/WO-031/batch_b_clock_read_classification.md`).**
+**All 13 races terminate on the DEADLINE branch**, so every batch-B conversion must use `AdvancingClock`,
+not a scripted close. **N = 10 CONVERTIBLE now** (7, 8, 9, 10, 11, 17, 18, 19, 20, 21); **M = 3
+NOT-YET-CONVERTIBLE** (6, 15, 16). **The outcome-bearing NON-INJECTABLE set is exactly TWO reads** —
+**`last_frame`** (heartbeat-absence clock, `:2551/:2682/:2715/:2772/:2777`) convicted by races 6, 15, 16,
+and **`last_ping`** (app-ping interval, `:2552/:2683/:2716/:2718/:2773`) convicted by race 16 on
+`assert len(pings) >= 3`. **This and NOTHING more is what the keepalive seam WO threads**
+(seam-sized-to-measurement). The incidental-everywhere set is recorded explicitly as a **ruled
+asymmetry** (start_time, ledger anchor, gap stamps, per-frame instrument stamps, done_mono, throughput
+end, run_end, the 600s breaker streak, pong/ping observer stamps). **The fact that carries the
+classification:** a fake clock drives only `_monotonic_clock`/`_wall_clock`; every non-injectable read
+stays on the REAL clock and a converted run still finishes in ms — so 5s/10s/600s thresholds cannot be
+reached by changing the injected rate. Where an assertion does touch a non-injectable read it
+constrains sign/ordering/type/key-presence only, true for any monotonic source. **FORK: the EXPECTED one**
+— keepalive/ping pacing, two reads, NOT the instruments → **no §4 STOP; Ops may scope the keepalive seam
+WO on existing D39.** Fixture needs: **none new** (race 11 is a deadline-assertion race, `AdvancingClock`
+already exists). Race 9 is the only batch-B race running on DEFAULT thresholds — checked, not assumed.
+
+**§3-bis — ⚠ A BOUND RECLASSIFIED, DENOMINATOR CHANGE, ESCALATED
+(`evidence/WO-031/bound_reaudit_incremental_persist.md`).**
+`test_incremental_persist_survives_unhandled_exception_mid_capture` (`test_ledger_persistence.py:82`),
+filed among the **7 legitimate BOUNDS** as *"dur=0.25, injected crash ends it"*, is **verdict (a): a RACE
+the audit misfiled**. Classified by the D39 method, NOT from WO-032's symptom. **Which read, pinned:**
+`AdvancingClock` advances only on monotonic reads and `_monotonic_clock` is routed to exactly three
+sites (`:2548`, `:2594`, `:2727`) — all the DEADLINE seam; every other read is raw and untouched by the
+fixture. **Which assertion:** `pytest.raises(RuntimeError, match="injected unhandled crash")`, which
+fails `DID NOT RAISE` exactly when the deadline wins. **The measurement** (`tools/wo031_bound_reaudit_probe.py`,
+re-runnable, writes to `.artifacts/`) shows the run ending progressively earlier in the script as the
+clock speeds up — `delta=0.2` never reaches frame 2; **`delta=0.05` opens the gap but never reaches the
+crash**; `delta=0.01`/`0.0001`/real reach it. The read is **INJECTABLE**, so it is
+**CLOCK-INJECTABLE/CONVERTIBLE**, not NOT-YET. **Denominator: clock-injectable 26 → 27; bounds 7 → 6;
+audit total unchanged at 30.** NOT folded into a batch, `batch_partition.md` NOT amended — **awaiting the
+lead's ratification.** If ratified its natural home is batch C (same file as race 12), which becomes 9.
+**The other 6 bounds enumerated** (entries 31–34 carry ~300× deadline margin; 36–37 terminate before the
+loop): entry 35 is the sole outlier, the only bound whose deadline is the same order as the work it
+covers. **Recorded as "not obviously shaped like 35", NOT as proved safe** — the margin argument is the
+same FORM of prose reasoning just falsified, and only the ratio distinguishes them. **Recommend one
+follow-on probe pass over the other 6 before batch C is planned**, since entry 35 already lives in a
+batch-C file.
+
+**ACCEPTANCE:** 222 both interpreters; reverify PASS 30/30 + clean tree; `test_evidence_write_boundary.py`
+4/4 (the new probe writes to `.artifacts/`); lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
+pass; `git diff -- src/ tests/` **empty**; five production sha256s IDENTICAL (`b06c347e…`, `103a8ba7…`,
+`5bf833c7…`, `dab18f67…`, `3d153a11…`).
+
+**NEXT: (1) the keepalive clock-seam WO, sized to exactly `last_frame` + `last_ping` — it unblocks races
+6, 15, 16; (2) a ruling on the §3-bis reclassification (26 → 27) before it joins a batch; (3) the 10
+convertible batch-B races can convert whenever the lead schedules them, all on the deadline branch via
+`AdvancingClock`.**
 
 ---
 

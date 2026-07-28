@@ -1,251 +1,194 @@
-# WO-031 — PASS TWO, BATCH B CLASSIFICATION: **STOPPED AT §2. NO COMMIT.**
+# WO-031 (reissued) — PASS TWO, BATCH B CLASSIFICATION + one BOUND re-audit
 
-**Outcome: the pre-committed STOP of §2 fired.** The D39 amendment to `batch_partition.md`'s B/C plan
-is **not present in the committed file** — it exists only inside `instructions.md`. Per §2 ("If it is
-NOT (e.g. the amendment was described but not committed), STOP and report — batch B cannot be planned
-against an unamended partition") and §0.7 ("Any OPERATED row not verified as stated → STOP and
-report"), the classification of §3/§4 was **not produced**.
+**COMPLETE. No STOP.** This report **SUPERSEDES** the earlier WO-031 STOP report (the first issue
+halted at §2 because D39's partition amendment and decision docs were ratified but never committed;
+WO-032 committed them, so §2's precondition is now satisfied and this run proceeded through §3/§4).
+The STOP itself remains on the record in `progress.md`'s **▶ WO-031** block and in WO-032's premise.
 
-Per §0.1 this is an **expected outcome, not a failure**. Nothing was converted, no seam was threaded,
-no test or src file was edited. Following the precedent of WO-029's own §2.0 STOP (`progress.md`:
-"STOPPED at §2.0, no commit"), **nothing is committed** and no `progress.md` block is appended —
-both await the lead's disposition.
+**SHIP IMPACT: NO.** Converts nothing, threads no seam, edits no test/src/fixture. Deliverables are
+two evidence artifacts, one re-runnable probe under `tools/`, and a `progress.md` block.
 
-**Two further findings surfaced, one of them a live defect in an instrument this WO was instructed to
-run.** They are at §Finding-3 and §Finding-4 and matter independently of the STOP.
-
----
-
-## §0 RULES OF ENGAGEMENT — disposition
-
-| Rule | Disposition |
+| Item | Result |
 |---|---|
-| 0.1 No discretion; code wins; STOP is an expected outcome | **HELD.** The §2 condition was met and the WO stopped there. §3/§4 were not attempted under an assumed amendment. |
-| 0.2 No edits beyond one evidence artifact + a progress.md block | **HELD — with one incident, repaired.** The §1-mandated tool overwrote a committed evidence file as a side effect of being run (see Finding 4). Restored via `git checkout`; tree verified clean. No test or src file touched. |
-| 0.3/0.4 No guards built; no bite proof owed | **N/A** — no guard built. No classification instrument was written (the classification was not reached). |
-| 0.5 Report every attempt | **HELD** — §Attempts. |
-| 0.7 BUILT-VS-OPERATED (D24) | **ONE ROW FAILS** — table below. |
+| §1 HEAD / suite / partition integrity | **PASS** — 222 both interpreters; reverify PASS 30/30 by name; tree clean after the run |
+| §2 amended B/C plan on the tree | **PASS** — the WO-031-first STOP is cleared |
+| §3 batch-B classification (13 races) | **DONE** — `evidence/WO-031/batch_b_clock_read_classification.md` |
+| §4 outcome-bearing aggregate | **DONE** — **N = 10 convertible, M = 3 not-yet**; the EXPECTED fork obtains |
+| §3-bis bound re-audit | **DONE** — verdict **(a) a misfiled RACE**; denominator **26 → 27**, escalated |
+| §5 scope fence | **HELD** |
 
-### §0.7 — the OPERATED rows, verified at this HEAD
+---
 
-| Thing | Claimed | Verified? | Evidence |
+## §1 — HEAD, SUITE, PARTITION INTEGRITY
+
+**Actual HEAD: `29fb577`** — `WO-032 close: CI GREEN both legs (run 30304749145) + a FINDING for the
+lead`. The WO names base `1b52c53`; `e7da7cf` (the §1.3 fix) and `29fb577` (the docs close) landed on
+top of it. **Used `29fb577`, as §1 directs.**
+
+| Interpreter | Result |
+|---|---|
+| 3.14.6 (ambient) | **222 passed** in 246.03 s, 0 f/xf/xp |
+| 3.11.15 (strict uv venv) | **222 passed** in 244.84 s, 0 f/xf/xp |
+
+**`tools/wo029_reverify_partition.py` → PASS, 30/30 by name**, exit 0, output written to
+`.artifacts/wo029_reverify_partition/<stamp>.txt`. **`git status` after the run: clean** (only the
+lead's own `instructions.md` edit) — **the WO-032 §4 fix held**; the instrument no longer dirties
+`evidence/`. Under the old line-keyed verdict this same tree returned `25/30 · FAIL`.
+
+**Batch B membership from the committed amended partition — 13 races, confirmed:**
+`test_gap_recording.py` (6–11) · `test_keepalive.py` (15–16) · `test_failure_cap.py` (17–19) ·
+`test_failure_capture.py` (20–21).
+
+## §2 — THE AMENDED B/C PLAN IS ON THE TREE
+
+Confirmed present in the committed `evidence/WO-029/batch_partition.md`:
+
+- The struck phrase is **gone** — searching the committed file for `terminate via scripted clean-close`
+  returns nothing; batch A's entry now records *"All five converted on their OWN termination branch —
+  the DEADLINE — asserted, via `AdvancingClock`."*
+- The requirement is **added** to B and C: *"each race must KEEP its own production termination branch
+  … asserted, not assumed. No scripted-clean-close substitution."*
+- A dated `## AMENDMENT — 2026-07-27 (WO-032 §2, implementing D39 item 1)` section is present.
+
+**The WO-031-first STOP is cleared.** Proceeded.
+
+---
+
+## §3/§4 — BATCH-B CLASSIFICATION (full detail in the evidence artifact)
+
+Full per-race work — termination branch, complete read enumeration with call sites and
+injectable/non-injectable tags, per-read outcome/incidental classification with the naming evidence,
+and per-race verdict — is in **`evidence/WO-031/batch_b_clock_read_classification.md`**. Summary:
+
+| Race | Test | Branch | Verdict |
 |---|---|---|---|
-| WO-029 batch A partition (`batch_partition.md`) | OPERATED — committed `d0450fa`, **amended B/C plan per D39** | **NO — the amendment is absent** | `git log -- evidence/WO-029/batch_partition.md` → **exactly one commit, `d0450fa`**. Committed text still contains the phrase the amendment was to strike. See §2. |
-| The 26-race enumeration + `wo029_reverify_partition.py` | OPERATED — WO-029 §2.0, `f0660e3` | **YES, with a caveat** | Tool exists and runs; all 30 names resolve; categories 26/3/1 correct. But it now exits 1 / VERDICT FAIL — see Finding 3. |
-| `AdvancingClock` self-advancing fixture | OPERATED — shared harness | **YES** | `tests/fixtures/fake_ws_transport.py:248` `class AdvancingClock`, sharing `_coherence_token` (`:287`, `:295`) beside `FakeClock` (`:46`). |
-| Clock seam through runner/factory/builder | OPERATED — WO-030 | **YES** | `live_capture.py:58-59,85-86,135-136`; `factory.py:68-69,112-113`; `registry.py:34` `_LIVE_FORWARDED_PARAMS = ("connect_fn", "monotonic_clock", "wall_clock")`. |
-| The batch-B clock-read classification | THIS WO IS THE BUILDER | **NOT BUILT** | Blocked by the §2 STOP. |
+| 6 | `test_keepalive_reconnect_gap_recorded` | deadline | **NOT-YET** — `last_frame` |
+| 7 | `test_checksum_resync_gap_recorded` | deadline | CONVERTIBLE |
+| 8 | `test_breaker_retry_ladder_recorded_on_reconnect_gap` | deadline | CONVERTIBLE |
+| 9 | `test_venue_disconnect_gap_recorded` | deadline | CONVERTIBLE *(runs on DEFAULT thresholds)* |
+| 10 | `test_overlapping_gaps_union_and_collective_close` | deadline | CONVERTIBLE |
+| 11 | `test_ledger_reports_incomplete_gap` | deadline *(load-bearing)* | CONVERTIBLE *(deadline-assertion)* |
+| 15 | `test_heartbeat_absence_triggers_reconnect` | deadline | **NOT-YET** — `last_frame` |
+| 16 | `test_application_ping_pong_keeps_a_quiet_link_alive` | deadline | **NOT-YET** — `last_ping` + `last_frame` |
+| 17 | `test_count_cap_keeps_first_n_counts_all_announces` | deadline | CONVERTIBLE |
+| 18 | `test_byte_cap_binds_independently` | deadline | CONVERTIBLE |
+| 19 | `test_capped_failures_get_one_line_summaries` | deadline | CONVERTIBLE |
+| 20 | `test_checksum_failure_capture_has_every_ruled_field` | deadline | CONVERTIBLE |
+| 21 | `test_every_checksum_failure_captured_not_positionally_sampled` | deadline | CONVERTIBLE |
+
+**All 13 terminate on the DEADLINE branch** — so the amended partition's keep-the-branch requirement
+points every batch-B conversion at `AdvancingClock`, not at a scripted close.
+
+### §4 counts
+
+**N = 10 CONVERTIBLE now** (7, 8, 9, 10, 11, 17, 18, 19, 20, 21) · **M = 3 NOT-YET-CONVERTIBLE**
+(6, 15, 16).
+
+### The outcome-bearing NON-INJECTABLE set — exactly TWO reads
+
+| Read | Threshold field | Convicted by | On which assertion |
+|---|---|---|---|
+| **`last_frame`** — heartbeat-absence clock (`:2551, :2682, :2715, :2772, :2777`) | `_heartbeat_absence_timeout` | race 6 | `gaps_detected == 1`, `cause == "KEEPALIVE_RECONNECT"`, `reason_code == "HEARTBEAT_ABSENCE"` |
+| | | race 15 | `"HEARTBEAT_ABSENCE" in caplog.text`, `connect_count == 2`, `sockets[0].closed is True`, `len(emitted) == 2` |
+| | | race 16 | `connect_count == 1`, `"HEARTBEAT_ABSENCE" not in caplog.text` |
+| **`last_ping`** — application-ping interval (`:2552, :2683, :2716, :2718, :2773`) | `_app_ping_interval` | race 16 | `len(pings) >= 3` |
+
+**This, and nothing more, is what the keepalive seam WO threads** (D39 seam-sized-to-measurement).
+
+### The incidental-everywhere set — UNTHREADED BY DESIGN, recorded
+
+`_start_time` · ledger `anchor_monotonic` · gap open/close stamps · per-frame instrument stamps ·
+`done_mono` receive→process latency · throughput window end · ledger `run_end_monotonic` · the 600 s
+duration-breaker streak · pong-observer stamps · app ping/pong observer stamps.
+
+Where a batch-B assertion touches one of these it constrains **sign, ordering, type or key presence**
+(`open_monotonic > 0`, `close_monotonic >= open_monotonic`, `close_a == close_b`,
+`max(opens) <= close`, `isinstance(monotonic, float)`, `set(summary_keys) == {…}`) — true for any
+monotonic source at any rate, so they survive conversion. This is a **ruled asymmetry, not a place
+work stopped** (D39 / D37-D38).
+
+**A fact that carries most of the classification:** a fake clock drives only `_monotonic_clock` /
+`_wall_clock`; every non-injectable read stays on the **real** clock, and a converted run still
+finishes in milliseconds of real time. So a 5 s / 10 s / 600 s threshold is not merely unreached today
+— it cannot be reached by changing the injected clock's rate.
+
+### Which fork obtains
+
+**THE EXPECTED ONE.** The outcome-bearing set is two reads, both **keepalive/ping pacing** — precisely
+the shape D39 predicted, naming `test_keepalive` in advance. It does **not** touch the
+throughput/lag/pong **instruments** and it is not large. **No §4 STOP; Ops may scope the keepalive seam
+WO on the existing D39 ruling, sized to exactly these two reads.**
+
+### Fixture needs (3.4)
+
+**None new.** Race 11 is a deadline-assertion race a frozen clock cannot terminate — but
+`AdvancingClock` (WO-029 §2.0-bis) is already in the shared harness. Flagged, not built.
 
 ---
 
-## §1 — HEAD, SUITE, AND BATCH-B MEMBERSHIP (completed before the STOP)
+## §3-bis — THE BOUND RE-AUDIT (full detail in the second evidence artifact)
 
-**Actual HEAD: `3410435`** — `WO-029 batch A close: CI GREEN both legs (run 30279805350) + fill run id
-in report/progress`.
+**`test_incremental_persist_survives_unhandled_exception_mid_capture`**
+(`test_ledger_persistence.py:82`), filed by the audit among the **7 legitimate BOUNDS** as
+*"dur=0.25, injected crash ends it"*.
 
-The WO names base `f0660e3`; `3410435` is the docs-only close sitting on top of it. Verified
-docs-only: `git diff --stat f0660e3 3410435` → `WO-029-BATCH-A-REPORT.md | 2 +-`,
-`progress.md | 5 +++--` — **2 files, 4 insertions, 3 deletions, no code**. Working tree clean at start
-(`git status --porcelain` → only the lead's own `instructions.md` edit).
+**Verdict: (a) — a RACE the audit misfiled as a BOUND. The read is INJECTABLE, so it is
+CLOCK-INJECTABLE / CONVERTIBLE. Denominator 26 → 27. ESCALATED, not folded into a batch.**
 
-**Suite — 218 on both interpreters, deterministic order:**
+Classified by the D39 method, **not** from the symptom — §3-bis explicitly forbids reclassifying from
+the differential observation, and the D39 doc says the category comes from the classification.
 
-| Interpreter | Command | Result |
-|---|---|---|
-| 3.14.6 (ambient) | `pytest tests/ -p no:randomly -rX` | **218 passed** in 245.82 s, 0 f/xf/xp |
-| 3.11.15 (strict, throwaway uv venv) | `pytest tests/ -p no:randomly -rX` | **218 passed** in 245.03 s, 0 f/xf/xp |
+**Which read, pinned rather than guessed.** `AdvancingClock` advances on **monotonic** reads only, and
+`_monotonic_clock` is routed to exactly three sites — `:2548` (deadline set), `:2594` (deadline guard),
+`:2727` (recv timeout) — all the **deadline** seam. Every other read on the path is raw
+`time.monotonic()`/`time.time()`, untouched by the fixture. A divergence under it cannot originate in a
+non-injectable read.
 
-`PYTHONUTF8=1` was set on every invocation (without it `contract_count_check.py` aborts the session at
-`pytest_sessionstart` with a `TypeError` that is really a cp1252 decode failure — environmental, not a
-repo defect; CI is Linux/UTF-8 and never sees it).
+**Which assertion observes it.** The test's central one:
+`with pytest.raises(RuntimeError, match="injected unhandled crash"):` — it fails with
+`Failed: DID NOT RAISE` exactly when the deadline wins, which is the CI symptom seen on run
+`30304749145` (3.14, seed `2050525690`).
 
-**Batch B membership — confirmed against the committed file, matches the WO exactly:**
+**The measurement** (`tools/wo031_bound_reaudit_probe.py`), showing the run ending progressively
+earlier in the script as the deadline clock advances faster:
 
-| File | Races | Count |
-|---|---|---|
-| `test_gap_recording.py` | 6, 7, 8, 9, 10, 11 | 6 |
-| `test_keepalive.py` | 15, 16 | 2 |
-| `test_failure_cap.py` | 17, 18, 19 | 3 |
-| `test_failure_capture.py` | 20, 21 | 2 |
-| | | **13** |
+| Clock | emitted | frame 2 reached | gap opened | frame 3 reached (crash) |
+|---|---|---|---|---|
+| real clock | 1 | True | 1 | **True** |
+| `AdvancingClock(delta=0.2)` | 0 | False | 0 | **False** |
+| `AdvancingClock(delta=0.05)` | 1 | **True** | 1 | **False** |
+| `AdvancingClock(delta=0.01)` | 1 | True | 1 | **True** |
+| `AdvancingClock(delta=0.0001)` | 1 | True | 1 | **True** |
 
-This is byte-for-byte what `batch_partition.md` states. **No discrepancy — no STOP on this criterion.**
+`delta=0.05` is the decisive row: frame 2 drains and opens the gap, then the deadline arrives and
+frame 3 never does. The audit's justification holds only when the loop **wins a race** against the
+deadline; it is not a property of the script.
 
-**`tools/wo029_reverify_partition.py` — did NOT return 30/30. It returned 25/30 and exited 1.** This
-is Finding 3; it is not a partition defect and it does not move any batch-B race.
+**Consequence:** clock-injectable **26 → 27**, legitimate bounds **7 → 6**, audit total unchanged at 30.
+**Escalated.** This WO did not amend `batch_partition.md`, did not assign the test to a batch, and did
+not touch it. If ratified, its natural home is batch C (same file as race 12), which would become 9.
 
----
+### The other 6 bounds — enumerated and scoped, not probed
 
-## §2 — THE STOP: THE AMENDED B/C PLAN DID NOT LAND
+| # | Bound | Deadline | Work before the terminator | Shares the shape? |
+|---|---|---|---|---|
+| 31 | `test_backoff_breaker.py:88 test_persistent_reopen_failure_trips_breaker_loud` | 30 s | breaker trip ~0.1 s | No — ~300× margin |
+| 32 | `test_gap_recording.py:202 test_terminal_venue_disconnect_breaker_gap_recorded` | 30 s | breaker trip | No — ~300× margin |
+| 33 | `test_live_capture.py:172 test_breaker_trip_terminates_run_with_forensic_tail` | 30 s | breaker trip | No — ~300× margin |
+| 34 | `test_reconnect_to_effect.py:100 test_stranded_reconnect_flag_fails_loudly` | 30 s | flag raises | No — ~300× margin |
+| 35 | **`test_ledger_persistence.py:82`** | **0.25 s** | **3 frames must drain** | **YES — reclassified** |
+| 36 | `test_no_silent_fallback.py:25 test_connection_failure_raises_and_does_not_replay` | 5 s | raises during connect | No — before the loop |
+| 37 | `test_no_silent_fallback.py:52 test_live_method_refuses_fixture_mode_adapter` | 1 s | refuses pre-loop | No — deadline never consulted |
 
-§2 requires confirming that WO-029's ratification amended `batch_partition.md`'s B/C plan to **strike
-"scripted clean-close"** and **require conversion on the race's own termination branch, asserted not
-assumed**. It did not.
+Entry 35 is the sole outlier: the only bound whose deadline is the **same order of magnitude** as the
+work it must cover.
 
-**Evidence, four independent checks:**
-
-**(a) The file has exactly one commit — the pre-ratification one.**
-```
-$ git log --oneline -- evidence/WO-029/batch_partition.md
-d0450fa WO-029 §2.0 + §2.0-bis: partition + the AdvancingClock deadline fixture (harness build)
-```
-`d0450fa` predates both the batch-A conversion (`f0660e3`) and any ratification of WO-029's §6.
-No later commit touches the file.
-
-**(b) The working tree is identical to HEAD for that file** — so this is not an uncommitted local
-amendment: `git diff --exit-code HEAD -- evidence/WO-029/batch_partition.md` → clean.
-
-**(c) The phrase the amendment was supposed to STRIKE is still present**, at line 54 of the committed
-file:
-> `at construction, terminate via scripted clean-close); **4** DIRECT deadline-assertion (uses the new`
-
-**(d) The committed B/C plan carries no termination-branch requirement at all** — it names files and
-race counts only:
-> - **BATCH B (named, not touched):** `test_gap_recording.py` (6: races 6–11), `test_keepalive.py`
->   (2: 15–16), `test_failure_cap.py` (3: 17–19), `test_failure_capture.py` (2: 20–21) = **13 races**.
-> - **BATCH C (named, not touched):** `test_ledger_persistence.py` (1: 12), `test_host_suspend.py`
->   (1: race 14 — the non-foundation one), `test_protocol_ping.py` (2: 22–23), `test_throughput.py`
->   (1: 24), `test_reconnect_to_effect.py` (1: 25), `test_venue_close_path.py` (1: 26),
->   `test_backoff_breaker.py` (1: 27) = **8 races**.
-
-**(e) Repo-wide, the amendment language exists only in `instructions.md`.** Searching every tracked
-file for `own termination branch`, `asserted not assumed`, `strike…clean-close`, `amended partition`:
-
-```
-instructions.md:52  ## §1 CONFIRM HEAD, SUITE, AND THE AMENDED PARTITION
-instructions.md:54  ...(the amended partition
-instructions.md:62  WO-029's ratification amended `batch_partition.md`'s B/C plan to strike "scripted clean-close" and
-instructions.md:63  require conversion on the race's own termination branch, asserted not assumed. Confirm that
-instructions.md:65  committed), STOP and report — batch B cannot be planned against an unamended partition.
-instructions.md:149 batches B/C convert under the amended partition.
-```
-
-Zero hits in `evidence/`, `docs/`, `progress.md`, or any report. Untracked files: none
-(`git status --porcelain -uall` → only ` M instructions.md`).
-
-**This is exactly the failure mode §2 names in its own parenthetical — "the amendment was described
-but not committed."**
-
-### Related: no D39 decision-log entry exists either
-
-The WO refers to D39 as a ratified ruling. There is **no committed decision document for it**.
-`docs/decisions/` holds 15+ dated entries, the most recent being `2026-07-25-a-transport-seam-is-not-a-clock-seam.md`.
-No entry corresponds to WO-029 §6's proposed title *"a conversion preserves the path, not just the
-assertions."* WO-029's own report states, at §6: *"No entry was written. Both items below are reported
-for a ruling."* That remains the committed state of the repo.
-
-**The D-number itself is free — this is NOT a collision.** D39 was used by WO-028 as an explicitly
-flagged placeholder ("leave the D-number as D39 for the lead to confirm"), and WO-030 §3 then
-**superseded it**: the production message was generalized to `LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM`
-citing **D38**. Verified: `git grep "D39" -- src/` returns **nothing** — no production file cites D39.
-Residual D39 mentions are confined to `WO-028-REPORT.md`, `evidence/WO-028/`, and `progress.md`, all
-historical. So reusing D39 for the classification ruling is clean; it simply has not been written down.
-
----
-
-## §3 / §4 — NOT PRODUCED
-
-The per-race clock-read classification (§3) and the outcome-bearing aggregate that would size the
-keepalive seam WO (§4) were **not produced**, because §2 stopped the WO before them.
-
-This was a deliberate reading, not an omission of convenience. §3.1 requires naming each race's
-termination branch under "the *criterion D39 tightened onto acceptance*", and §4's whole purpose is to
-size a downstream WO against a ruling. Producing that measurement against a ruling that exists in no
-committed artifact would be building on an unverified OPERATED row — the precise failure D24
-(built-vs-operated) exists to prevent, and the reason §0.7 makes an unverified row a STOP.
-
-**Consequently `evidence/WO-031/batch_b_clock_read_classification.md` was not written**, and §4's
-conditional fork (expected keepalive/ping-shaped set → proceed; surprising or instrument-touching set →
-return to the lead) **cannot be stated**. Neither branch obtains; the measurement does not exist.
-
----
-
-## Finding 3 — `wo029_reverify_partition.py` is stale-by-construction after every batch
-
-§1 asks for 30/30. The tool returned **25/30 and exit code 1, VERDICT FAIL**. The five that did not
-verify are **batch A's own races 1–5**, all in `test_live_capture.py`:
-
-```
- 1  MOVED->82   test_live_capture.py:59  -> test_runner_drives_instrumented_transport_end_to_end
- 2  MOVED->128  test_live_capture.py:96  -> test_runner_persistence_is_not_optional_on_the_adapter
- 3  MOVED->151  test_live_capture.py:111 -> test_short_bounded_run_completes_with_readable_artifacts
- 4  MOVED->185  test_live_capture.py:136 -> test_clean_deadline_close_does_not_reconnect_dual
- 5  MOVED->256  test_live_capture.py:190 -> test_runner_resolves_live_adapter_from_data_source_via_factory
-```
-
-**This is not a partition defect and not a moved race in any meaningful sense.** The partition table
-stores line numbers derived at base `9c084c3`. Batch A's conversion (`f0660e3`, +92/−15 lines in that
-file) pushed its own five races down. Every one was **found by name**; all 30 names resolve, 30
-distinct, categories `{CLOCK-INJECTABLE: 26, ASYNCIO-SLEEP: 3, ALREADY-CONVERTED: 1}` correct, the
-3 asyncio-sleep races confirmed by name, race #5 confirmed in the 26.
-
-**Critically for this WO: all 13 batch-B identifiers land exactly at their stated lines (`OK`), as do
-all of batch C and the excluded three.**
-
-Two structural consequences the lead should note:
-
-1. **The tool's PASS condition is unreachable from here on.** Its verdict requires
-   `verified == len(rows) == 30` (`tools/wo029_reverify_partition.py:93-94`) — every race at its
-   *original* line. Each batch that converts moves its own file's races, so **batch B will see 5 more
-   MOVED, batch C 18 more.** The WO instructs batches to re-run this tool; it will fail for all of
-   them. Either the table's line numbers must be refreshed at each close, or the verdict must key on
-   name-resolution (which already works perfectly) rather than line identity.
-2. **A FAIL run emits a self-contradictory line.** The trailing sentence is hardcoded regardless of
-   verdict (`:95-96`), so the tool printed:
-   `VERDICT: FAIL — the partition stands at this HEAD; batch A = test_live_capture.py races 1-5, and it converts WHOLE.`
-   A reader skimming for the verdict gets "FAIL"; a reader reading the sentence gets reassurance. This
-   is the `instrument-competence` decision-doc family.
-
-**Corroboration that WO-029's "30/30" was never re-measured after its own conversion:** the committed
-`evidence/WO-029/partition_reverified_at_head.txt` header reads **`RE-VERIFIED at HEAD (d0450fa)`** —
-the §2.0-bis seam, *before* the batch-A conversion. The WO-029 batch-A report cites "30/30 identifiers
-land at their stated file:line" for a HEAD at which that had ceased to be true. The claim was correct
-when measured and was carried forward across a commit that invalidated it.
-
----
-
-## Finding 4 — **DEFECT: the §1-mandated instrument writes into committed evidence** (WO-026 regression)
-
-`tools/wo029_reverify_partition.py` line 32:
-
-```python
-OUT = os.path.join(REPO, "evidence", "WO-029", "partition_reverified_at_head.txt")
-```
-
-It `os.makedirs` + writes there unconditionally. **WO-031 §1 instructs re-running this tool.** Doing
-so, as instructed, silently overwrote a **committed** evidence file:
-
-```
-$ git status --porcelain
- M evidence/WO-029/partition_reverified_at_head.txt
-```
-
-The overwrite rewrote WO-029's PASS record into a FAIL record (9 insertions / 9 deletions: the header
-sha `d0450fa`→`3410435`, five `OK`→`MOVED`, `30/30`→`25/30`, `VERDICT: PASS`→`FAIL`).
-
-**This is the exact defect class WO-026 §2 was created to eliminate** — quoting `conftest.py:89-95`:
-
-> *"AN INSTRUMENT STREAMS TO AN IGNORED RUN-SCOPED PATH; EVIDENCE IS A DELIBERATE SNAPSHOT. The
-> WO-024/025 defect: this hook wrote directly to a COMMITTED evidence path, so every pytest run
-> silently overwrote committed evidence — found in a changed-files list, not by any guard."*
-
-WO-026's fix was **scoped to the gate ledger only**. Its mechanical guard,
-`_assert_ledger_dir_outside_evidence` (`conftest.py:100-112`), validates one hardcoded
-`_LEDGER_OUTPUT_DIR` inside `conftest.py`. It does not — and structurally cannot — see a `tools/`
-script. So WO-029, three WOs later, reintroduced the banned pattern in a new instrument, and no guard
-fired. Same detection mode as the original: *found in a changed-files list.*
-
-**Repair performed:** `git checkout -- evidence/WO-029/partition_reverified_at_head.txt`. Verified
-restored — `git status --porcelain` now shows only ` M instructions.md` (the lead's own edit). The
-committed evidence record is intact; nothing was committed.
-
-**Note the scope trap.** WO-031 §0.2 says "No edits at all beyond the one committed evidence artifact
-and a progress.md block," and §6 requires `git status --porcelain` to be clean. Obeying §1 literally
-*violates* §0.2 and §6 — the WO cannot be executed as written without either dirtying committed
-evidence or reverting afterwards. **Batches B and C hit this the moment they run §1.** The instrument
-should write to `.artifacts/` with a deliberate snapshot step, matching the WO-026 pattern; and the
-`evidence/`-write prohibition should be enforced somewhere `tools/` scripts are subject to it, not only
-inside `conftest.py`.
+**Honesty about that reasoning:** the margin argument is the *same form* of prose reasoning the audit
+used and that this re-audit falsified. What separates the cases is the ratio, not the rhetoric. So
+31–34 and 36–37 are recorded as **not-obviously-shaped-like-35**, *not* as proved safe.
+**Recommendation:** one follow-on pass with the now-existing probe (it generalises by swapping script
+and duration) turns that into a measurement — worth doing **before batch C is planned**, since entry 35
+already lives in a batch-C file.
 
 ---
 
@@ -253,95 +196,74 @@ inside `conftest.py`.
 
 | Fence | Held? |
 |---|---|
-| Converts NO race | **HELD** — zero conversions |
+| Converts NO race | **HELD** |
 | Threads NO seam | **HELD** |
-| Edits NO test, NO src file | **HELD** — `git diff` over `src/` and `tests/` empty |
-| Builds NO new fixture | **HELD** |
-| Does NOT scope the keepalive seam WO | **HELD** — and could not; §4 not reached |
-| Touches NONE of batch C, none of the 3 asyncio.sleep races | **HELD** |
+| Edits NO test/src/fixture | **HELD** — `git diff -- src/ tests/` empty |
+| Scopes NO downstream WO | **HELD** — produced the measurement that sizes it; wrote no seam WO |
+| Touches NO batch C race, none of the 3 asyncio.sleep races | **HELD** |
+| Does NOT reclassify the bound unilaterally | **HELD** — reported, escalated; no artifact reclassified |
 
-**Five production sha256, unchanged and matching WO-029/WO-030 exactly:**
-
-| File | sha256 (first 8) |
-|---|---|
-| `kraken_v2_book.py` | `b06c347e` |
-| `factory.py` | `103a8ba7` |
-| `registry.py` | `5bf833c7` |
-| `live_capture.py` | `dab18f67` |
-| `logkit/decision.py` | `3d153a11` |
+**Five production sha256, unchanged:** `kraken_v2_book.py` `b06c347e` · `factory.py` `103a8ba7` ·
+`registry.py` `5bf833c7` · `live_capture.py` `dab18f67` · `logkit/decision.py` `3d153a11`.
 
 ---
 
-## §6 — ACCEPTANCE (what a STOP can and cannot satisfy)
+## §6 — ACCEPTANCE
 
 | Gate | Result |
 |---|---|
-| `pytest tests/ -p no:randomly -rX` → 218 both interpreters | **PASS** — 218/218 on 3.14.6 and 3.11.15, 0 f/xf/xp |
-| `wo029_reverify_partition.py` → 30/30 | **FAIL — 25/30**, all 5 accounted for and none in batch B (Finding 3) |
-| Every production AND test file sha256 unchanged; `git status --porcelain` pasted | **PASS after repair** — ` M instructions.md` only (the lead's own edit). One transient evidence overwrite caused by running §1's tool, reverted — Finding 4. |
-| `lint-imports` 6/6 | **PASS** — 6 kept, 0 broken (63 files, 211 dependencies) |
-| `contract_count_check.py` 6/6 | **PASS** — "import-linter evaluated 6 contracts (expected 6)" |
-| `ruff` clean | **PASS** — "All checks passed!" |
-| `annotation_name_scan.py` 0 | **PASS** — 0 names |
-| `preflight_path_check.py` | **PASS** — `trading` resolves inside the repo tree |
-| Classification committed as `evidence/WO-031/batch_b_clock_read_classification.md` | **NOT DONE** — §2 STOP; the classification does not exist |
-| Append a WO-031 block to `progress.md` | **NOT DONE** — no commit on a STOP (WO-029 §2.0 precedent) |
-| Commit, push, local == remote, CI green both legs | **NOT DONE** — nothing to commit |
+| `pytest tests/ -p no:randomly -rX` → 222 both interpreters | **PASS** — 222/222 on 3.14.6 and 3.11.15, 0 f/xf/xp |
+| `wo029_reverify_partition.py` → PASS 30/30 by name, writes `.artifacts/`, `git status` clean after | **PASS** |
+| `git status --porcelain` shows only the artifacts + progress.md + instructions.md | **PASS** — plus this report and the probe tool, both §7/§0.3 deliverables |
+| Five `src/` sha256 IDENTICAL; `git diff -- src/` empty | **PASS** |
+| `test_evidence_write_boundary.py` PASSES (the probe writes to `.artifacts/`) | **PASS** — 4/4 |
+| `lint-imports` 6/6 · `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 · `preflight_path_check.py` | **PASS** |
+| Both evidence artifacts committed | **PASS** |
+| progress.md WO-031 block appended; commit, push, local == remote, CI green both legs (REAL run number) | **see §CI** |
 
 ---
 
 ## §Attempts — every one, including the failures
 
-1. **Read `instructions.md` at the start of the session and found WO-029 batch A**, already complete
-   and CI-green. Reported rather than re-executing committed work. The lead then replaced the file
-   with WO-031 (verified: size 14142→9196 bytes, mtime 10:01→15:48, sha256
-   `CB99A717…`). Re-read from disk before acting.
-2. **Built the 3.11 acceptance interpreter first**, in the scratchpad
-   (`uv venv --python 3.11`, then `uv pip install -r requirements.txt -r requirements-dev.txt`),
-   because no 3.11 venv is checked in and every acceptance gate here is two-interpreter. Ready before
-   the matrix started.
-3. **Ran both suite legs concurrently in the background** (~245 s each) while doing the read-only §0.7
-   and §2 verification, rather than serially. Checked first that concurrent runs cannot corrupt
-   committed evidence: the gate ledger writes to git-ignored `.artifacts/gate_ledger/` under a
-   `<utc-timestamp>-<sha>` run name (`conftest.py:96,115-125,203`). Only the convenience `latest.txt`
-   is racy, and it is git-ignored.
-4. **First §2 check was too narrow.** I initially searched the partition only for the literal string
-   "D39" and found nothing, which is weak evidence — an amendment need not name its D-number. Widened
-   to four independent checks (commit history, tree-vs-HEAD diff, the struck phrase's continued
-   presence, and a repo-wide search for the amendment's own language including untracked files) before
-   declaring the STOP.
-5. **Suspected a D-number collision and was wrong.** `git grep D39` hit `evidence/WO-028/` and
-   `WO-028-REPORT.md`, which looked like D39 already naming a different ruling — and WO-028's version
-   was baked into a production message string. Checking `WO-030-REPORT.md:66-80` showed WO-030 had
-   already superseded that placeholder with D38 and renamed the code; `git grep "D39" -- src/` returns
-   nothing. **No collision. Recorded because the wrong version of this finding would have been a
-   false STOP.**
-6. **Running §1's re-verification tool dirtied committed evidence** — caught in `git status`, not by
-   any guard. Diffed it to see exactly what was lost, restored with `git checkout`, re-verified the
-   tree. Became Finding 4.
-7. **Considered producing §3/§4 anyway** on the reasoning that a read-only classification harms
-   nothing and would save the lead a round trip. **Rejected**: §2's STOP is pre-committed and §0.1
-   forbids discretion, §3.1's criterion is defined by the very ruling that is missing, and a
-   classification presented against an uncommitted amendment is the built-vs-operated failure D24
-   names. The STOP is the deliverable.
-8. **No production edit was attempted**, so the auto-mode classifier was never engaged.
+1. **Re-read `instructions.md` from disk before acting** — it has been replaced four times this
+   session; verified by mtime and sha256 (`4540A0B0…`, 10382 bytes) rather than trusting a prior read.
+2. **Launched both suite legs in the background first**, then did the read-only §1/§2 verification
+   while they ran (~245 s each).
+3. **Confirmed the WO-032 §4 fix mechanically, not by assertion** — ran the reverify tool and checked
+   `git status` afterwards, because §1 makes a dirty `evidence/` a STOP condition. Clean.
+4. **Read the four batch-B test files and the adapter's full clock-read inventory before classifying.**
+   The classification is per-read against the source, not per-test by reputation.
+5. **Looked up the adapter's threshold DEFAULTS** (`HEARTBEAT_ABSENCE_TIMEOUT_SECONDS = 10.0`,
+   `APP_PING_INTERVAL_SECONDS = 5.0`, `RECONNECT_MAX_FAILURE_SECONDS = 600.0`) rather than assuming
+   every race overrides them. **Race 9 turned out to override neither** — it is the only batch-B race
+   running on defaults, which had to be checked before its absence/ping reads could be called
+   incidental.
+6. **First §3-bis probe failed with `TypeError: __init__() got an unexpected keyword argument
+   'wall_clock'`.** The adapter takes `monotonic_clock` as a constructor kwarg but the wall is set as
+   the `_wall_clock` attribute after construction (batch A's pattern). Fixed; recorded because getting
+   this wrong silently produces a *non-coherent* injection that the gate would refuse, which could be
+   misread as a finding about the test.
+7. **Did not reclassify the bound from the symptom.** The differential observation already existed from
+   WO-032; §3-bis and the D39 doc both require the classification to come from enumerating reads and
+   naming the assertion. Built the frames-reached measurement so the claim "the divergence flows from
+   the deadline read" is *pinned* (three `_monotonic_clock` sites, fixture touches nothing else) rather
+   than asserted.
+8. **Resisted probing all 7 bounds.** §3-bis says enumerate-then-scope. Entries 31–34/36–37 are
+   recorded as *not obviously shaped like 35* with the ratio stated — and explicitly **not** as proved
+   safe, because that would repeat the prose-reasoning error being corrected.
+9. **The probe was written as a `tools/` script writing to `.artifacts/`** (§0.3), not a scratch file,
+   so batch C or the bounds follow-up can re-run it. Verified it passes
+   `test_evidence_write_boundary.py`.
+10. **`PYTHONUTF8=1` on every invocation** — without it `contract_count_check.py` aborts the session at
+    `pytest_sessionstart`. Environmental; CI is Linux/UTF-8.
 
 ---
 
-## What unblocks this WO
+## §CI
 
-Smallest path — the lead does one of:
+- **Commit:** `<filled at close>`
+- **Local == remote:** `<filled at close>`
+- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
 
-1. **Commit the amendment** to `evidence/WO-029/batch_partition.md`: strike "terminate via scripted
-   clean-close" from the batch-A entry and add the termination-branch requirement to the B/C entries;
-   optionally write the D39 decision doc (`docs/decisions/`) for
-   *"a conversion preserves the path, not just the assertions."* Then WO-031 re-runs from §1 and
-   proceeds straight through §3/§4 — the §1 baseline in this report (218/218, batch-B membership,
-   all 13 identifiers landing) is verified and reusable.
-2. **Or rule that the amendment is unnecessary** and amend `instructions.md` §2 to drop the
-   precondition — in which case §3/§4 can run immediately.
-
-Independently of that choice, **Finding 4 should be fixed before batch B runs §1 again**, or batch B
-will overwrite committed evidence exactly as this WO did.
-
-**STOPPED. Nothing committed. Awaiting the lead.**
+**THEN STOP.** §4 convicts keepalive-shaped reads → the keepalive seam WO is next, sized to exactly
+`last_frame` and `last_ping`. §3-bis's reclassification (26 → 27) escalates before it joins any batch.

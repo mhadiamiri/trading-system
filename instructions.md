@@ -1,146 +1,148 @@
-# WO-032 — UNBLOCK BATCH B: fix the reverify instrument, commit the D39 amendments, write the docs.
+# WO-031 (reissued) — PASS TWO, BATCH B CLASSIFICATION + one suspect BOUND re-audit. CLASSIFY ONLY.
 
-BASE: HEAD `3410435` on master (WO-029 batch-A docs-close). 218 both interpreters, CI green both legs
-(run 30279805350). Working tree clean.
+BASE: current HEAD on master (WO-032 close, `1b52c53`) — confirm actual HEAD in §1 and use it.
+222 both interpreters (218 + WO-032's 4 guard tests), CI green both legs (run from WO-032 §CI).
 
-WHY THIS WO EXISTS: WO-031 correctly STOPPED at §2 — the D39 amendment to `batch_partition.md` and
-the D39 decision docs were ratified in the decision record (`d39`) but NEVER COMMITTED to the tree.
-Claude Code operates on the tree, not the decision record; an uncommitted ruling is an unverified
-OPERATED row (D24). WO-031 also surfaced a live regression (Finding 4) of the WO-026 evidence-write
-defect. This WO repairs the instrument, commits the amendments, writes the docs — then WO-031
-re-runs clean.
+SCOPE: **CLASSIFY AND STOP.** Converts NOTHING, threads NO seam, edits NO test/src. Produces (1) the
+batch-B per-race clock-read classification, and (2) a re-audit of ONE audit BOUND that WO-032 flagged
+as behaving like a race. Two committed evidence artifacts + a progress.md block. Nothing else.
+SHIP IMPACT: **NO.** Every production and test file byte-unchanged; §6 proves it with the five sha256s.
 
-SCOPE: §1 instrument fix; §2 partition amendment; §3 decision docs; §4 the evidence-write guard
-generalization. Commit green, STOP. Converts NO race, threads NO seam.
-SHIP IMPACT: **NO** — a `tools/` instrument, evidence markdown, decision docs, and a test-time guard.
-Every `src/` production file byte-unchanged; §5 proves it with the five sha256s.
+WHAT CHANGED SINCE WO-031's FIRST ISSUE:
+- WO-032 committed the D39 partition amendment and the D39 decision docs, and fixed the reverify tool
+  (name-keyed, writes to `.artifacts/`). WO-031's §2 STOP precondition is now SATISFIED — the amended
+  `batch_partition.md` exists on the tree. Confirm it (§2) and proceed.
+- WO-032's CI leg surfaced a finding (§3-bis below): an audit BOUND behaves like a clock race.
+
+WHAT D39 RULED (the operative METHOD, now committed as
+`docs/decisions/2026-07-27-a-residual-clock-read-is-classified-not-waived.md`): for each race,
+enumerate every real-clock read on its path; classify OUTCOME-BEARING (an assertion depends on it) vs
+INCIDENTAL (interval read, no assertion, harmless under the ms-compressed run); convert only if all
+incidental; any outcome-bearing read on a NON-INJECTABLE seam is a PRE-COMMITTED STOP and escalation.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
-0.1 **No discretion.** Code wins over this order: STOP and report.
-0.2 No `src/` production logic changes. `tools/`, `evidence/`, `docs/`, `conftest.py`/test-fixtures
-    only.
-0.3 Every guard built gets a fail-then-pass bite proof: four artifacts, sha256 exact-restore.
-0.4 Preservation duals mandatory, local and direct.
+0.1 **No discretion.** Code wins over this order: STOP and report. A STOP is an EXPECTED OUTCOME here
+    (an outcome-bearing non-injectable read, or a reclassified bound) — not a failure.
+0.2 No conversions, no seam threading, no test/src edits. Two evidence artifacts + progress.md only.
+    If you find yourself editing a test or src file, you have exceeded scope — STOP.
+0.3/0.4 No guards built; no bite proof owed. Any classification instrument you write is a re-runnable
+    tool that writes to `.artifacts/` (the WO-032 boundary — a tools/ script writing under evidence/
+    now FAILS `tests/test_evidence_write_boundary.py`).
 0.5 Report every attempt.
 0.7 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Built & verified where |
     |---|---|---|
-    | `wo029_reverify_partition.py` (line-keyed verdict, evidence-writing) | **OPERATED — DEFECTIVE** | WO-029; Findings 3+4 |
-    | WO-026 evidence-write doctrine + `_assert_ledger_dir_outside_evidence` | **OPERATED — TOO NARROW** | `conftest.py:100-112`, guards only the gate-ledger path |
-    | `batch_partition.md` (unamended) | **OPERATED — MISSING THE D39 AMENDMENT** | `d0450fa`; the strike never landed |
-    | D39 path-preservation + residual-reads-method rulings | **OPERATED — UNCOMMITTED AS DOCS** | Exist in `d39`; no `docs/decisions/` entry |
-    | Generalized evidence-write guard reaching `tools/` | **THIS WO IS THE BUILDER** | Does not exist — §4 |
+    | Amended `batch_partition.md` (D39 B/C plan) | **OPERATED** | WO-032 §2 — CONFIRM at §2 before using |
+    | D39 method decision doc | **OPERATED** | WO-032 §3 |
+    | `wo029_reverify_partition.py` name-keyed, `.artifacts/`-writing | **OPERATED** | WO-032 §1/§4 |
+    | WO-023 §1 audit: 30 races + 7 BOUNDS (entries 31–37) | **OPERATED** | `86e2a33` |
+    | The batch-B classification + the bound re-audit | **THIS WO IS THE BUILDER** | Does not exist — §3, §3-bis |
+
+    Any OPERATED row not verified → STOP. In particular §2: if the amended partition is NOT on the
+    tree, STOP (do not re-run the WO-031-first STOP loop — report that WO-032 §2 did not land).
 
 ---
 
-## §1 FIX THE REVERIFY INSTRUMENT (Finding 3) — key the verdict on NAME, not LINE
+## §1 CONFIRM HEAD, SUITE, PARTITION INTEGRITY
+State actual HEAD. `pytest tests/ -p no:randomly -rX` both interpreters → confirm **222**. Run the
+FIXED `wo029_reverify_partition.py` → confirm **PASS, 30/30 by name**, writing to `.artifacts/` (a
+`git status` after the run must be clean — that is the WO-032 fix; if it dirties evidence/, WO-032 §4
+regressed, STOP). State batch B membership from the committed amended partition (13 races across
+`test_gap_recording.py`, `test_keepalive.py`, `test_failure_cap.py`, `test_failure_capture.py`).
 
-`tools/wo029_reverify_partition.py` fails 25/30 not because any race moved wrongly but because its
-verdict requires every race at its ORIGINAL line, and each conversion moves its own file's races. All
-30 resolve BY NAME; that is the correct identity (the ratified entry: *position beats name* was for
-finding a race, but a partition that must survive conversions keys on the stable identifier, which
-here is the test name — line numbers are invalidated by the conversions themselves).
-
-1.1 Change the verdict condition: PASS when all 30 races RESOLVE BY NAME to a real test, 30 distinct,
-    categories `{CLOCK-INJECTABLE:26, ASYNCIO-SLEEP:3, ALREADY-CONVERTED:1}`, the 3 asyncio races
-    present by name, race #5 in the 26. Line numbers become INFORMATIONAL (report current line, do
-    not gate on it). A race whose NAME no longer resolves is still a hard FAIL — that is a real
-    partition break.
-1.2 Fix the hardcoded trailing sentence (`:95-96`) that prints "the partition stands…converts WHOLE"
-    regardless of verdict. The trailing line must reflect the actual verdict — on FAIL it must not
-    reassure. (Instrument-competence family.)
-1.3 **Bite proof** (§0.3, four artifacts, sha256 exact-restore): mutate the partition table's copy to
-    RENAME one race to a non-existent test → the tool FAILS naming that race (a real break is still
-    caught). Preservation dual: the pristine table with post-conversion moved lines → PASSES on name
-    resolution (the false FAIL is gone). Restore; sha256 == pristine.
+## §2 CONFIRM THE AMENDED B/C PLAN IS ON THE TREE (the WO-031-first STOP is now cleared)
+Confirm `batch_partition.md` contains the D39 amendment WO-032 §2 committed: the "scripted clean-close"
+phrase STRUCK from batch A, and the termination-branch requirement ADDED to B and C. If present,
+proceed. If absent, STOP — WO-032 §2 did not land and this WO cannot plan against an unamended file.
 
 ---
 
-## §2 COMMIT THE D39 PARTITION AMENDMENT (the missing OPERATED artifact)
+## §3 BATCH-B CLASSIFICATION — per race, every real-clock read (the D39 method)
 
-Edit `evidence/WO-029/batch_partition.md`:
-- **Strike** the batch-A entry's "at construction, terminate via scripted clean-close" — replace with
-  the record of what WO-029 actually did: all five converted on their own termination branch
-  (deadline via `AdvancingClock`), asserted.
-- **Add to the B and C plan entries** the ratified requirement: *a conversion must keep the race on
-  its own production termination branch (deadline / venue-close / failure-cap / breaker), and the
-  branch exercised before and after is part of acceptance — asserted, not assumed.* No scripted
-  clean-close substitution.
-- Annotate (do not silently rewrite): a dated note that this amendment implements D39 item 1,
-  ratified after `d0450fa`, committed here in WO-032.
+For each of the 13 batch-B races:
+3.1 **Termination branch** the test exercises (deadline / venue-close / failure-cap / breaker / other),
+    named from the code. This is the branch a later conversion must KEEP (the D39 acceptance tightening).
+3.2 **Every real-clock read on the race's path** — call site (file:line), which clock, INJECTABLE
+    (deadline/suspend post-WO-030) or NON-INJECTABLE (keepalive pacing, ping interval, ledger anchor,
+    last_frame, throughput/lag/pong instruments, others).
+3.3 **Classify each read OUTCOME-BEARING or INCIDENTAL**, with the naming evidence: for each
+    outcome-bearing read, the assertion that depends on it; for each incidental, the explicit statement
+    that no assertion references it. (The batch-A standard: this is what made the reading a method, not
+    a waiver.)
+3.4 **Per-race verdict:** ALL INCIDENTAL → CONVERTIBLE (note deadline-path vs own-branch, and flag any
+    non-deadline branch needing a fixture that does not yet exist — flag, do not build). ANY
+    outcome-bearing on a NON-INJECTABLE read → NOT-YET-CONVERTIBLE, name the exact read(s) to thread.
 
-This is the artifact WO-031 §2 STOPPED for. After this commit, WO-031's precondition is satisfiable.
-
----
-
-## §3 WRITE THE TWO D39 DECISION DOCS (ratified in `d39`, never committed)
-
-3.1 `docs/decisions/2026-07-27-a-conversion-preserves-the-path-not-just-the-assertions.md` — WO-029
-    §6 item 1, ratified. Use the report's proposed text. The tightened acceptance criterion D39
-    added, verbatim: *a conversion's acceptance includes which production branches the test exercises
-    before and after, asserted not assumed.* Record it as the conversions-layer arrival of the
-    incidental-coverage family (r19).
-3.2 `docs/decisions/2026-07-27-a-residual-clock-read-is-classified-not-waived.md` — the ratified
-    METHOD (D39): enumerate every real-clock read on a race's path; classify outcome-bearing vs
-    incidental; convert only if all incidental; any outcome-bearing read on a non-injectable seam is
-    a pre-committed STOP and escalation. Record the seam-sized-to-measurement constraint: convicted
-    reads get threaded, incidental residuals stay unthreaded BY DESIGN and recorded — a ruled
-    asymmetry, not a place work stopped (the D37/D38 distinction).
-
-(D-numbering: `d39` is the decision record entry; these docs implement it. If the project's doc
-convention wants a D-number in the filename or header, use the next free one and state it — do NOT
-reuse a number cited in any `src/` string. `git grep` to confirm free.)
+## §4 THE OUTCOME-BEARING SET — the measurement that sizes the keepalive seam WO (D39 (a))
+Aggregate: the set of NON-INJECTABLE reads outcome-bearing for ≥1 batch-B race (this and NOTHING more
+is what the keepalive seam WO threads — seam-sized-to-measurement); which races convict each, on which
+assertion; and the set incidental everywhere (stays UNTHREADED by design, recorded). State counts: N
+convertible now, M not-yet-convertible with reads named. **Fork:** if the outcome-bearing set is the
+expected keepalive/ping-pacing shape → Ops scopes the seam WO on existing d39. If it SURPRISES (large,
+or touches the throughput/lag/pong INSTRUMENTS not just pacing) → STOP, the count returns to the lead
+before any seam WO.
 
 ---
 
-## §4 GENERALIZE THE EVIDENCE-WRITE PROHIBITION (Finding 4) — this WO is the builder
+## §3-bis RE-AUDIT ONE SUSPECT BOUND (WO-032's CI finding) — CLASSIFY, do not reclassify unilaterally
 
-WO-026 established: *an instrument streams to an ignored run-scoped path; evidence is a deliberate
-snapshot.* Its guard watches ONE path inside `conftest.py` and cannot see a `tools/` script — so
-`wo029_reverify_partition.py` reintroduced the banned pattern and no guard fired, caught only in a
-changed-files list. Three WOs after the doctrine, same defect, same detection mode.
+WO-032's CI leg observed that `test_incremental_persist_survives_unhandled_exception_mid_capture` —
+filed by the WO-023 audit as one of the **7 legitimate BOUNDS (entries 31–37), NOT a race** — flinches
+on clock rate: at the pre-WO-032 baseline, `AdvancingClock(delta=0.2)` yields no exception,
+`delta=0.0001` raises. That is the signature of an outcome-bearing clock dependency, i.e. a race.
 
-4.1 Fix the instrument: `wo029_reverify_partition.py` must write its output to a git-ignored
-    run-scoped path under `.artifacts/` (matching the WO-026 pattern), NOT into `evidence/`. Evidence
-    is a deliberate snapshot step, not an instrument side effect. Apply the same fix to ANY other
-    `tools/` script that writes under `evidence/` — grep for it and report the full list (there may be
-    more than one; WO-025's inventory-was-too-narrow lesson applies).
-4.2 Build the generalized guard: a test (or a preflight check runnable in CI) that FAILS if ANY
-    tracked `tools/` script contains a write path resolving inside `evidence/`. This is the guard
-    that would have caught Finding 4 at authoring time. It must reach `tools/`, which the
-    `conftest.py` guard structurally cannot.
-4.3 **Bite proof** (§0.3, four artifacts, sha256 exact-restore): point a throwaway `tools/` script's
-    output inside `evidence/` → the guard FAILS naming the script and path. Preservation dual: the
-    same script writing under `.artifacts/` → PASSES. Restore; sha256 == pristine.
-4.4 Decision doc `docs/decisions/2026-07-27-a-doctrine-needs-a-guard-that-reaches-every-producer.md`:
-    WO-026's fix guarded the gate ledger's path but not the CLASS; the banned pattern re-entered
-    through a producer the guard could not see. A doctrine enforced by a guard scoped to one producer
-    is enforced nowhere the guard cannot reach. Same family as *incidental coverage is not coverage*.
+**Run the D39 method on this ONE test** exactly as §3.1–3.4 — do NOT reclassify from the symptom alone.
+The D39 doc you are operating under says the category comes from the CLASSIFICATION (enumerate reads,
+name the assertion), not from a differential observation. So:
+- 3.1 its termination branch; 3.2 every real-clock read on its path; 3.3 classify each with the naming
+  evidence — specifically, WHICH read the delta=0.2-vs-0.0001 outcome divergence flows from, and WHICH
+  assertion observes it; 3.4 verdict.
+- Then state the CATEGORY consequence explicitly:
+  (a) OUTCOME-BEARING clock read that an assertion rests on → it is a RACE the audit misfiled as a
+      BOUND. The clock-injectable denominator becomes 27 (or it is NOT-YET-CONVERTIBLE if the read is
+      non-injectable — say which). This is a DENOMINATOR CHANGE → the reclassification ESCALATES to the
+      lead; you REPORT it, you do not fold it into a batch.
+  (b) the divergence flows from something that is genuinely a BOUND (a timeout the test legitimately
+      brackets, no assertion resting on the injected rate) → the audit was right, the symptom is
+      benign, record why and leave the category.
+- This test is a BATCH C file member's neighbour but is itself a BOUND, not in any batch. **Do not
+  convert it, do not touch batch C.** This is a classification-only re-audit.
+
+Record whether the OTHER 6 bounds (entries 31–37) warrant the same re-audit — enumerate them by name
+and state, from the audit's own text, whether any shares this one's shape (an injected-clock-rate
+dependence). If any does, flag it for its own probe; do not probe them all here unless the shape is
+obviously shared. (Enumerate-then-scope, not probe-everything.)
 
 ---
 
-## §5 ACCEPTANCE
-- `pytest tests/ -p no:randomly -rX` → 218 (+ any tests §4.2's guard adds — state arithmetic),
-  both interpreters, 0 f/xf/xp
-- `wo029_reverify_partition.py` → **PASS on name resolution** (30/30 by name), writing to `.artifacts/`
-- §1 bite proof (name-key), §4 bite proof (evidence-write guard): four artifacts each, sha256 restore
-- `git grep` for other `tools/` scripts writing under `evidence/` — full list, all fixed
-- The five `src/` production sha256 IDENTICAL (`b06c347e…`, `103a8ba7…`, `5bf833c7…`, `dab18f67…`,
-  `3d153a11…`); `git diff -- src/` empty
-- `batch_partition.md` amendment committed; the two §3 docs + the §4.4 doc committed
-- `lint-imports` 6/6 · `contract_count_check.py` 6/6 · `ruff` clean · `annotation_name_scan.py` 0 ·
-  `preflight_path_check.py` pass
-- Commit, push, local == remote, CI green both legs (real run number)
-- Append a WO-032 block to `progress.md`
+## §5 SCOPE FENCE
+Converts NO race. Threads NO seam. Edits NO test/src/fixture. Scopes NO downstream WO (produces the
+measurements that size them). Touches NO batch C race, NONE of the 3 asyncio.sleep races. Does NOT
+reclassify the bound unilaterally — reports the classification and escalates a denominator change.
 
-## §6 REPORT — `WO-032-REPORT.md`
-The reverify verdict change and its bite proof; the partition amendment diff; the three decision docs
-as committed; the full list of `tools/` scripts that wrote under `evidence/` and their fixes; the
-generalized guard and its bite proof; the five unchanged `src/` hashes; the §5 gate output; the CI
-run number; every attempt; any STOP.
+## §6 ACCEPTANCE
+- `pytest tests/ -p no:randomly -rX` → 222 both interpreters (unchanged — edits no test)
+- `wo029_reverify_partition.py` → PASS 30/30 by name, writes `.artifacts/`, `git status` clean after
+- `git status --porcelain` shows only the two evidence artifacts + progress.md + instructions.md
+- Five src sha256 IDENTICAL (`b06c347e…`,`103a8ba7…`,`5bf833c7…`,`dab18f67…`,`3d153a11…`);
+  `git diff -- src/` empty
+- `test_evidence_write_boundary.py` PASSES (any classification tool you wrote writes to `.artifacts/`)
+- lint 6/6 · contract 6/6 · ruff clean · annotation 0 · preflight pass
+- `evidence/WO-031/batch_b_clock_read_classification.md` and
+  `evidence/WO-031/bound_reaudit_incremental_persist.md` committed
+- progress.md WO-031 block appended; commit, push, local == remote, CI green both legs (REAL run
+  number — not a placeholder; WO-028 and WO-032 both shipped `<fill>` first)
 
-**THEN STOP.** WO-031 (batch B classification) re-runs from §1 against the now-committed amended
-partition and the fixed, name-keyed, `.artifacts/`-writing reverify tool.
+## §7 REPORT — `WO-031-BATCH-B-CLASSIFICATION-REPORT.md` (overwrite the prior STOP report; note it
+supersedes the STOP)
+Per-race batch-B classification (branch, read enumeration, outcome/incidental with naming, verdict);
+the §4 aggregate (outcome-bearing set, incidental-everywhere set, N/M counts, which fork obtains); the
+§3-bis bound re-audit with its category verdict and denominator consequence; the 6-other-bounds
+enumeration and whether any needs its own probe; the five unchanged sha256; every attempt; any STOP.
+
+**THEN STOP.** If §4 convicts keepalive-shaped reads → keepalive seam WO next (sized to §4). If §3-bis
+reclassifies the bound → the reclassification escalates before it joins any batch. Otherwise batches
+B/C convert under the amended partition.
