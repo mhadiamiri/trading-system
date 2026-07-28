@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-036 STOPPED at §1's RED-LINE PRECHECK — nothing threaded, no race converted, `git diff -- src/` empty. ⚠ PASS TWO IS NOT COMPLETE: 24 of 27.** `last_frame` turns out NOT to be a pure pacing read — it **IS the `open_monotonic` opening bound of three of the five ruled gap causes** (`:2674`, `:2708`, `:2765`) and the recv-return timestamp of the throughput **latency instrument** (`:2817`). Threading it is red line (d), not Ops authority. `last_ping` IS clean. This does not contradict WO-031 §4, which answered a different question — what a test's assertions depend on, not what the read feeds in production. **Three unblock options, all the lead's call — see the ▶ WO-036 block below.**)
+**Last Updated**: 2026-07-28 (**WO-037 COMPLETE — PASS TWO CLOSED (24 converted + 3 keepalive-blocked + 3 asyncio.sleep, denominator 30) and the archived reason-code vocabulary CERTIFIED archive-ready.** §2 landed the Option-4 disposition and the precheck standing form; §3 measured all four consistency properties CLEAN and catalogued 19 archivable vs 25 raise/log-only codes; §4 was certify-only — a new archive-path guard (5 tests, bite-proved) that closes the eason_code=<var> indirection the literal-form guard documents as its blind spot. **⚠ One finding reported not repaired: REASON_VETO_INSUFFICIENT_BALANCE is neither declared nor producible — a dead ungoverned constant both existing properties are structurally blind to.** 227 = 222 + 5; every src/ file byte-unchanged. See the **▶ WO-037** block below.)
+**Prior — 2026-07-28** (**WO-036 STOPPED at §1's RED-LINE PRECHECK — nothing threaded, no race converted, `git diff -- src/` empty. ⚠ PASS TWO IS NOT COMPLETE: 24 of 27.** `last_frame` turns out NOT to be a pure pacing read — it **IS the `open_monotonic` opening bound of three of the five ruled gap causes** (`:2674`, `:2708`, `:2765`) and the recv-return timestamp of the throughput **latency instrument** (`:2817`). Threading it is red line (d), not Ops authority. `last_ping` IS clean. This does not contradict WO-031 §4, which answered a different question — what a test's assertions depend on, not what the read feeds in production. **Three unblock options, all the lead's call — see the ▶ WO-036 block below.**)
 **Prior — 2026-07-28** (**WO-035 COMPLETE — BATCH C CONVERTED. Pass two's last conversion batch is done: 24 of 27 clock-injectable races are now deterministic.** The three D42 amendments landed first as their own commit `daaf5f5` (batch C 8→9, node-ID identifiers, the standing artifact-ruling doctrine), then all 9 races converted on their own termination branches — 7 deadline, entry 35 on the **CRASH** branch, race 26 keeping **both** its deadline and venue-close halves. All `PROCEED_COHERENT`; **zero assertions touched** (counts identical, no assert line in the diff); 222 × 12 runs (2 interpreters × deterministic + 5 seeds). Every `src/` file byte-unchanged. **NEXT: the keepalive seam WO closes batch B's last 3.** See the **▶ WO-035** block below.)
 **Prior — 2026-07-28** (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
 **Prior — 2026-07-28** (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
@@ -1028,6 +1029,73 @@ corpus preconditions.** *(WO-036 attempted this and STOPPED at its red-line prec
 
 ---
 
+## ▶ WO-037 COMPLETE (AUTHORITATIVE) — 2026-07-28 — PASS TWO CLOSED (24+3+3/30) + the archived vocabulary CERTIFIED
+
+> Base HEAD `9721f10`. **SHIP IMPACT: NO** — §3 found the runtime vocabulary archive-ready, so §4 took
+> the certify-only branch. **`git diff -- src/` empty; five production sha256s identical.** Report:
+> `WO-037-REPORT.md`. Evidence: `evidence/WO-037/reason_code_vocabulary_audit.md`.
+
+**§2 (own commit `256c936`) — PASS TWO IS CLOSED.** Races 6/15/16 **DECLARED NOT-CLOCK-CONVERTIBLE**
+(same standing as the 3 asyncio.sleep races since D35), because `last_frame` is the corpus's gap
+`open_monotonic` bound. Ruled rationale verbatim: *"making three test conversions deterministic is not
+worth any change to how the corpus records gap windows; options that inject fake time into
+open_monotonic are not a cost-benefit calculation but the red line doing what red lines do."*
+**Final disposition, denominator 30: 24 CONVERTED + 3 keepalive-blocked + 3 asyncio.sleep.** Races
+6/15/16 stay on the flake-doctrine diagnose-before-rerun discipline permanently. Two decision docs:
+`2026-07-28-races-6-15-16-not-clock-convertible.md` and
+`2026-07-28-outcome-bearing-for-whom-consumed-by-what.md` (the latter records that **WO-031 §4 made no
+error** — an audit is bounded by the question it was given — and that D42's mode was validated on its
+first firing).
+
+**§3 — vocabulary enumerated, four properties MEASURED.** 44 declared reason codes, 13 event types.
+**(a) emitted⇒declared CLEAN, (b) declared⇒producible CLEAN, (c) prefix-free CLEAN.** (d) CATEGORY
+catalogued: **19 ARCHIVABLE** (can appear in a corpus decision record — every one declared,
+prefix-free) vs **25 RAISED/LOGGED-only**. The load-time code
+`LIVE_CAPABLE_BUILDER_MISSING_FORWARDED_PARAM` is labelled and **does not affect the (a)/(b) verdicts**
+(declared and producible on its own terms, masking nothing); re-homing is the post-corpus SPLIT audit.
+**§3.4 VERDICT: ARCHIVE-READY = YES.**
+
+**⚠ §3.5 FINDING (reported, not repaired — the lead's call).**
+`REASON_VETO_INSUFFICIENT_BALANCE` (`risk/engine.py:42`) is **neither declared nor producible** —
+it appears exactly ONCE in the repo, at its own definition. **Both existing properties are structurally
+blind to it:** (a) cannot see it (not emitted — a class constant, not a call-site literal); (b) cannot
+see it (not declared). A code that is neither declared nor emitted **falls between both properties**.
+It matters because three production sites emit `reason_code` INDIRECTLY into decision records
+(`live.py:227` signal_reason, `:248` the risk REASON_* constants, `:307` e.reason_code) — the
+documented blind spot of the literal-form guard — so this constant is that failure **pre-loaded**: one
+line of wiring and an undeclared code enters a permanent archive with every existing guard green.
+**Bucket: neither an archive-readiness violation (nothing produces it) nor a category leak — a third
+thing, a dead ungoverned constant.** §4's YES branch forbids a src change and it harms nothing today,
+so it was NOT touched.
+
+**§4 — CERTIFY-ONLY: `tests/test_archive_readiness.py` (5 tests).** Governs the ARCHIVE PATH
+specifically, resolving all three indirection sources by AST (the signal_reason ternary, the risk
+REASON_* class attributes, KillSwitchEngagedError's default). Asserts (a)+(c) over the archivable set,
+requires every **wired** risk constant be declared, keeps dead constants **examined by name**
+(`KNOWN_DEAD_RISK_CONSTANTS` pins the finding above, and the guard **fires the moment it is wired**),
+and self-tests that its resolvers return real values. **Bite proof PASS**, four artifacts, sha256
+exact-restore: the mutation rides the indirection path, and **artifact 2 is the point — the
+literal-form guard stayed GREEN 11/11 while an ungoverned code became archivable**, which is its
+documented blind spot demonstrated and exactly the ground the new guard covers.
+
+**TWO INSTRUMENT DEFECTS SELF-CAUGHT AND REPORTED:** (1) the audit's first run reported 9 archivable
+codes and a 13-strong "INDIRECT-ONLY" bucket — *not* a system property but **my regex failing to see
+variable-indirection emission**; the true archivable set is **19**. The first output looked clean
+(verdict ARCHIVE-READY, exit 0) and shipping it would have certified the archive on an undercount —
+D41's apparatus-honesty rule turned on my own instrument. **The §3.5 finding came out of that
+correction, not the happy path.** (2) The guard's first resolver walked `tree.body` assuming
+module-level constants; they are CLASS attributes referenced as `self.REASON_*`, so it returned `{}` —
+caught by its own 0.1d self-test, which is the difference between a guard and a green guard that
+checks nothing.
+
+**ACCEPTANCE:** **227 = 222 + 5** on {3.14.6, 3.11.15} × {deterministic, seed 20261001}, 0 f/xf/xp;
+reverify PASS 31/31; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass;
+`test_evidence_write_boundary.py` 4/4; **five production sha256s IDENTICAL** (`b06c347e…`,
+`103a8ba7…`, `5bf833c7…`, `dab18f67…`, `3d153a11…`).
+
+**NEXT (corpus-blocking): capture-loop baseline → corpus preconditions → 24h corpus.**
+
+---
 ## ▶ WO-036 STOPPED at §1's RED-LINE PRECHECK — 2026-07-28 — `last_frame` is a GAP-LEDGER clock
 
 > The keepalive/ping seam WO. Hit its own pre-committed §1 gate before threading anything.
