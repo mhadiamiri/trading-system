@@ -1,0 +1,32 @@
+{
+  "distribution": {
+    "wall": {
+      "median_ns": 15506863,
+      "p95_ns": 16190528,
+      "p99_ns": 16402454,
+      "max_ns": 16403675
+    },
+    "mono": {
+      "median_ns": 15506799,
+      "p95_ns": 16190479,
+      "p99_ns": 16402578,
+      "max_ns": 16403799
+    },
+    "count": 100
+  },
+  "metadata": {
+    "host": "Hadi",
+    "os": "Windows",
+    "load": "none (intentionally idle for baseline capture)",
+    "source": "fixture_simulated (WO-038 \u00a74: fixture replay preferred)",
+    "duration_seconds": 10.0,
+    "resolution_ns": 100,
+    "instrument": "WO-038 \u00a73 PerFrameRecord",
+    "instrument_commit": "c8fca6dade0e93209b5c545f2d6bfc3fbe5d2de3",
+    "interpreter": "3.14.6",
+    "timestamp_utc": "2026-07-28T17:48:42.332892+00:00"
+  },
+  "host_suspend_events": 0,
+  "host_suspend_valid": true,
+  "note": "WO-038 \u00a74 baseline - per-frame loop performance with seven dimensions declared"
+}

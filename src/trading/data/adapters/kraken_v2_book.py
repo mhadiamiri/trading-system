@@ -17,7 +17,7 @@ Venue-Specific Details (must NOT leak above adapter):
 
 from datetime import datetime, UTC
 from decimal import Decimal, InvalidOperation
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 # WO-021 §2: AsyncIterator is used in return annotations (get_live_market_data, get_market_data) and
 # was never imported. Python 3.11 evaluates annotations eagerly -> NameError at class definition
 # (masked on 3.14 by PEP 649). Targeted import from collections.abc (the canonical home since 3.9;
@@ -272,6 +272,119 @@ class ThroughputRecord:
     def mean_latency(self, idx: int) -> float:
         b = self.per_second.get(idx)
         return (b["lat_sum"] / b["lat_n"]) if b and b["lat_n"] else 0.0
+
+
+@dataclass
+class PerFrameTiming:
+    """
+    WO-038 §3: Per-frame timing measurement.
+
+    Records wall+monotonic timing for a single frame iteration:
+    - frame_received: when frame arrived (last_frame monotonic)
+    - frame_processed: after MarketState yield completes
+
+    APPARATUS HONESTY (D41): Timing reads are NOT on the measured path.
+    frame_received comes from the adapter's existing last_frame read (line 2777).
+    frame_processed is captured AFTER the yield returns — instrument overhead
+    is OUTSIDE the measured interval, so it does NOT inflate loop cost.
+    """
+    frame_received_wall: float = 0.0
+    frame_received_mono: float = 0.0
+    frame_processed_wall: float = 0.0
+    frame_processed_mono: float = 0.0
+
+    @property
+    def wall_duration_ns(self) -> int:
+        """Wall-clock duration in nanoseconds."""
+        return int((self.frame_processed_wall - self.frame_received_wall) * 1e9)
+
+    @property
+    def mono_duration_ns(self) -> int:
+        """Monotonic-clock duration in nanoseconds."""
+        return int((self.frame_processed_mono - self.frame_received_mono) * 1e9)
+
+
+@dataclass
+class PerFrameRecord:
+    """
+    WO-038 §3: Capture-loop performance instrument.
+
+    Records per-iteration wall+monotonic timing at the loop's real boundaries:
+    - START: Frame received (last_frame monotonic, kraken_v2_book.py:2777)
+    - END: After MarketState yield completes
+
+    The instrument measures the ACTUAL per-frame loop of get_live_market_data —
+    the code path WO-023 §7 established has no observer.
+
+    APPARATUS HONESTY (D41):
+    - Uses adapter's existing last_frame read (already measured, not added by instrument)
+    - Captures end timing AFTER yield completes (instrument cost outside measured interval)
+    - Post-hoc distribution computation (outside the capture loop)
+    - Writes to .artifacts/ (WO-032 boundary), not evidence/
+
+    SEPARATION OF INSTRUMENT COST FROM LOOP COST:
+    The instrument's timing reads do NOT enter the hot path's measured cost.
+    frame_received is the adapter's own measurement (last_frame at line 2777).
+    frame_processed is captured AFTER the yield at line 2848 returns.
+    Therefore, the instrument's own cost does NOT inflate the measured loop cost.
+    """
+
+    enabled: bool = False
+    timings: list[PerFrameTiming] = field(default_factory=list)
+    start_monotonic: float = 0.0
+    _wall: Any = field(default_factory=lambda: time.time)
+
+    def enable(self) -> None:
+        """Enable per-frame timing collection."""
+        self.enabled = True
+        self.timings = []
+        self.start_monotonic = time.monotonic()
+
+    def record_frame_start(self, wall_ts: float, mono_ts: float) -> None:
+        """Record frame arrival time (called at loop boundary, before processing)."""
+        if not self.enabled:
+            return
+        # Store for later pairing with end time
+        self._frame_start_wall = wall_ts
+        self._frame_start_mono = mono_ts
+
+    def record_frame_end(self, wall_ts: float, mono_ts: float) -> None:
+        """Record frame completion time (called after yield)."""
+        if not self.enabled:
+            return
+        timing = PerFrameTiming(
+            frame_received_wall=self._frame_start_wall,
+            frame_received_mono=self._frame_start_mono,
+            frame_processed_wall=wall_ts,
+            frame_processed_mono=mono_ts,
+        )
+        self.timings.append(timing)
+
+    def compute_distribution(self) -> dict:
+        """Compute statistical distribution (median, p95, p99, max, count)."""
+        if not self.timings:
+            return {"wall": {}, "mono": {}, "count": 0}
+
+        import statistics
+
+        wall_durations = [t.wall_duration_ns for t in self.timings]
+        mono_durations = [t.mono_duration_ns for t in self.timings]
+
+        return {
+            "wall": {
+                "median_ns": int(statistics.median(wall_durations)),
+                "p95_ns": int(statistics.quantiles(wall_durations, n=100)[94]),
+                "p99_ns": int(statistics.quantiles(wall_durations, n=100)[98]),
+                "max_ns": max(wall_durations),
+            },
+            "mono": {
+                "median_ns": int(statistics.median(mono_durations)),
+                "p95_ns": int(statistics.quantiles(mono_durations, n=100)[94]),
+                "p99_ns": int(statistics.quantiles(mono_durations, n=100)[98]),
+                "max_ns": max(mono_durations),
+            },
+            "count": len(self.timings),
+        }
 
 
 # ── WO-014c-2 §1/§2: DATA-GAP RECORDING ──────────────────────────────────────────
@@ -1170,6 +1283,9 @@ class KrakenV2BookAdapter:
         # ONLY for the suspend detector's wall sampling, so a test can simulate a wall jump
         # (a suspend) without touching the deadline. NOT used for the deadline/start_time.
         self._wall_clock = None
+        # WO-038 §3: per-frame performance instrument (disabled by default, enabled for tests).
+        # Initialized here but reset in get_live_market_data for each capture.
+        self._per_frame_record = PerFrameRecord()
         # WO-023 §2 (RULING D34-1): the injectable DEADLINE clock. A duration is an INTERVAL and
         # D25 puts intervals on MONOTONIC, so the capture deadline runs on THIS, not on _wall_clock
         # (which is the suspend detector's wall and CAN jump — line 1136). Default time.monotonic;
@@ -2523,6 +2639,8 @@ class KrakenV2BookAdapter:
         )
         # WO-014c-1 §B.3: per-second receive-to-process latency + message-rate completeness.
         self._throughput_record = ThroughputRecord(bucket_seconds=1.0)
+        # WO-038 §3: per-frame performance instrument (disabled by default, enabled for tests).
+        self._per_frame_record = PerFrameRecord()
         lag_task = None
         pong_task = None
 
@@ -2775,6 +2893,9 @@ class KrakenV2BookAdapter:
 
                 # A frame arrived (book, heartbeat, or pong) -> the link is alive.
                 last_frame = time.monotonic()
+                # WO-038 §3: per-frame performance instrument — record frame start.
+                if self._per_frame_record.enabled:
+                    self._per_frame_record.record_frame_start(_wall(), last_frame)
 
                 # LAYER 1: feed boundary. Count EVERY raw frame received, before
                 # any filtering, validation or pause check — the same semantic
@@ -2821,6 +2942,12 @@ class KrakenV2BookAdapter:
                 # single hook serves keepalive, checksum, and venue-disconnect gaps.
                 if market_states:
                     self._close_open_gaps(done_mono)
+
+                # WO-038 §3: per-frame performance instrument — record frame end.
+                # Captured AFTER processing completes, BEFORE yield. The yield time itself
+                # is handed off to the caller and not part of the loop's processing cost.
+                if self._per_frame_record.enabled:
+                    self._per_frame_record.record_frame_end(_wall(), time.monotonic())
 
                 # WO-014b-1: RECONNECT takes priority over same-socket resubscribe.
                 # Five consecutive checksum failures (FR-018) set _pending_reconnect via
