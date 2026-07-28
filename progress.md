@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-035 COMPLETE — BATCH C CONVERTED. Pass two's last conversion batch is done: 24 of 27 clock-injectable races are now deterministic.** The three D42 amendments landed first as their own commit `daaf5f5` (batch C 8→9, node-ID identifiers, the standing artifact-ruling doctrine), then all 9 races converted on their own termination branches — 7 deadline, entry 35 on the **CRASH** branch, race 26 keeping **both** its deadline and venue-close halves. All `PROCEED_COHERENT`; **zero assertions touched** (counts identical, no assert line in the diff); 222 × 12 runs (2 interpreters × deterministic + 5 seeds). Every `src/` file byte-unchanged. **NEXT: the keepalive seam WO closes batch B's last 3.** See the **▶ WO-035** block below.)
+**Last Updated**: 2026-07-28 (**WO-036 STOPPED at §1's RED-LINE PRECHECK — nothing threaded, no race converted, `git diff -- src/` empty. ⚠ PASS TWO IS NOT COMPLETE: 24 of 27.** `last_frame` turns out NOT to be a pure pacing read — it **IS the `open_monotonic` opening bound of three of the five ruled gap causes** (`:2674`, `:2708`, `:2765`) and the recv-return timestamp of the throughput **latency instrument** (`:2817`). Threading it is red line (d), not Ops authority. `last_ping` IS clean. This does not contradict WO-031 §4, which answered a different question — what a test's assertions depend on, not what the read feeds in production. **Three unblock options, all the lead's call — see the ▶ WO-036 block below.**)
+**Prior — 2026-07-28** (**WO-035 COMPLETE — BATCH C CONVERTED. Pass two's last conversion batch is done: 24 of 27 clock-injectable races are now deterministic.** The three D42 amendments landed first as their own commit `daaf5f5` (batch C 8→9, node-ID identifiers, the standing artifact-ruling doctrine), then all 9 races converted on their own termination branches — 7 deadline, entry 35 on the **CRASH** branch, race 26 keeping **both** its deadline and venue-close halves. All `PROCEED_COHERENT`; **zero assertions touched** (counts identical, no assert line in the diff); 222 × 12 runs (2 interpreters × deterministic + 5 seeds). Every `src/` file byte-unchanged. **NEXT: the keepalive seam WO closes batch B's last 3.** See the **▶ WO-035** block below.)
 **Prior — 2026-07-28** (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
 **Prior — 2026-07-28** (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
 **Prior — 2026-07-28** (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
@@ -1023,7 +1024,71 @@ lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass; `test_evidence
 
 **NEXT: the keepalive seam WO closes batch B's remaining 3 (races 6/15/16), sized by WO-031 §4 to
 exactly `last_frame` + `last_ping` → all 27 done → taxonomy migration → capture-loop baseline →
-corpus preconditions.**
+corpus preconditions.** *(WO-036 attempted this and STOPPED at its red-line precheck — see below.)*
+
+---
+
+## ▶ WO-036 STOPPED at §1's RED-LINE PRECHECK — 2026-07-28 — `last_frame` is a GAP-LEDGER clock
+
+> The keepalive/ping seam WO. Hit its own pre-committed §1 gate before threading anything.
+> **NOTHING THREADED, NO RACE CONVERTED, `git diff -- src/` EMPTY.** Base HEAD `dd5a6f9`.
+> The WO was authorized for production (SHIP IMPACT: YES); none was touched. Report:
+> `WO-036-REPORT.md`. Evidence: `evidence/WO-036/red_line_precheck.md`.
+
+**⚠ PASS TWO IS NOT COMPLETE — it stands at 24 of 27.** Races 6, 15, 16 remain blocked.
+
+**§1:** HEAD `dd5a6f9`; **222** both interpreters; reverify **PASS 31/31**, tree clean. **D42 currency
+check performed and CLEAN** (`batch_partition.md` carries WO-035's batch C = 9, node-ID columns, dated
+amendment) — recorded because a standing check reported only when it fires is indistinguishable from
+one nobody runs.
+
+**THE PRECHECK FINDING.** §1 required enumerating every `src/` consumer of `last_frame` / `last_ping`
+and STOPPING if either reaches the gap ledger, gap-detection timing, the checksum path or any
+corpus-integrity machinery — *"confirm that from the code, do not inherit it"*.
+
+- **`last_ping` — CLEAN.** Pure pacing: `:2691` (app-ping interval gate), `:2736` (remaining time
+  feeding the recv timeout), plus assignments. No gap/checksum/instrument consumer. Threadable at Ops
+  authority.
+- **`last_frame` — NOT CLEAN. RED LINE (d).** Beyond its two pacing uses (`:2661` absence detection,
+  `:2735` recv-timeout) it feeds **FOUR** non-pacing consumers: **`open_monotonic=last_frame` at
+  `:2674` (KEEPALIVE_RECONNECT gap), `:2708` (VENUE_DISCONNECT 4b) and `:2765` (VENUE_DISCONNECT 4c)** —
+  i.e. it **IS the opening time bound of three of the five ruled gap causes** — plus **`:2817`
+  `self._throughput_record.record(last_frame, done_mono)`**, the recv-return timestamp of the
+  receive-to-process **latency instrument** that §6 explicitly fences off as unconvicted. The gap use is
+  deliberate, not incidental: `:2667` reads *"OPEN the keepalive gap at the LAST FRAME received (when
+  emission actually stopped, not when the threshold tripped)"*. Gap windows are how the corpus knows
+  which ranges are missing data, so threading `last_frame` puts injected time into `open_monotonic`,
+  `duration_s`, and every gap-window computation derived from them.
+
+**This does NOT contradict WO-031 §4.** That WO was asked which non-injectable reads are
+**outcome-bearing for a batch-B race** and answered correctly. This precheck asks **what the read feeds
+in production** — a different question. A variable can be outcome-bearing for a test's assertion AND
+carry unrelated production consumers, which is precisely why §1 ordered a fresh confirmation from code.
+
+**A partial thread is not an easy way out:** threading only the pacing comparisons means **splitting one
+variable into two** (fake-clock pacing vs real-clock gap/instrument stamp). Today they are by
+construction the same instant and `:2667` makes that identity deliberate; decoupling them changes what
+`open_monotonic` MEANS relative to the decision that opened the gap — deeper into red line (d), not
+around it.
+
+**Also recorded (§2.1's question, now answered):** both reads are raw `time.monotonic()` today — they do
+**not** already route through `_monotonic_clock`, so §2.1's "the seam already reaches them / the races
+were misclassified" branch does not apply. Had the precheck been clean, §2.2's expectation (thread
+through the existing `_monotonic_clock`, **no new parameter**) would have been the right shape.
+
+**ACCEPTANCE:** 222 both interpreters (222 + 0 = 222; this WO edits no test); reverify PASS 31/31;
+**`git diff -- src/` EMPTY, all five production sha256s IDENTICAL** (`b06c347e…`, `103a8ba7…`,
+`5bf833c7…`, `dab18f67…`, `3d153a11…`); lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
+pass. §5's seed matrix, ledger dispositions and ledger-bite proof **NOT DONE** — §2–§5 never began.
+**This block does NOT record "pass two complete 27/27" — that would be false; it is 24/27.**
+
+**TO UNBLOCK — the lead's call, since red line (d) is not Ops authority.** Three shapes: (1) split the
+WO and thread only the clean `last_ping` — but that closes only part of race 16, leaving 6 and 15
+blocked, so probably not worth it; (2) authorize threading `last_frame` as a corpus-integrity change,
+accepting that gap `open_monotonic` and the throughput latency sample become injectable and every
+gap-window and latency assertion in the suite must be re-examined under that; (3) split the variable in
+production into a pacing clock and a gap/instrument stamp — the largest change, alters gap semantics,
+needs its own WO and ruling.
 
 ---
 
