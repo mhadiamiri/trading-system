@@ -238,9 +238,9 @@ sha256 identical.
 
 ## §CI
 
-- **§2 commit:** `daaf5f5` · **§3/§4 commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **§2 commit:** `daaf5f5` (the amendment landing, verifiable on its own) · **§3/§4 commit:** `86f0a96`
+- **Local == remote:** `86f0a9621e8921ee656dd35f6db4edf22fdc0929` == `origin/master`
+- **CI run `30363939767`** — **`test (3.11)` success · `test (3.14)` success**, green both legs on the first attempt, both orders.
 
 **THEN STOP.** 24 of 27 clock-injectable races converted. Next: the keepalive seam WO closes batch B's
 remaining 3 (`last_frame` + `last_ping`, sized by WO-031 §4) → all 27 done → taxonomy migration →

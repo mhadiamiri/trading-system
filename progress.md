@@ -1019,6 +1019,8 @@ lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass; `test_evidence
 4/4; **five production sha256s IDENTICAL** (`b06c347e…`, `103a8ba7…`, `5bf833c7…`, `dab18f67…`,
 `3d153a11…`), `git diff -- src/` empty.
 
+**CI:** §2 `daaf5f5` + §3/§4 `86f0a96`; **CI GREEN BOTH LEGS run `30363939767`** on `86f0a96` (first attempt, both orders); local == remote.
+
 **NEXT: the keepalive seam WO closes batch B's remaining 3 (races 6/15/16), sized by WO-031 §4 to
 exactly `last_frame` + `last_ping` → all 27 done → taxonomy migration → capture-loop baseline →
 corpus preconditions.**
