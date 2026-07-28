@@ -1093,6 +1093,8 @@ reverify PASS 31/31; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
 `test_evidence_write_boundary.py` 4/4; **five production sha256s IDENTICAL** (`b06c347e…`,
 `103a8ba7…`, `5bf833c7…`, `dab18f67…`, `3d153a11…`).
 
+**CI:** §2 `256c936` + §3/§4 `3385cf6`; **CI GREEN BOTH LEGS run `30372537642`** (first attempt, both orders); local == remote.
+
 **NEXT (corpus-blocking): capture-loop baseline → corpus preconditions → 24h corpus.**
 
 ---

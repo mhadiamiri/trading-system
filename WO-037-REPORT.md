@@ -250,8 +250,8 @@ the SPLIT audit re-homes.
 
 ## §CI
 
-- **§2 commit:** `256c936` · **§3/§4 commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **§2 commit:** `256c936` (the closures, verifiable on their own) · **§3/§4 commit:** `3385cf6`
+- **Local == remote:** `3385cf644129ec0f35450a40f4acf0dce5bbcd96` == `origin/master`
+- **CI run `30372537642`** — **`test (3.11)` success · `test (3.14)` success**, both legs, first attempt, both orders.
 
 **THEN STOP.** Next (corpus-blocking): capture-loop baseline → corpus preconditions → 24h corpus.
