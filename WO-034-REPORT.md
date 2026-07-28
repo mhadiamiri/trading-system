@@ -219,6 +219,6 @@ STOP — out of scope here. Flagged as the obvious first task of the resumed WO.
 
 ## §CI
 
-- **Commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **Commit:** `e12d6d2`\n- **Local == remote:** `e12d6d212e2217ee68a11b38297b8a47ab6cd002` == `origin/master`\n- **CI run `30358810306`** — **`test (3.11)` success · `test (3.14)` success**, green both legs first attempt.
+
+CI green is expected and carries no weight here: this WO edited no test and converted no race. It confirms the STOP left the tree exactly as it found it.

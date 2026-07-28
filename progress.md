@@ -947,7 +947,7 @@ exact"* — a perfect score produced by collecting nothing.
 **ACCEPTANCE (what a §2.2 STOP can satisfy):** 222 both interpreters; reverify PASS 30/30 + clean tree;
 `test_evidence_write_boundary.py` 4/4; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass;
 **`git diff -- src/ tests/ conftest.py` EMPTY**; five production sha256s IDENTICAL. §4's seed matrix,
-gate-ledger dispositions and ledger-bite proof **NOT DONE** — §3/§4 never began. The reverify tool was
+gate-ledger dispositions and ledger-bite proof **NOT DONE** — §3/§4 never began. **CI GREEN BOTH LEGS run `30358810306`** on `e12d6d2` (first attempt) — expected and weightless here, since the WO edited no test; it confirms the STOP left the tree as it found it. The reverify tool was
 **not** rewired to node IDs (stated per §6); it still passes by name.
 
 **TO UNBLOCK: (1) ratify the nine-mismatch finding and accept `evidence/WO-034/audit_node_ids.md` as
