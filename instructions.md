@@ -1,148 +1,152 @@
-# WO-031 (reissued) — PASS TWO, BATCH B CLASSIFICATION + one suspect BOUND re-audit. CLASSIFY ONLY.
+# WO-033 — BOUND MEASUREMENT PASS: measure all 6 remaining audit bounds. CLASSIFY ONLY.
 
-BASE: current HEAD on master (WO-032 close, `1b52c53`) — confirm actual HEAD in §1 and use it.
-222 both interpreters (218 + WO-032's 4 guard tests), CI green both legs (run from WO-032 §CI).
+BASE: current HEAD on master (WO-031 close, `aef3166`) — confirm actual HEAD in §1 and use it.
+222 both interpreters, CI green both legs (run 30316789147).
 
-SCOPE: **CLASSIFY AND STOP.** Converts NOTHING, threads NO seam, edits NO test/src. Produces (1) the
-batch-B per-race clock-read classification, and (2) a re-audit of ONE audit BOUND that WO-032 flagged
-as behaving like a race. Two committed evidence artifacts + a progress.md block. Nothing else.
-SHIP IMPACT: **NO.** Every production and test file byte-unchanged; §6 proves it with the five sha256s.
+SCOPE: **MEASURE AND STOP.** Converts nothing, threads no seam, edits no test/src/fixture. Runs the
+D40-ruled measurement on the 6 remaining audit BOUNDS (entries 31–34, 36–37) and reports each one's
+MEASURED category. One committed evidence artifact + a re-runnable probe under `tools/` +
+progress.md. Nothing else.
+SHIP IMPACT: **NO.** Every production and test file byte-unchanged; §5 proves it (five sha256s).
 
-WHAT CHANGED SINCE WO-031's FIRST ISSUE:
-- WO-032 committed the D39 partition amendment and the D39 decision docs, and fixed the reverify tool
-  (name-keyed, writes to `.artifacts/`). WO-031's §2 STOP precondition is now SATISFIED — the amended
-  `batch_partition.md` exists on the tree. Confirm it (§2) and proceed.
-- WO-032's CI leg surfaced a finding (§3-bis below): an audit BOUND behaves like a clock race.
-
-WHAT D39 RULED (the operative METHOD, now committed as
-`docs/decisions/2026-07-27-a-residual-clock-read-is-classified-not-waived.md`): for each race,
-enumerate every real-clock read on its path; classify OUTCOME-BEARING (an assertion depends on it) vs
-INCIDENTAL (interval read, no assertion, harmless under the ms-compressed run); convert only if all
-incidental; any outcome-bearing read on a NON-INJECTABLE seam is a PRE-COMMITTED STOP and escalation.
+WHAT D40 RULED (this WO executes ruling 2 verbatim):
+- Entry 35 already reclassified to a RACE (ruling 1): clock-injectable 26→27, bounds 7→6. It is NOT
+  in this WO — it is settled; its home is batch C (now 9). This WO measures the OTHER SIX.
+- **Measure all six before batch C is planned.** The audit's bound/race split is prose margin-
+  reasoning; 1-of-7 was already wrong (entry 35). Doctrine line, ratified:
+  **bound-versus-race is a measurement, not a margin argument; a bound classified by prose ratio is a
+  race pending measurement.**
+- **Two measurement DESIGNS, by claim-kind — the distinction is honored in the measurement, not used
+  to exempt any bound from measurement:**
+  - **Structural pair (entries 36–37, "terminates BEFORE the deadline is consulted"):** a
+    ZERO-CONSULTATION probe — instrument the deadline read and demonstrate the deadline clock is
+    consulted ZERO times on the test's path. Converts "never consulted" from assertion to observation.
+  - **Ratio cases (entries 31–34, "~300× margin"):** the existing margin probe measures the ACTUAL
+    margin against the ACTUAL work — the frames-reached / terminator-timing form from WO-031 §3-bis.
+- Expectation set by the lead: **the pass may flip another entry.** That moves the denominator again,
+  and that is the pass doing its job, not churn. Report a flip as a finding; do not fold it into a batch.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
-0.1 **No discretion.** Code wins over this order: STOP and report. A STOP is an EXPECTED OUTCOME here
-    (an outcome-bearing non-injectable read, or a reclassified bound) — not a failure.
-0.2 No conversions, no seam threading, no test/src edits. Two evidence artifacts + progress.md only.
-    If you find yourself editing a test or src file, you have exceeded scope — STOP.
-0.3/0.4 No guards built; no bite proof owed. Any classification instrument you write is a re-runnable
-    tool that writes to `.artifacts/` (the WO-032 boundary — a tools/ script writing under evidence/
-    now FAILS `tests/test_evidence_write_boundary.py`).
+0.1 **No discretion.** Code wins over this order: STOP and report. A flip (a bound measuring as a race)
+    is an EXPECTED possible outcome, reported and escalated — not a failure, and not folded into a batch.
+0.2 No conversions, no seam threading, no test/src/fixture edits. One evidence artifact + one tools/
+    probe (writing to `.artifacts/`, per the WO-032 boundary) + progress.md. If you edit a test or src
+    file, you have exceeded scope — STOP.
+0.3/0.4 No guards built; no bite proof owed. The probe is a re-runnable tool, not a guard — but it
+    MUST write to `.artifacts/`, never `evidence/` (a tools/ script writing under evidence/ now FAILS
+    `tests/test_evidence_write_boundary.py`).
 0.5 Report every attempt.
 0.7 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Built & verified where |
     |---|---|---|
-    | Amended `batch_partition.md` (D39 B/C plan) | **OPERATED** | WO-032 §2 — CONFIRM at §2 before using |
-    | D39 method decision doc | **OPERATED** | WO-032 §3 |
-    | `wo029_reverify_partition.py` name-keyed, `.artifacts/`-writing | **OPERATED** | WO-032 §1/§4 |
-    | WO-023 §1 audit: 30 races + 7 BOUNDS (entries 31–37) | **OPERATED** | `86e2a33` |
-    | The batch-B classification + the bound re-audit | **THIS WO IS THE BUILDER** | Does not exist — §3, §3-bis |
+    | WO-023 §1 audit: 30 races + BOUNDS (entries 31–37) | **OPERATED** | `86e2a33` — entry 35 now reclassified (D40) |
+    | `tools/wo031_bound_reaudit_probe.py` (margin/frames-reached form) | **OPERATED** | WO-031 §3-bis; generalizes by swapping script+duration |
+    | `AdvancingClock` fixture | **OPERATED** | WO-029 §2.0-bis, shared harness |
+    | D40 doctrine (bound-vs-race is a measurement) | **OPERATED** | `d40` — echo into a decision doc, §4 |
+    | The zero-consultation probe (structural pair) | **THIS WO IS THE BUILDER** | Does not exist — §3.A |
+    | The measured category of all six bounds | **THIS WO IS THE BUILDER** | Does not exist — §3 |
 
-    Any OPERATED row not verified → STOP. In particular §2: if the amended partition is NOT on the
-    tree, STOP (do not re-run the WO-031-first STOP loop — report that WO-032 §2 did not land).
-
----
-
-## §1 CONFIRM HEAD, SUITE, PARTITION INTEGRITY
-State actual HEAD. `pytest tests/ -p no:randomly -rX` both interpreters → confirm **222**. Run the
-FIXED `wo029_reverify_partition.py` → confirm **PASS, 30/30 by name**, writing to `.artifacts/` (a
-`git status` after the run must be clean — that is the WO-032 fix; if it dirties evidence/, WO-032 §4
-regressed, STOP). State batch B membership from the committed amended partition (13 races across
-`test_gap_recording.py`, `test_keepalive.py`, `test_failure_cap.py`, `test_failure_capture.py`).
-
-## §2 CONFIRM THE AMENDED B/C PLAN IS ON THE TREE (the WO-031-first STOP is now cleared)
-Confirm `batch_partition.md` contains the D39 amendment WO-032 §2 committed: the "scripted clean-close"
-phrase STRUCK from batch A, and the termination-branch requirement ADDED to B and C. If present,
-proceed. If absent, STOP — WO-032 §2 did not land and this WO cannot plan against an unamended file.
+    Any OPERATED row not verified → STOP.
 
 ---
 
-## §3 BATCH-B CLASSIFICATION — per race, every real-clock read (the D39 method)
+## §1 CONFIRM HEAD, SUITE, DENOMINATOR STATE
+State actual HEAD. `pytest tests/ -p no:randomly -rX` both interpreters → confirm **222**. Run
+`wo029_reverify_partition.py` → PASS 30/30 by name, writes `.artifacts/`, `git status` clean after.
+State the current denominator per D40: **clock-injectable 27, bounds 6, audit total 30** (entry 35
+moved; this WO measures the surviving 6 bounds).
 
-For each of the 13 batch-B races:
-3.1 **Termination branch** the test exercises (deadline / venue-close / failure-cap / breaker / other),
-    named from the code. This is the branch a later conversion must KEEP (the D39 acceptance tightening).
-3.2 **Every real-clock read on the race's path** — call site (file:line), which clock, INJECTABLE
-    (deadline/suspend post-WO-030) or NON-INJECTABLE (keepalive pacing, ping interval, ledger anchor,
-    last_frame, throughput/lag/pong instruments, others).
-3.3 **Classify each read OUTCOME-BEARING or INCIDENTAL**, with the naming evidence: for each
-    outcome-bearing read, the assertion that depends on it; for each incidental, the explicit statement
-    that no assertion references it. (The batch-A standard: this is what made the reading a method, not
-    a waiver.)
-3.4 **Per-race verdict:** ALL INCIDENTAL → CONVERTIBLE (note deadline-path vs own-branch, and flag any
-    non-deadline branch needing a fixture that does not yet exist — flag, do not build). ANY
-    outcome-bearing on a NON-INJECTABLE read → NOT-YET-CONVERTIBLE, name the exact read(s) to thread.
+The six under measurement, with the audit's prose justification and the ruled design for each:
 
-## §4 THE OUTCOME-BEARING SET — the measurement that sizes the keepalive seam WO (D39 (a))
-Aggregate: the set of NON-INJECTABLE reads outcome-bearing for ≥1 batch-B race (this and NOTHING more
-is what the keepalive seam WO threads — seam-sized-to-measurement); which races convict each, on which
-assertion; and the set incidental everywhere (stays UNTHREADED by design, recorded). State counts: N
-convertible now, M not-yet-convertible with reads named. **Fork:** if the outcome-bearing set is the
-expected keepalive/ping-pacing shape → Ops scopes the seam WO on existing d39. If it SURPRISES (large,
-or touches the throughput/lag/pong INSTRUMENTS not just pacing) → STOP, the count returns to the lead
-before any seam WO.
+| Entry | Bound test | Audit prose | Design |
+|---|---|---|---|
+| 31 | `test_backoff_breaker.py:88 test_persistent_reopen_failure_trips_breaker_loud` | 30 s dl vs ~0.1 s breaker | RATIO probe |
+| 32 | `test_gap_recording.py:202 test_terminal_venue_disconnect_breaker_gap_recorded` | 30 s dl vs breaker | RATIO probe |
+| 33 | `test_live_capture.py:172 test_breaker_trip_terminates_run_with_forensic_tail` | 30 s dl vs breaker | RATIO probe |
+| 34 | `test_reconnect_to_effect.py:100 test_stranded_reconnect_flag_fails_loudly` | 30 s dl vs flag-raise | RATIO probe |
+| 36 | `test_no_silent_fallback.py:25 test_connection_failure_raises_and_does_not_replay` | raises during connect, before loop | ZERO-CONSULTATION probe |
+| 37 | `test_no_silent_fallback.py:52 test_live_method_refuses_fixture_mode_adapter` | refuses pre-loop, dl never consulted | ZERO-CONSULTATION probe |
+
+Confirm these six names+lines resolve at HEAD before measuring; if any differs, note it (not a STOP —
+just report the current identity).
 
 ---
 
-## §3-bis RE-AUDIT ONE SUSPECT BOUND (WO-032's CI finding) — CLASSIFY, do not reclassify unilaterally
+## §3 THE MEASUREMENTS
 
-WO-032's CI leg observed that `test_incremental_persist_survives_unhandled_exception_mid_capture` —
-filed by the WO-023 audit as one of the **7 legitimate BOUNDS (entries 31–37), NOT a race** — flinches
-on clock rate: at the pre-WO-032 baseline, `AdvancingClock(delta=0.2)` yields no exception,
-`delta=0.0001` raises. That is the signature of an outcome-bearing clock dependency, i.e. a race.
+### §3.A ZERO-CONSULTATION PROBE — entries 36, 37 (this WO builds it)
+The structural claim is "the deadline clock is never consulted on this test's path." Convert it from
+assertion to observation:
+- Instrument the deadline read — wrap/count consultations of `_monotonic_clock` at the deadline sites
+  (the 3 sites WO-031 §3-bis pinned: deadline set / deadline guard / recv timeout), via a counting
+  clock injected through the same seam a conversion would use. Do NOT edit src to instrument — inject
+  a counting clock as the test would inject a fake one (the seam exists post-WO-030).
+- Run each test's exact path and record the CONSULTATION COUNT.
+- **Verdict per test:** count == 0 → the structural claim is OBSERVED; the test terminates before the
+  deadline is ever read; it is a genuine BOUND (structurally, not by margin). count > 0 → the deadline
+  IS consulted; the "never consulted" claim is false and the entry is a RACE pending the same
+  outcome-bearing/incidental classification as any race (run D39's method on it, name the assertion).
+- Note: a counting clock must still be COHERENT (pass the gate) — inject it as a coherent pair or via
+  the injected-transport path, per batch A's pattern, so the gate does not refuse and mask the count.
+  If the gate refuses, that is an injection error, not a finding — fix the injection, per WO-031 §Attempt 6.
 
-**Run the D39 method on this ONE test** exactly as §3.1–3.4 — do NOT reclassify from the symptom alone.
-The D39 doc you are operating under says the category comes from the CLASSIFICATION (enumerate reads,
-name the assertion), not from a differential observation. So:
-- 3.1 its termination branch; 3.2 every real-clock read on its path; 3.3 classify each with the naming
-  evidence — specifically, WHICH read the delta=0.2-vs-0.0001 outcome divergence flows from, and WHICH
-  assertion observes it; 3.4 verdict.
-- Then state the CATEGORY consequence explicitly:
-  (a) OUTCOME-BEARING clock read that an assertion rests on → it is a RACE the audit misfiled as a
-      BOUND. The clock-injectable denominator becomes 27 (or it is NOT-YET-CONVERTIBLE if the read is
-      non-injectable — say which). This is a DENOMINATOR CHANGE → the reclassification ESCALATES to the
-      lead; you REPORT it, you do not fold it into a batch.
-  (b) the divergence flows from something that is genuinely a BOUND (a timeout the test legitimately
-      brackets, no assertion resting on the injected rate) → the audit was right, the symptom is
-      benign, record why and leave the category.
-- This test is a BATCH C file member's neighbour but is itself a BOUND, not in any batch. **Do not
-  convert it, do not touch batch C.** This is a classification-only re-audit.
+### §3.B RATIO / FRAMES-REACHED PROBE — entries 31, 32, 33, 34 (existing tool, generalized)
+Use `tools/wo031_bound_reaudit_probe.py`'s form (swap script + duration). For each: drive the test's
+path under real clock and under `AdvancingClock` at a spread of deltas (include a delta near the
+audit's implied margin AND deltas fast enough to make the deadline win, as WO-031's delta=0.05 row
+did). Record, per delta: whether the terminator (breaker trip / flag-raise) is reached BEFORE the
+deadline fires.
+- **Verdict per test:** the terminator always precedes the deadline across the realistic delta range →
+  genuine BOUND, the margin is MEASURED not assumed. There exists a delta where the deadline wins and
+  changes the outcome an assertion rests on → RACE (the entry-35 shape); run D39's method, name the
+  assertion, report the reclassification.
+- State the ACTUAL measured margin (terminator time vs deadline) for each — "~300×" was the audit's
+  prose; replace it with the number.
 
-Record whether the OTHER 6 bounds (entries 31–37) warrant the same re-audit — enumerate them by name
-and state, from the audit's own text, whether any shares this one's shape (an injected-clock-rate
-dependence). If any does, flag it for its own probe; do not probe them all here unless the shape is
-obviously shared. (Enumerate-then-scope, not probe-everything.)
+### §3.C AGGREGATE
+- Per entry: design used, measurement, verdict (BOUND-measured / RACE-flipped), and for any flip the
+  D39 classification (outcome-bearing read named, assertion named, injectable or not).
+- New denominator state: clock-injectable = 27 + (flips), bounds = 6 − (flips), total 30.
+- **Any flip ESCALATES** as a reclassification (like entry 35) — reported, not folded into a batch.
+  State whether batch C's denominator is now settled (all 6 measured, N flips reported) or whether a
+  flip needs a lead ruling before batch C is planned (it does — a denominator change is the lead's).
+
+---
+
+## §4 DECISION DOC
+`docs/decisions/2026-07-27-bound-versus-race-is-a-measurement-not-a-margin.md` — the D40 doctrine line
+verbatim: *bound-versus-race is a measurement, not a margin argument; a bound classified by prose ratio
+is a race pending measurement.* Record it as the SEVENTH specimen of the prose-figure family and the
+FIRST found in an audit's OWN taxonomy rather than in what the audit examined. Carry Claude Code's
+sentence: *what differs is the ratio, not the rhetoric.* Note the recursion: the audit that defined
+pass two is now held to pass two's own evidentiary standard.
 
 ---
 
 ## §5 SCOPE FENCE
-Converts NO race. Threads NO seam. Edits NO test/src/fixture. Scopes NO downstream WO (produces the
-measurements that size them). Touches NO batch C race, NONE of the 3 asyncio.sleep races. Does NOT
-reclassify the bound unilaterally — reports the classification and escalates a denominator change.
+Converts NO race. Threads NO seam. Edits NO test/src/fixture. Plans NO batch C (produces the measured
+bound set that lets it be planned). Does NOT fold a flip into a batch — escalates it. Touches entry 35
+NOT AT ALL (settled, ruling 1). Touches NONE of the 3 asyncio.sleep races.
 
 ## §6 ACCEPTANCE
 - `pytest tests/ -p no:randomly -rX` → 222 both interpreters (unchanged — edits no test)
-- `wo029_reverify_partition.py` → PASS 30/30 by name, writes `.artifacts/`, `git status` clean after
-- `git status --porcelain` shows only the two evidence artifacts + progress.md + instructions.md
+- `wo029_reverify_partition.py` → PASS 30/30 by name, `.artifacts/`, `git status` clean after
 - Five src sha256 IDENTICAL (`b06c347e…`,`103a8ba7…`,`5bf833c7…`,`dab18f67…`,`3d153a11…`);
-  `git diff -- src/` empty
-- `test_evidence_write_boundary.py` PASSES (any classification tool you wrote writes to `.artifacts/`)
+  `git diff -- src/ tests/` empty
+- `test_evidence_write_boundary.py` PASSES (both probes write to `.artifacts/`)
 - lint 6/6 · contract 6/6 · ruff clean · annotation 0 · preflight pass
-- `evidence/WO-031/batch_b_clock_read_classification.md` and
-  `evidence/WO-031/bound_reaudit_incremental_persist.md` committed
-- progress.md WO-031 block appended; commit, push, local == remote, CI green both legs (REAL run
-  number — not a placeholder; WO-028 and WO-032 both shipped `<fill>` first)
+- `evidence/WO-033/bound_measurement_pass.md` committed; the §4 decision doc committed
+- progress.md WO-033 block; commit, push, local == remote, CI green both legs (REAL run number)
 
-## §7 REPORT — `WO-031-BATCH-B-CLASSIFICATION-REPORT.md` (overwrite the prior STOP report; note it
-supersedes the STOP)
-Per-race batch-B classification (branch, read enumeration, outcome/incidental with naming, verdict);
-the §4 aggregate (outcome-bearing set, incidental-everywhere set, N/M counts, which fork obtains); the
-§3-bis bound re-audit with its category verdict and denominator consequence; the 6-other-bounds
-enumeration and whether any needs its own probe; the five unchanged sha256; every attempt; any STOP.
+## §7 REPORT — `WO-033-REPORT.md`
+Per-entry: design used, the measurement table, the verdict, and for any flip the full D39
+classification. The §3.C aggregate with the new denominator state and whether batch C is settled or
+gated on a flip ruling. The zero-consultation probe's mechanism (how it counts without editing src).
+The decision doc as committed. Five unchanged sha256. Every attempt; any STOP. The CI run number, real.
 
-**THEN STOP.** If §4 convicts keepalive-shaped reads → keepalive seam WO next (sized to §4). If §3-bis
-reclassifies the bound → the reclassification escalates before it joins any batch. Otherwise batches
-B/C convert under the amended partition.
+**THEN STOP.** If all six measure as bounds → batch C is planned against the measured set (9 races).
+If any flips → the reclassification escalates before batch C. The keepalive seam WO runs in parallel,
+separately.

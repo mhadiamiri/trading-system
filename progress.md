@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
+**Last Updated**: 2026-07-28 (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
+**Prior — 2026-07-28** (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
 **Prior — 2026-07-27** (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
 **⚠ OPEN FOR THE LEAD (WO-032 §FINDING):** the WO-023 audit's **"7 legitimate BOUNDS"** bucket contains at least one real race — `test_incremental_persist_survives_unhandled_exception_mid_capture` (`test_ledger_persistence.py:82`), proved OUTCOME-BEARING on the real-clock deadline at the pre-WO-032 baseline. The bucket was justified by the same style of prose reasoning that was falsified, so **the pass-two denominator may exceed 26.** Re-examine all 7 under D39's method before batch C.
 **WO-032**: HEAD `e7da7cf` (base `3410435`); CI green both legs run `30304749145` — see the **▶ WO-032** block below. §1 name-keyed verdict + §1.3 bite proof; §2 the D39 partition amendment committed; §3/§4.4 three decision docs (D39 ×2, **D40** for the guard-reach doctrine); §4 all 11 `evidence/`-writing `tools/` scripts moved to git-ignored `.artifacts/`, plus `tests/test_evidence_write_boundary.py` (4 tests) and its bite proof. Two instrument defects self-caught mid-build and reported. Five production sha256s identical.
@@ -830,6 +831,67 @@ pass; `git diff -- src/ tests/` **empty**; CI GREEN BOTH LEGS run `30316789147` 
 6, 15, 16; (2) a ruling on the §3-bis reclassification (26 → 27) before it joins a batch; (3) the 10
 convertible batch-B races can convert whenever the lead schedules them, all on the deadline branch via
 `AdvancingClock`.**
+
+---
+
+## ▶ WO-033 COMPLETE (AUTHORITATIVE) — 2026-07-28 — bound measurement pass: all 6 remaining bounds MEASURED
+
+> Executes D40 ruling 2 (*bound-versus-race is a measurement, not a margin argument*). **MEASURE-ONLY:
+> converts nothing, threads no seam, edits no test/src/fixture.** Base HEAD `308baad`. **SHIP IMPACT: NO.**
+> Report: `WO-033-REPORT.md`. Evidence: `evidence/WO-033/bound_measurement_pass.md`. Decision doc:
+> `docs/decisions/2026-07-27-bound-versus-race-is-a-measurement-not-a-margin.md`. Instrument:
+> `tools/wo033_bound_measurement.py`.
+
+**RESULT: all six measure as BOUNDS. NO FLIPS.** Denominator **settled**: clock-injectable **27**,
+bounds **6 (all now measured)**, audit total **30**. **Batch C is settled at 9 races** (its 8 + entry 35
+if the lead ratifies WO-031 §3-bis) — nothing this pass produced gates it.
+
+**§1:** HEAD `308baad`; **222** both interpreters; reverify PASS 30/30 by name, tree clean after. **All 6
+identifiers resolve, with drift reported:** entries 31 and 36 were **audit NAME TRUNCATIONS** (3rd/4th
+instance of that artifact — `…trips_breaker_loud_with_forensic_tail`, `…does_not_replay_fixtures`; the
+latter is a METHOD on `class TestNoSilentFallback`, invisible to a top-level `^def test_` scan); entry 33
+moved `:172`→`:232` by batch A's own conversion; 32 `:202`→`:195`, 34 `:100`→`:99`, 37 `:52`→`:51`.
+
+**§3.A ZERO-CONSULTATION PROBE (built here):** a **coherent counting clock** injected through the
+`monotonic_clock` seam — no src edit — that counts deadline-clock reads **and walks the stack to name the
+calling `kraken_v2_book.py` line**, so the result identifies WHICH of the three pinned sites (`:2548` set
+/ `:2594` guard / `:2727` recv-timeout) was reached. Frozen (`FakeClock`) so it observes without
+perturbing, and coherent so the gate PROCEEDs rather than refusing and zeroing the count for the wrong
+reason. **Entries 36 and 37: 0 consultations, no site reached** → *"the deadline is never consulted"* is
+now an OBSERVATION. Structural corroboration: `_connect()` is awaited at `:2529`, nineteen lines before
+the deadline exists at `:2548`.
+
+**§3.B RATIO PROBE — the prose figure replaced by numbers:** measured real-clock margins
+**31 → 199× · 32 → 220× · 33 → 43× · 34 → 18,750×**, against the audit's uniform *"~300×"*. **Entry 33 is
+nearly an order of magnitude tighter than claimed** (it drives the breaker through `LiveCaptureRunner`,
+0.6959s, a path the one-line justification never distinguished), and the four span a **factor of 436**
+between them. **All four verdicts survive; the numbers behind them had never been taken.** Delta sweep:
+32 and 33 never flip; 31 and 34 let the deadline win only at δ=5.0.
+
+**⚠ ONE INTERPRETIVE CALL, FLAGGED NOT RESOLVED:** §3.B's *"there exists a delta where the deadline wins
+→ RACE"*, read literally, flips 31 and 34 at δ=5.0 — **and would flip essentially every deadline-bearing
+test**, emptying the category. Applied the other clause (*"across the realistic delta range"*) on a
+measured basis: **in all four, the deadline and the terminator are on DIFFERENT clocks** — the breaker
+trips on raw non-injectable `time.monotonic()`, the stranding raise consults no clock at all, only the
+deadline is on `_monotonic_clock`. A fast fake clock does not slow the run; it **decouples** the two
+timelines, which is an injection artifact, not a state the real system can reach. **Entry 35, the one
+that DID flip, was different in kind:** deadline and work on the SAME real timeline at ~1× margin, and
+ordinary CI load reversed it — *that* is what a race is. **If the lead intends the literal reading,
+31 and 34 flip and the denominator moves 27 → 29, bounds 6 → 4.** Not recommended; the denominator is
+the lead's.
+
+**§4 decision doc:** the D40 line verbatim plus *what differs is the ratio, not the rhetoric*; recorded
+as the **7th** specimen of the prose-figure family and the **FIRST found in an audit's OWN taxonomy**
+rather than in what the audit examined, with the recursion named — the audit that defined pass two is now
+held to pass two's own evidentiary standard.
+
+**ACCEPTANCE:** 222 both interpreters; reverify PASS 30/30 + clean tree; `test_evidence_write_boundary.py`
+4/4 (both probes write to `.artifacts/`); lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
+pass; `git diff -- src/ tests/` **empty**; five production sha256s IDENTICAL (`b06c347e…`, `103a8ba7…`,
+`5bf833c7…`, `dab18f67…`, `3d153a11…`).
+
+**NEXT: batch C can be planned against the measured set (9 races, pending the entry-35 ratification). The
+keepalive seam WO — sized by WO-031 §4 to exactly `last_frame` + `last_ping` — runs in parallel.**
 
 ---
 
