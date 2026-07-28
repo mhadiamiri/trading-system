@@ -7,6 +7,22 @@
 
 ---
 
+## ⚠️ WITHDRAWN — WO-039 §6
+
+**The 0.542ms median and 10.595ms shift figures in this report are WITHDRAWN as the real-loop reference.**
+
+**Reason:** These numbers were measured by a DIRECT-CONSTRUCT harness that NEVER entered `get_live_market_data` (the production async generator). The proof built `PerFrameRecord()` directly and called its methods manually, proving the methods work but NOT that production reaches them.
+
+This is the WO-023 §7 VOID defect one level deeper — a confident number measuring a path that is NOT the path.
+
+**Replacement:** WO-039's real-loop bite proof (driven THROUGH `get_live_market_data`, the production async generator) REPLACES this false proof. The real baseline number will come in WO-040.
+
+**Lineage:** WO-023 §7 VOID → CLOSEOUT-2 direct-construct → WO-039 real-loop proof (standing entry-point check ratified D-r30).
+
+**Preserved:** The original text below is preserved unchanged as the record of a false claim (per WO-039 §6 "annotate, not rewrite").
+
+---
+
 ## §0 RULES OF ENGAGEMENT — APPLIED
 
 0.1 No discretion — code wins over this order.

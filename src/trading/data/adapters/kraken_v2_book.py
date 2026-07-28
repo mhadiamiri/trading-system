@@ -2581,7 +2581,8 @@ class KrakenV2BookAdapter:
             )
 
     async def get_live_market_data(self, duration_seconds: float,
-                                   incoherent_clocks_allowed: str = "") -> AsyncIterator[MarketState]:
+                                   incoherent_clocks_allowed: str = "",
+                                   enable_instrument: bool = False) -> AsyncIterator[MarketState]:
         """
         Stream MarketStates from the LIVE Kraken v2 public book channel.
 
@@ -2595,6 +2596,9 @@ class KrakenV2BookAdapter:
                 (the sole enumerated customer is the suspend detector, which tests wall-vs-monotonic
                 divergence and so cannot use a coherent pair). The gate reads it BY NAME and never
                 infers the exception from the injection pattern. Empty = coherence is enforced.
+            enable_instrument: WO-039 — enable the per-frame performance instrument. When True,
+                the instrument records per-frame timing through the real loop. DEFAULT-OFF: production
+                calls passing nothing get disabled behavior, identical to before the flag existed.
 
         Raises:
             ValueError: if called on a fixture-mode adapter (no silent switching); or
@@ -2644,8 +2648,10 @@ class KrakenV2BookAdapter:
         )
         # WO-014c-1 §B.3: per-second receive-to-process latency + message-rate completeness.
         self._throughput_record = ThroughputRecord(bucket_seconds=1.0)
-        # WO-038 §3: per-frame performance instrument (disabled by default, enabled for tests).
+        # WO-038 §3: per-frame performance instrument (disabled by default, enabled by enable_instrument flag).
         self._per_frame_record = PerFrameRecord()
+        if enable_instrument:
+            self._per_frame_record.enable()
         lag_task = None
         pong_task = None
 

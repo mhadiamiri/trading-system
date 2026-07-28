@@ -1,4 +1,15 @@
 {
+  "withdrawn": {
+    "reason": "WO-039 §6: 0.542ms and the 10.595ms shift were measured by a DIRECT-CONSTRUCT harness that NEVER entered get_live_market_data (the production async generator). CLOSEOUT-2's proof built PerFrameRecord() directly and called its methods manually, proving the methods work but NOT that production reaches them. This is the WO-023 §7 VOID defect one level deeper — a confident number measuring a path that is NOT the path. WO-039's real-loop bite proof (through get_live_market_data) REPLACES this false proof. The real baseline number comes in WO-040.",
+    "original_median_ms": 0.542,
+    "original_shift_ms": 10.595,
+    "original_proof_commit": "e6892d9",
+    "lineage": "WO-023 §7 VOID → CLOSEOUT-2 direct-construct → WO-039 real-loop proof (standing check)",
+    "wo039_real_loop_entry_point": "get_live_market_data (production async generator)",
+    "wo039_real_loop_frames": 4,
+    "wo039_real_loop_median_ms": 0.096,
+    "wo039_real_loop_p95_ms": 0.293
+  },
   "corrected_from": {
     "median_ms": 15.5,
     "p95_ms": 16.2,
