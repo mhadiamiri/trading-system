@@ -44,9 +44,19 @@ TABLE = os.path.join(REPO, "evidence", "WO-029", "batch_partition.md")
 ARTIFACT_DIR = os.path.join(REPO, ".artifacts", "wo029_reverify_partition")
 TESTS_DIR = "tests/integration"
 
+# WO-035 §2.2 (D42): the partition's identifier column is now the pytest NODE ID, and the prose
+# `file:line + name` moved to a retained-but-superseded column. This row shape follows that change —
+# capture the node ID's file and test name, and ignore the historical column entirely. Keying on the
+# node ID is the point: it is what pytest itself addresses the test by.
+#
+# The row number may be bolded (`| **35** |`) — entry 35 is the BOUND->RACE promotion (D40/D41).
 ROW = re.compile(
-    r"^\|\s*(\d+)\s*\|\s*([\w.]+):(\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|$", re.M)
-EXPECTED = {"CLOCK-INJECTABLE": 26, "ASYNCIO-SLEEP": 3, "ALREADY-CONVERTED": 1}
+    r"^\|\s*\**(\d+)\**\s*\|\s*`([\w.]+)::([\w]+)`\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|$",
+    re.M)
+# 31 rows: the audit's 30 + entry 35, promoted from the bounds block by D40/D41 and landed in the
+# artifact by WO-035 §2.1. Clock-injectable 26 -> 27.
+EXPECTED = {"CLOCK-INJECTABLE": 27, "ASYNCIO-SLEEP": 3, "ALREADY-CONVERTED": 1}
+EXPECTED_ROWS = 31
 ASYNCIO_SLEEP_SET = {
     "test_pong_observer_records_rtt_distribution_via_protocol_ping",
     "test_absent_pongs_are_a_signal_not_gappiness",
@@ -89,37 +99,32 @@ def main():
             "identifiers — the discipline that caught race #5). Lines read from the COMMIT, not the",
             "working tree, so a mid-conversion tree cannot flatter the result.",
             "WO-032 §1: the verdict keys on NAME RESOLUTION. A moved line is informational (each",
-            "batch's own conversion moves its file's races); an UNRESOLVABLE NAME is a hard FAIL.", "",
-            f"  {'#':>3}  {'status':<14} file:line -> test"]
+            "batch's own conversion moves its file's races); an UNRESOLVABLE NAME is a hard FAIL.",
+            "WO-035 §2.2 (D42): identifiers read from the partition's NODE ID column; the prose",
+            "file:line column is retained there as superseded history and is NOT parsed.", "",
+            f"  {'#':>3}  {'status':<14} node id"]
 
-    for num, fname, line, name, cat, path in rows:
-        name = name.replace("**", "").strip()
+    for num, fname, name, prose, cat, path in rows:
         key = cat.split("(")[0].strip().replace("**", "")
         counts[key] = counts.get(key, 0) + 1
         rel = f"{TESTS_DIR}/{fname}"
         if rel not in cache:
             cache[rel] = file_at_ref(args.ref, rel)
         lines = cache[rel]
-        idx = int(line) - 1
         starts = (f"async def {name}(", f"def {name}(")
-        hit = 0 <= idx < len(lines) and lines[idx].strip().startswith(starts)
         real = next((i + 1 for i, ln in enumerate(lines) if ln.strip().startswith(starts)), None)
-        if hit:
+        if real:
             at_stated_line += 1
-            status = "OK"
-        elif real:
-            moved.append((num, name, line, real))
-            status = f"MOVED->{real}"
+            status = f"OK@{real}"
         else:
-            missing.append((num, name, fname, line))
+            missing.append((num, name, fname, prose))
             status = "MISSING"
-        out.append(f"  {num:>3}  {status:<14} {fname}:{line} -> {name}")
+        out.append(f"  {num:>3}  {status:<14} {TESTS_DIR}/{fname}::{name}")
 
-    names = {r[3].replace("**", "").strip() for r in rows}
+    names = {r[2] for r in rows}
     resolved = at_stated_line + len(moved)
-    sleep_named = {r[3].replace("**", "").strip() for r in rows
-                   if "ASYNCIO-SLEEP" in r[4]} == ASYNCIO_SLEEP_SET
-    race5_injectable = any(r[3].replace("**", "").strip() == RACE_5
+    sleep_named = {r[2] for r in rows if "ASYNCIO-SLEEP" in r[4]} == ASYNCIO_SLEEP_SET
+    race5_injectable = any(r[2] == RACE_5
                            and "CLOCK-INJECTABLE" in r[4] for r in rows)
     counts_ok = all(counts.get(k) == v for k, v in EXPECTED.items())
 
@@ -130,10 +135,11 @@ def main():
             f"  ...moved by a conversion          (info)  : {moved or 'none'}",
             f"  category counts                           : {counts}  (expected {EXPECTED}) -> {counts_ok}",
             f"  the 3 asyncio-sleep races, BY NAME        : {sleep_named}",
-            f"  race #5 is in the 26 (CLOCK-INJECTABLE)   : {race5_injectable}",
-            f"  total races in the table                  : {len(rows)} / distinct names {len(names)}",
+            f"  race #5 is CLOCK-INJECTABLE               : {race5_injectable}",
+            f"  total races in the table                  : {len(rows)} / distinct names {len(names)} "
+            f"(expected {EXPECTED_ROWS} = the audit's 30 + entry 35, D40/D41)",
             ""]
-    ok = (resolved == len(rows) == 30 and len(names) == 30 and not missing
+    ok = (resolved == len(rows) == EXPECTED_ROWS and len(names) == EXPECTED_ROWS and not missing
           and counts_ok and sleep_named and race5_injectable)
     verdict = "PASS" if ok else "FAIL"
 
