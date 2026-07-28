@@ -888,7 +888,8 @@ held to pass two's own evidentiary standard.
 **ACCEPTANCE:** 222 both interpreters; reverify PASS 30/30 + clean tree; `test_evidence_write_boundary.py`
 4/4 (both probes write to `.artifacts/`); lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
 pass; `git diff -- src/ tests/` **empty**; five production sha256s IDENTICAL (`b06c347e…`, `103a8ba7…`,
-`5bf833c7…`, `dab18f67…`, `3d153a11…`).
+`5bf833c7…`, `dab18f67…`, `3d153a11…`). **CI GREEN BOTH LEGS run `30321861387`** on `2ece73f` (first
+attempt, both orders); local == remote.
 
 **NEXT: batch C can be planned against the measured set (9 races, pending the entry-35 ratification). The
 keepalive seam WO — sized by WO-031 §4 to exactly `last_frame` + `last_ping` — runs in parallel.**

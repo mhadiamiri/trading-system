@@ -261,9 +261,10 @@ two's own evidentiary standard.
 
 ## §CI
 
-- **Commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **Commit:** `2ece73f`
+- **Local == remote:** `2ece73f5f7e922ca06f20fdfaa6648a0a8325878` == `origin/master`
+- **CI run `30321861387`** — **`test (3.11)` success · `test (3.14)` success**, green both legs on the
+  first attempt (both orders, deterministic and randomized).
 
 **THEN STOP.** All six measured as bounds → **batch C can be planned against the measured set (9 races,
 pending the entry-35 ratification)**. The keepalive seam WO — sized by WO-031 §4 to exactly `last_frame`
