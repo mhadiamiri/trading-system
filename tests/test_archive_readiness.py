@@ -185,15 +185,10 @@ def test_every_wired_risk_reason_constant_is_declared():
 # reason-code constant that exists in the risk engine but is referenced nowhere, so it cannot reach
 # the archive. It is NOT declared, and it does not need to be while it stays dead — but it is one
 # line of wiring away from an undeclared archived code, which is why it is pinned here by name.
-KNOWN_DEAD_RISK_CONSTANTS = {
-    "REASON_VETO_INSUFFICIENT_BALANCE": (
-        "engine.py:42. Defined, never referenced — appears exactly once in the repo. Not declared "
-        "in VALID_REASON_CODES and not producible, so it cannot corrupt an archive today. WO-037 §3 "
-        "reported it; the lead assigns its bucket (declare it, or delete it). Until then this entry "
-        "keeps it visible and test_every_wired_risk_reason_constant_is_declared fails the moment it "
-        "is wired."
-    ),
-}
+# WO-038 §2: REASON_VETO_INSUFFICIENT_BALANCE deleted per D43 — retired as aspirational (no balance
+# check exists; paper venue models no balances); returns in Sprint 3 through the front door, declared-
+# produced-proven in the WO that implements the balance check.
+KNOWN_DEAD_RISK_CONSTANTS = {}
 
 
 def test_dead_risk_reason_constants_are_known():
