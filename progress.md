@@ -38,7 +38,8 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
+**Last Updated**: 2026-07-28 (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
+**Prior — 2026-07-28** (**WO-033 COMPLETE** — the bound measurement pass: **all 6 remaining audit BOUNDS measured, NO FLIPS**. The denominator is **settled — clock-injectable 27, bounds 6, total 30 — and batch C is settled at 9 races**. The pass was not a formality: the audit's uniform *"~300×"* prose becomes measured margins of **199× / 220× / 43× / 18,750×**, a factor of 436 apart, with entry 33 nearly an order of magnitude tighter than claimed. One interpretive call on §3.B's verdict rule is flagged for the lead. See the **▶ WO-033** block below.)
 **Prior — 2026-07-28** (**WO-031 (reissued) COMPLETE** — batch B classified: **10 convertible now, 3 not-yet**, and the outcome-bearing non-injectable set is exactly **two reads** (`last_frame` absence + `last_ping` interval) — the EXPECTED keepalive fork, so the seam WO can be scoped on existing D39. **⚠ Plus a DENOMINATOR CHANGE awaiting ratification: an audit BOUND is actually a RACE (clock-injectable 26 → 27, bounds 7 → 6).** Classify-only; nothing converted; every production and test file byte-unchanged. See the **▶ WO-031 (REISSUED)** block below.)
 **Prior — 2026-07-27** (**WO-032 COMPLETE** — batch B is UNBLOCKED. WO-031 STOPPED at §2 because D39's partition amendment and decision docs were ratified but never committed; WO-032 committed them, re-keyed `wo029_reverify_partition.py` on NAME (it was returning a FALSE FAIL for an intact partition), and generalized WO-026's evidence-write prohibition to reach `tools/` — where **11** instruments, not one, were writing into `evidence/`. 222 = 218 + 4 both interpreters; every `src/` file byte-unchanged. **NEXT: WO-031 re-runs from §1.**)
 **⚠ OPEN FOR THE LEAD (WO-032 §FINDING):** the WO-023 audit's **"7 legitimate BOUNDS"** bucket contains at least one real race — `test_incremental_persist_survives_unhandled_exception_mid_capture` (`test_ledger_persistence.py:82`), proved OUTCOME-BEARING on the real-clock deadline at the pre-WO-032 baseline. The bucket was justified by the same style of prose reasoning that was falsified, so **the pass-two denominator may exceed 26.** Re-examine all 7 under D39's method before batch C.
@@ -893,6 +894,66 @@ attempt, both orders); local == remote.
 
 **NEXT: batch C can be planned against the measured set (9 races, pending the entry-35 ratification). The
 keepalive seam WO — sized by WO-031 §4 to exactly `last_frame` + `last_ping` — runs in parallel.**
+
+---
+
+## ▶ WO-034 STOPPED at §2.2 — 2026-07-28 — node-ID regeneration found NINE misidentifications, not four
+
+> Batch C conversion WO. Built §2 (node-ID regeneration, D41) and hit its own §2.2 gate. **BATCH C NOT
+> CONVERTED — no test, src, fixture or conftest file edited.** Base HEAD `ba75394`. **SHIP IMPACT: NO.**
+> Report: `WO-034-REPORT.md`. Evidence: `evidence/WO-034/audit_node_ids.md` (committed, canonical).
+> Instrument: `tools/wo034_node_id_regeneration.py`.
+
+**§1:** HEAD `ba75394`; **222** both interpreters; reverify PASS 30/30 by name, tree clean. Batch C
+membership = **9** confirmed against the WO's enumeration + D41 — **but flagged: the committed
+`batch_partition.md` still reads `= 8 races`**, because WO-031 escalated entry 35 rather than amending
+and no WO has folded it in since D41 ratified. Not a §1 STOP (the WO enumerates the 9 and the ruling
+carries the 9th), but it is **the same shape as the gap WO-031 originally STOPPED on** — a ruling in
+the decision record but not in the tree — and should be amended before batch C converts.
+
+**§2 — the node-ID table, built and committed.** `pytest tests/ --collect-only -q -p no:randomly
+-o addopts=` — **pytest's OWN collection, never a grep over source text** (D41). All **37/37 entries
+resolve; 0 unresolved, 0 ambiguous.** The table is now **CANONICAL** for all future enumeration; the
+historical audit is annotated as superseded, not rewritten.
+
+**⚠ §2.2 STOP — the mismatch population is NINE, not four.** D41 knew of entries 5, 28, 31, 36.
+**Five more:** **21** (batch B, `…_not_positionally_sampled`), **24** (batch C,
+`…_recorded_through_production_path`), **26** (batch C, `…_shuts_down_cleanly`), **27** (batch C,
+`…_under_backoff_then_emission_resumes`), **35** (batch C, `…_mid_capture`). **Rate: 6/30 races (20%),
+9/37 entries (24%). FOUR of batch C's nine races (24, 26, 27, 35) carried a truncated identifier** —
+the batch this WO was about to convert. §2.2 makes any fifth mismatch an unconditional STOP before
+converting anything, and it was honored.
+
+**What it is NOT:** a denominator change. Every truncation is a strict prefix with a **unique**
+completion (the matcher reports AMBIGUOUS otherwise; none were), so no race is lost or misattributed —
+clock-injectable **27**, bounds **6**, total **30**, unchanged. It is an **identifier-integrity**
+finding, which is exactly what §2.2 gates on: a node ID is how every later WO addresses a race.
+
+**WHY THE COUNT WAS UNDER-REPORTED — including by this WO's own first run.** Earlier passes diffed
+against `batch_partition.md`, which had **silently corrected** several of the audit's names when it
+re-derived the table (races 5 and 28 repaired there). Diffing a corrected restatement measures the
+restatement, not the audit. My first run reported four mismatches AND flagged that **entry 5 matched
+exactly when D41 said it should not** — that internal inconsistency is what exposed the wrong source.
+Re-transcribing all 30 **verbatim from `wall_clock_race_audit.txt`** trebled the population to nine.
+**The apparatus was wrong in the same way the thing it measured was wrong** (D41's apparatus-honesty
+rule, applied to my own instrument). A script that never checked its source would have reported "one
+extra mismatch" and looked entirely plausible.
+
+**Also recorded:** the collection call first returned pytest's indented TREE, not node IDs, because
+`pytest.ini`'s `addopts = -v` beat the command-line `-q`; the parser found zero matches. Fixed with
+`-o addopts=`. Failure mode worth knowing: a tolerant parser would have reported *"0 mismatches, all
+exact"* — a perfect score produced by collecting nothing.
+
+**ACCEPTANCE (what a §2.2 STOP can satisfy):** 222 both interpreters; reverify PASS 30/30 + clean tree;
+`test_evidence_write_boundary.py` 4/4; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight pass;
+**`git diff -- src/ tests/ conftest.py` EMPTY**; five production sha256s IDENTICAL. §4's seed matrix,
+gate-ledger dispositions and ledger-bite proof **NOT DONE** — §3/§4 never began. The reverify tool was
+**not** rewired to node IDs (stated per §6); it still passes by name.
+
+**TO UNBLOCK: (1) ratify the nine-mismatch finding and accept `evidence/WO-034/audit_node_ids.md` as
+canonical (already committed, no further measurement needed); (2) amend `batch_partition.md` — fold
+entry 35 in so batch C reads 9, and restate its identifiers as node IDs; (3) optionally rewire
+`wo029_reverify_partition.py` onto the table; then WO-034 resumes at §3.**
 
 ---
 
