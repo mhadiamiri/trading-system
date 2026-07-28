@@ -1082,6 +1082,8 @@ through the existing `_monotonic_clock`, **no new parameter**) would have been t
 pass. §5's seed matrix, ledger dispositions and ledger-bite proof **NOT DONE** — §2–§5 never began.
 **This block does NOT record "pass two complete 27/27" — that would be false; it is 24/27.**
 
+**CI GREEN BOTH LEGS run `30365970977`** on `cb1a280` (first attempt) — expected and weightless, since the WO edited no test and no src file; it confirms the STOP left the tree as it found it. Local == remote.
+
 **TO UNBLOCK — the lead's call, since red line (d) is not Ops authority.** Three shapes: (1) split the
 WO and thread only the clean `last_ping` — but that closes only part of race 16, leaving 6 and 15
 blocked, so probably not worth it; (2) authorize threading `last_frame` as a corpus-integrity change,

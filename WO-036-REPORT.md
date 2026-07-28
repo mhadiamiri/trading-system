@@ -207,6 +207,8 @@ The lead's call, since red line (d) is not Ops authority. Three shapes, in incre
 
 ## §CI
 
-- **Commit:** `<filled at close>`
-- **Local == remote:** `<filled at close>`
-- **CI run:** `<filled at close>` — `test (3.11)` / `test (3.14)`
+- **Commit:** `cb1a280`
+- **Local == remote:** `cb1a280013e43a6e067f238484c4bebf8a5b14e7` == `origin/master`
+- **CI run `30365970977`** — **`test (3.11)` success · `test (3.14)` success**, both legs, first attempt.
+
+CI green carries no weight here: this WO edited no test and no `src/` file. It confirms the STOP left the tree exactly as it found it.
