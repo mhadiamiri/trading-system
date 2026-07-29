@@ -325,16 +325,29 @@ class CorpusCaptureRunner:
         print("  ❗ If you see 'Auto' or an auto-indicator → STOP, flip it OFF, then retry.")
         print("  ❗ If you see 'Manual' or NO auto-indicator → confirm below to proceed.")
         print()
-        if sys.stdin.isatty():
-            response = input("  Type 'CONFIRM' to proceed (auto-mode is OFF): ").strip()
-            if response.upper() != "CONFIRM":
-                print(f"  ❌ RED: Operator did not confirm auto-mode OFF (response: {response!r})")
+
+        # Check for explicit confirmation (either interactive prompt or env var)
+        auto_confirmed = os.environ.get("CORPUS_AUTO_MODE_CONFIRMED", "").lower() == "true"
+
+        if auto_confirmed:
+            print(f"  ✅ GREEN: Auto-mode OFF confirmed via CORPUS_AUTO_MODE_CONFIRMED=true")
+        elif sys.stdin.isatty():
+            try:
+                response = input("  Type 'CONFIRM' to proceed (auto-mode is OFF): ").strip()
+                if response.upper() != "CONFIRM":
+                    print(f"  ❌ RED: Operator did not confirm auto-mode OFF (response: {response!r})")
+                    all_green = False
+                else:
+                    print(f"  ✅ GREEN: Operator-confirmed auto-mode OFF")
+            except EOFError:
+                print(f"  ❌ RED: Non-interactive terminal without CORPUS_AUTO_MODE_CONFIRMED=true")
+                print(f"           Run in an interactive terminal OR set CORPUS_AUTO_MODE_CONFIRMED=true")
                 all_green = False
-            else:
-                print(f"  ✅ GREEN: Operator-confirmed auto-mode OFF")
         else:
-            # Non-interactive mode (e.g., test): assume operator has confirmed externally
-            print(f"  ⚠️  ASSUMED: Non-interactive mode — operator must have confirmed auto-mode OFF externally")
+            # Non-interactive mode without explicit confirmation
+            print(f"  ❌ RED: Non-interactive mode requires CORPUS_AUTO_MODE_CONFIRMED=true")
+            print(f"           Set CORPUS_AUTO_MODE_CONFIRMED=true to confirm auto-mode is OFF")
+            all_green = False
 
         # 3.7 Kill-switch + TRADING_ENV guard
         print("\n[3.7] Kill-switch + TRADING_ENV guard armed...")
