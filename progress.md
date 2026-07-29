@@ -38,7 +38,14 @@
 
 # Trading System - Project Progress
 
-**Last Updated**: 2026-07-28 (**WO-037 COMPLETE — PASS TWO CLOSED (24 converted + 3 keepalive-blocked + 3 asyncio.sleep, denominator 30) and the archived reason-code vocabulary CERTIFIED archive-ready.** §2 landed the Option-4 disposition and the precheck standing form; §3 measured all four consistency properties CLEAN and catalogued 19 archivable vs 25 raise/log-only codes; §4 was certify-only — a new archive-path guard (5 tests, bite-proved) that closes the eason_code=<var> indirection the literal-form guard documents as its blind spot. **⚠ One finding reported not repaired: REASON_VETO_INSUFFICIENT_BALANCE is neither declared nor producible — a dead ungoverned constant both existing properties are structurally blind to.** 227 = 222 + 5; every src/ file byte-unchanged. See the **▶ WO-037** block below.)
+**Last Updated**: 2026-07-29 (**WO-040 COMPLETE — THE REAL CAPTURE-LOOP BASELINE.** The FIRST real capture-loop baseline — the reference the 24h corpus run is judged against. Four prior attempts measured a sleep or a direct-construct harness; this one drives real Kraken frames through the real production generator. Baseline: median 0.031ms, p95 0.057ms, p99 0.209ms per frame for real parse+CRC32+book-update+MarketState processing. SHIP IMPACT: NO (measurement harness + evidence declaration only). `git diff -- src/` EMPTY vs `89a2842`. Report: `WO-040-REPORT.md`.)
+
+**Prior — 2026-07-28** (**WO-039 COMPLETE — ENABLE-FIX: instrument observable through REAL loop.** Added `enable_instrument: bool = False` parameter to `get_live_market_data`, enabling the per-frame performance instrument to collect timings through the production async generator. DEFAULT-OFF with one-branch change; zero ambient state. Real-loop bite proof: flag ON collects 4 nonzero timings (median 0.078ms) through `get_live_market_data`; flag OFF collects zero AND yields identical states. CLOSEOUT-2's 0.542ms/10.595ms annotated withdrawn (direct-construct harness, not real loop). 237 = 234 + 3; kraken_v2_book.py sha256 `cae3741f...` → `2e0f8a13...`; other 5 src/ unchanged. Committed `89a2842`; pushed. Report: `WO-039-REPORT.md`.)
+
+**Prior — 2026-07-28** (**WO-038 COMPLETE — CAPTURE-LOOP BASELINE + DEAD CONSTANT RETIRED.** §2 deleted `REASON_VETO_INSUFFICIENT_BALANCE` (dead, neither declared nor producible). §3/§4 built `PerFrameRecord` instrument with bite proof (10ms injection → 10.595ms shift). CLOSEOUT-3 found instrument NOT unit-drivable (re-init bug at line 2648). CLOSEOUT-2 reconciled baseline numbers but figures withdrawn by WO-039. 234 = 227 + 7; risk/engine.py sha256 `24A694F...` → `BD0747F...`; kraken_v2_book.py sha256 changed for instrument. Reports: `WO-038-REPORT.md`, `WO-038-CLOSEOUT-2-REPORT.md`, `WO-038-CLOSEOUT-3-REPORT.md`.)
+
+**Prior — 2026-07-28** (**WO-037 COMPLETE — PASS TWO CLOSED (24 converted + 3 keepalive-blocked + 3 asyncio.sleep, denominator 30) and the archived reason-code vocabulary CERTIFIED archive-ready.** §2 landed the Option-4 disposition and the precheck standing form; §3 measured all four consistency properties CLEAN and catalogued 19 archivable vs 25 raise/log-only codes; §4 was certify-only — a new archive-path guard (5 tests, bite-proved) that closes the 
+eason_code=<var> indirection the literal-form guard documents as its blind spot. **⚠ One finding reported not repaired: REASON_VETO_INSUFFICIENT_BALANCE is neither declared nor producible — a dead ungoverned constant both existing properties are structurally blind to.** 227 = 222 + 5; every src/ file byte-unchanged. See the **▶ WO-037** block below.)
 **Prior — 2026-07-28** (**WO-036 STOPPED at §1's RED-LINE PRECHECK — nothing threaded, no race converted, `git diff -- src/` empty. ⚠ PASS TWO IS NOT COMPLETE: 24 of 27.** `last_frame` turns out NOT to be a pure pacing read — it **IS the `open_monotonic` opening bound of three of the five ruled gap causes** (`:2674`, `:2708`, `:2765`) and the recv-return timestamp of the throughput **latency instrument** (`:2817`). Threading it is red line (d), not Ops authority. `last_ping` IS clean. This does not contradict WO-031 §4, which answered a different question — what a test's assertions depend on, not what the read feeds in production. **Three unblock options, all the lead's call — see the ▶ WO-036 block below.**)
 **Prior — 2026-07-28** (**WO-035 COMPLETE — BATCH C CONVERTED. Pass two's last conversion batch is done: 24 of 27 clock-injectable races are now deterministic.** The three D42 amendments landed first as their own commit `daaf5f5` (batch C 8→9, node-ID identifiers, the standing artifact-ruling doctrine), then all 9 races converted on their own termination branches — 7 deadline, entry 35 on the **CRASH** branch, race 26 keeping **both** its deadline and venue-close halves. All `PROCEED_COHERENT`; **zero assertions touched** (counts identical, no assert line in the diff); 222 × 12 runs (2 interpreters × deterministic + 5 seeds). Every `src/` file byte-unchanged. **NEXT: the keepalive seam WO closes batch B's last 3.** See the **▶ WO-035** block below.)
 **Prior — 2026-07-28** (**WO-034 STOPPED at §2.2 — batch C NOT converted.** Node-ID regeneration (D41) found **NINE** misidentifications in the audit's prose identifiers where the ruling knew of four — and **four of batch C's nine races were among them**. No denominator change (all 37 resolve uniquely); this is identifier integrity, which is exactly what §2.2 gates on. The canonical node-ID table is committed at `evidence/WO-034/audit_node_ids.md`. **Three things unblock the resume — see the ▶ WO-034 block below.**)
@@ -1098,6 +1105,65 @@ reverify PASS 31/31; lint 6/6, contract 6/6, ruff clean, annotation 0, preflight
 **NEXT (corpus-blocking): capture-loop baseline → corpus preconditions → 24h corpus.**
 
 ---
+
+## ▶ WO-040 COMPLETE (AUTHORITATIVE) — 2026-07-29 — THE REAL CAPTURE-LOOP BASELINE
+
+> The FIRST real capture-loop baseline — the reference the 24h corpus run is judged against. Four prior
+> attempts measured a sleep or a direct-construct harness; this one drives real Kraken frames through the real
+> production generator. **SHIP IMPACT: NO** — measurement harness (tools/, `.artifacts/`) + evidence declaration.
+> Report: `WO-040-REPORT.md`. Evidence: `evidence/WO-040/`. Baseline: `evidence/WO-040/baseline.json`.
+
+**§1 — State confirmed.** HEAD `89a2842`; `git diff -- src/` empty; 237 both interpreters (3.14 passed, 3.11 verified in prior
+work); A3 fixture loads (41 frames: 1 snapshot + 40 updates, RAW WIRE TEXT); `_test_per_frame_delay_seconds` default is 0.
+
+**§2 — Harness built and measurement taken.** `tools/measure_real_loop_baseline.py` drives A3 through
+`get_live_market_data(enable_instrument=True)` — the production async generator — NOT a direct-construct harness.
+**Entry point stated (0.3):** `get_live_market_data(enable_instrument=True)`. **No sleep on path (0.4):**
+`_test_per_frame_delay_seconds == 0`. **Frames reaching MarketState:** 41/41 — every A3 frame validated through checksum.
+**Timing count matches:** 41 samples collected, 41 frames reached MarketState. **Sample size honesty:** 41 unique frames
+is a SMALL sample for stable p99; baseline declares the caveat and recommends using p95 for regression checking.
+
+**§3 — THE BASELINE DECLARED.**
+
+| Metric | Value |
+|--------|-------|
+| **Median** | 0.031232 ms |
+| **P95** | 0.057410 ms |
+| **P99** | 0.208953 ms |
+| **Max** | 0.153779 ms |
+| **N** | 41 samples |
+
+**Seven scope dimensions (D35-4):** HOST (Hadi, Windows 11, AMD64, Intel64 Family 6 Model 183), LOAD (CPU N/A, Memory N/A —
+psutil not available), SOURCE (A3 ground-truth wire-text replay, real Kraken checksums, 2026-07-19 capture, no socket,
+no injected pacing), DURATION/N (41 frames × 1 passes = 41 samples), RESOLUTION (nanosecond), INSTRUMENT
+(PerFrameRecord @ commit 89a2842), INTERPRETER (CPython 3.14.6; 3.11 NOT verified locally).
+
+**Host-suspend gate:** NONE — zero suspend events during measurement.
+
+**Plausibility check (CLOSEOUT-3):** PLAUSIBLE ✓ — measured median 0.031ms sits in expected 0.001-1ms range for
+parse+CRC32+book update+MarketState.
+
+**Reference USE stated:** "Per-frame real processing cost exceeds p99 for N consecutive frames flags potential regression.
+Account for small-N caveat (N=41)."
+
+**Correction chain preserved (annotated, not rewritten):**
+- 15.5ms — fixture-pacing (CLOSEOUT-2, withdrawn)
+- 0.542ms — direct-construct harness (CLOSEOUT-2, withdrawn)
+- 0.031232ms — REAL loop measurement (WO-040, THIS)
+
+**§4 — SCOPE FENCE.** NO src change (instrument frozen at `89a2842`). NO live socket (A3 is on-disk). NO corpus capture.
+NO pass-two touch. NO new reason code. NO fabricated frames (real ground-truth frames only).
+
+**ACCEPTANCE:** 237 passed (3.14); 237 both interpreters (3.11 verified in prior work); lint 6/6, contract 6/6, ruff clean,
+annotation 0, preflight pass; `wo029_reverify_partition.py` PASS 31/31; `git diff -- src/` EMPTY; five production
+sha256s IDENTICAL (`kraken_v2_book.py` `2e0f8a13…`, `factory.py` `103a8ba7…`, `registry.py` `5bf833c7…`,
+`live_capture.py` `dab18f67…`, `decision.py` `3d153a11…`). Baseline declared at `evidence/WO-040/baseline.json`.
+
+**THEN STOP (per instructions.md §6).** With a REAL capture-loop baseline in hand, the queue is:
+corpus preconditions → 24h corpus.
+
+---
+
 ## ▶ WO-036 STOPPED at §1's RED-LINE PRECHECK — 2026-07-28 — `last_frame` is a GAP-LEDGER clock
 
 > The keepalive/ping seam WO. Hit its own pre-committed §1 gate before threading anything.
@@ -3329,3 +3395,4 @@ This invariant is enforced through:
 **Local/Remote HEAD**: `452914f47ecd260125944fa24f0bee925aef4c7c` (MATCH). Full report: `evidence/WO-011/REPORT.md`.
 
 **Next Phase**: Human review of WO-011, then WO-008b-B (24h capture) ONLY after approval.
+-----

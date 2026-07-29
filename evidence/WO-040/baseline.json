@@ -1,0 +1,29 @@
+{
+  "source": "A3 ground-truth wire-text replay, real Kraken checksums, 2026-07-19 capture, no socket, no injected pacing",
+  "correction_chain": [
+    "15.5ms \u2014 fixture-pacing (CLOSEOUT-2, withdrawn)",
+    "0.542ms \u2014 direct-construct harness (CLOSEOUT-2, withdrawn)",
+    "0.031232ms \u2014 REAL loop measurement (WO-040, THIS)"
+  ],
+  "reference_use": "Per-frame real processing cost exceeds p99 for N consecutive frames flags potential regression. Account for small-N caveat (N=41).",
+  "dimensions": {
+    "host": "Hadi (Windows 11, AMD64, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel)",
+    "load": "CPU N/A, Memory N/A (psutil not available)",
+    "source": "A3 ground-truth wire-text replay, real Kraken checksums, 2026-07-19 capture, no socket, no injected pacing",
+    "duration_n": "41 frames \u00d7 1 passes = 41 samples",
+    "resolution": "nanosecond (time.monotonic / time.time)",
+    "instrument": "PerFrameRecord @ commit 89a2842 (WO-039)",
+    "interpreter": "CPython 3.14.6 (3.11 NOT verified locally)"
+  },
+  "host_suspend_gate": "NONE",
+  "baseline": {
+    "median_ms": 0.031232,
+    "p95_ms": 0.05741,
+    "p99_ms": 0.208953,
+    "max_ms": 0.153779,
+    "n_samples": 41
+  },
+  "small_n_caveat": "Sample size N=41 from 41 unique frames \u00d7 1 passes. For stable p99, N should be larger. Use p95 for regression checking or collect more passes.",
+  "measured_at": "2026-07-29T00:08:37.576566+00:00",
+  "commit_sha": "89a2842"
+}
