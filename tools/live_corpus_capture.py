@@ -7,7 +7,7 @@ for the real feed, and writes frames to hourly UTC-stamped .jsonl segments per t
 rotation policy.
 
 ROTATION POLICY (consumed from evidence/WO-042/rotation_policy.md):
-- Hourly time-based rotation: corpus_{HOST}_{YYYYMMDDT{HH}}Z.jsonl
+- Hourly time-based rotation: corpus_{HOST}_{YYYYMMDDTHH}Z.jsonl
 - Compression: gzip on segment close (5-10× ratio expected)
 - Retention: 90-day minimum, 1-year recommended
 - Integrity: SHA-256 per segment + CRC32 per-frame (already in adapter)
