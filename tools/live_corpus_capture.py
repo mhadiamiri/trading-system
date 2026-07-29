@@ -48,8 +48,10 @@ from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Any
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add project root to path for imports (config, src)
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
 if TYPE_CHECKING:
     from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
