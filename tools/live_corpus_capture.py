@@ -524,8 +524,8 @@ class CorpusCaptureRunner:
                     "symbol": market_state.symbol,
                     "bid": str(market_state.best_bid),
                     "ask": str(market_state.best_ask),
-                    "bid_qty": str(market_state.best_bid_qty),
-                    "ask_qty": str(market_state.best_ask_qty),
+                    "bid_qty": str(market_state.best_bid_size),  # MarketState uses size, not qty
+                    "ask_qty": str(market_state.best_ask_size),
                     "spread": str(market_state.spread),
                 }
                 await self._write_frame(frame, utc_now)
@@ -555,10 +555,10 @@ class CorpusCaptureRunner:
 
             # Load ledger from adapter
             ledger = adapter.get_gap_ledger()
-            if ledger:
+            if ledger and hasattr(ledger, "gaps"):
                 self._manifest.host_suspend_events = sum(
-                    1 for gap in ledger.get("gaps", [])
-                    if gap.get("cause") == "HOST_SUSPEND"
+                    1 for gap in ledger.gaps
+                    if hasattr(gap, "cause") and gap.cause == "HOST_SUSPEND"
                 )
 
             # Write manifest
