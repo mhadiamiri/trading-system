@@ -226,8 +226,10 @@ class CorpusCaptureRunner:
         self._trading_env = trading_env
 
         self._connect_fn = connect_fn
-        self._monotonic_clock = monotonic_clock or time.monotonic
-        self._wall_clock = wall_clock or time.time
+        # Keep clocks as None unless explicitly injected for tests
+        # For real transport, clock injection is refused
+        self._monotonic_clock = monotonic_clock
+        self._wall_clock = wall_clock
 
         # Generate run ID at initialization (used for segment paths)
         self._run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
@@ -483,13 +485,19 @@ class CorpusCaptureRunner:
         import websockets
         connect_fn = self._connect_fn or websockets.connect
 
-        adapter, feed_iter = factory.create_live_capture_feed(
-            persist_path=str(gap_ledger_path),
-            duration_seconds=self.DURATION_HOURS * 3600,
-            connect_fn=connect_fn,
-            monotonic_clock=self._monotonic_clock,
-            wall_clock=self._wall_clock,
-        )
+        # Build factory kwargs - only pass clocks if explicitly injected (for tests)
+        # For real transport, clock injection is refused (coupling gate)
+        factory_kwargs = {
+            "persist_path": str(gap_ledger_path),
+            "duration_seconds": self.DURATION_HOURS * 3600,
+            "connect_fn": connect_fn,
+        }
+        if self._monotonic_clock is not None:
+            factory_kwargs["monotonic_clock"] = self._monotonic_clock
+        if self._wall_clock is not None:
+            factory_kwargs["wall_clock"] = self._wall_clock
+
+        adapter, feed_iter = factory.create_live_capture_feed(**factory_kwargs)
 
         # Track rotation boundaries
         segment_boundary = self._get_segment_boundary(start_utc)
