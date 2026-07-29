@@ -373,14 +373,14 @@ class PerFrameRecord:
         return {
             "wall": {
                 "median_ns": int(statistics.median(wall_durations)),
-                "p95_ns": int(statistics.quantiles(wall_durations, n=100)[94]),
-                "p99_ns": int(statistics.quantiles(wall_durations, n=100)[98]),
+                "p95_ns": int(statistics.quantiles(wall_durations, n=100, method='inclusive')[94]),
+                "p99_ns": int(statistics.quantiles(wall_durations, n=100, method='inclusive')[98]),
                 "max_ns": max(wall_durations),
             },
             "mono": {
                 "median_ns": int(statistics.median(mono_durations)),
-                "p95_ns": int(statistics.quantiles(mono_durations, n=100)[94]),
-                "p99_ns": int(statistics.quantiles(mono_durations, n=100)[98]),
+                "p95_ns": int(statistics.quantiles(mono_durations, n=100, method='inclusive')[94]),
+                "p99_ns": int(statistics.quantiles(mono_durations, n=100, method='inclusive')[98]),
                 "max_ns": max(mono_durations),
             },
             "count": len(self.timings),

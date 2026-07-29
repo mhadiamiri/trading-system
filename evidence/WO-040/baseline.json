@@ -1,29 +1,31 @@
 {
   "source": "A3 ground-truth wire-text replay, real Kraken checksums, 2026-07-19 capture, no socket, no injected pacing",
   "correction_chain": [
-    "15.5ms \u2014 fixture-pacing (CLOSEOUT-2, withdrawn)",
-    "0.542ms \u2014 direct-construct harness (CLOSEOUT-2, withdrawn)",
-    "0.031232ms \u2014 REAL loop measurement (WO-040, THIS)"
+    "15.5ms — fixture-pacing (CLOSEOUT-2, withdrawn)",
+    "0.542ms — direct-construct harness (CLOSEOUT-2, withdrawn)",
+    "0.032424ms — REAL loop measurement (WO-040, THIS)",
+    "P99 0.209ms — impossible (exceeded MAX 0.154ms) due to statistics.quantiles default 'exclusive' method; corrected to 0.120ms using 'inclusive' method (WO-040 CLOSEOUT §1)"
   ],
-  "reference_use": "Per-frame real processing cost exceeds p99 for N consecutive frames flags potential regression. Account for small-N caveat (N=41).",
+  "reference_use": "PRIMARY TRIP: per-frame real processing cost exceeds p95 (0.063657ms) for N consecutive frames flags potential regression. At N=41 samples, p99 (0.120ms) and max (0.150ms) are the observed ceiling but are NOT the sole trip (extreme tail on 1-2 samples is noisy). This baseline is a pre-corpus plausibility gate; the corpus run will produce a vastly larger real sample for a mature distribution.",
   "dimensions": {
     "host": "Hadi (Windows 11, AMD64, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel)",
     "load": "CPU N/A, Memory N/A (psutil not available)",
     "source": "A3 ground-truth wire-text replay, real Kraken checksums, 2026-07-19 capture, no socket, no injected pacing",
-    "duration_n": "41 frames \u00d7 1 passes = 41 samples",
+    "duration_n": "41 frames × 1 passes = 41 samples",
     "resolution": "nanosecond (time.monotonic / time.time)",
-    "instrument": "PerFrameRecord @ commit 89a2842 (WO-039)",
+    "instrument": "PerFrameRecord @ commit POST-89a2842 (WO-040 CLOSEOUT §1 percentile fix, method='inclusive')",
     "interpreter": "CPython 3.14.6 (3.11 NOT verified locally)"
   },
   "host_suspend_gate": "NONE",
   "baseline": {
-    "median_ms": 0.031232,
-    "p95_ms": 0.05741,
-    "p99_ms": 0.208953,
-    "max_ms": 0.153779,
-    "n_samples": 41
+    "median_ms": 0.032424,
+    "p95_ms": 0.063657,
+    "p99_ms": 0.120257,
+    "max_ms": 0.150203,
+    "n_samples": 41,
+    "ordering_verified": "MEDIAN <= P95 <= P99 <= MAX holds (0.032424 <= 0.063657 <= 0.120257 <= 0.150203)"
   },
-  "small_n_caveat": "Sample size N=41 from 41 unique frames \u00d7 1 passes. For stable p99, N should be larger. Use p95 for regression checking or collect more passes.",
-  "measured_at": "2026-07-29T00:08:37.576566+00:00",
-  "commit_sha": "89a2842"
+  "small_n_caveat": "Sample size N=41 from 41 unique frames × 1 passes. For stable p99, N should be larger. Median and p95 are usable references from 41 real frames; the extreme tail (p99+) is provisional and should tighten when the corpus itself provides millions of real frames. This baseline is a pre-corpus sanity reference, not the final performance model.",
+  "measured_at": "2026-07-29T00:43:21.870310+00:00",
+  "commit_sha": "POST-89a2842 (WO-040 percentile fix applied)"
 }
