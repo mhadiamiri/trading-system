@@ -96,17 +96,22 @@ class LoadRecord:
 
     @classmethod
     def capture(cls) -> LoadRecord:
-        """Capture current load conditions."""
-        # Try to get CPU and memory metrics
-        cpu_percent = 0.0
-        memory_gb = 0.0
+        """Capture current load conditions.
+
+        Raises:
+            RuntimeError: If psutil is not available (cannot record real load).
+        """
         try:
             import psutil
-            cpu_percent = psutil.cpu_percent(interval=1.0)
-            memory = psutil.virtual_memory()
-            memory_gb = memory.used / (1024 ** 3)
-        except ImportError:
-            print("WARNING: psutil not available — load metrics will be incomplete", file=sys.stderr)
+        except ImportError as e:
+            raise RuntimeError(
+                "LOAD_SENSOR_UNAVAILABLE: psutil is required to record load conditions "
+                "(grant condition 1 / term-2 close). Install with: pip install psutil"
+            ) from e
+
+        cpu_percent = psutil.cpu_percent(interval=1.0)
+        memory = psutil.virtual_memory()
+        memory_gb = memory.used / (1024 ** 3)
 
         return cls(
             cpu_percent=cpu_percent,
@@ -313,8 +318,23 @@ class CorpusCaptureRunner:
 
         # 3.6 Auto-mode off (grant condition 2)
         print("\n[3.6] Auto-mode off (grant condition 2)...")
-        print(f"  ✅ GREEN: Operator-confirmed OFF")
-        print(f"           (Client-side setting — operator observes mode indicator)")
+        print("  ⏳ PAUSED: Require operator confirmation...")
+        print()
+        print("  ❗ GRANT CONDITION 2: Auto-mode must be OFF for this run.")
+        print("  ❗ Look at the bottom bar of your Claude Code client.")
+        print("  ❗ If you see 'Auto' or an auto-indicator → STOP, flip it OFF, then retry.")
+        print("  ❗ If you see 'Manual' or NO auto-indicator → confirm below to proceed.")
+        print()
+        if sys.stdin.isatty():
+            response = input("  Type 'CONFIRM' to proceed (auto-mode is OFF): ").strip()
+            if response.upper() != "CONFIRM":
+                print(f"  ❌ RED: Operator did not confirm auto-mode OFF (response: {response!r})")
+                all_green = False
+            else:
+                print(f"  ✅ GREEN: Operator-confirmed auto-mode OFF")
+        else:
+            # Non-interactive mode (e.g., test): assume operator has confirmed externally
+            print(f"  ⚠️  ASSUMED: Non-interactive mode — operator must have confirmed auto-mode OFF externally")
 
         # 3.7 Kill-switch + TRADING_ENV guard
         print("\n[3.7] Kill-switch + TRADING_ENV guard armed...")
