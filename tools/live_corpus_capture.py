@@ -52,54 +52,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, Any
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 if TYPE_CHECKING:
-
-Opens the Kraken mainnet public WS v2 (BTC/USD, unauthenticated), drives get_live_market_data
-for the real feed, and writes frames to hourly UTC-stamped .jsonl segments per the WO-042
-rotation policy.
-
-ROTATION POLICY (consumed from evidence/WO-042/rotation_policy.md):
-- Hourly time-based rotation: corpus_{HOST}_{YYYYMMDD}T{HH}Z.jsonl
-- Compression: gzip on segment close (5-10× ratio expected)
-- Retention: 90-day minimum, 1-year recommended
-- Integrity: SHA-256 per segment + CRC32 per-frame (already in adapter)
-- Crash-safety: max loss = open hour segment (~220 MB)
-
-CONFIGURATION (environment variables):
-- CORPUS_ROTATION_CADENCE=hourly
-- CORPUS_SEGMENT_DURATION_SECONDS=3600
-- CORPUS_COMPRESSION_ENABLED=true
-- CORPUS_RETENTION_DAYS=90
-- CORPUS_DIR=captures/corpus_24h
-
-GRANT CONDITIONS (all demonstrated as preflight before socket opens):
-1. Paper-env + no-credential (TRADING_ENV=paper, no credentials)
-2. Host-suspend armed (43s divergence bound)
-3. Load recorded (CPU + memory at start + average over window)
-4. Rotation consumed (policy config loaded, first segment path correct)
-5. Gap ledger armed (write-through persistence, 5 ruled causes, breaker-STOP ready)
-6. Auto-mode off (operator-confirmed, client-side setting)
-7. Kill-switch + TRADING_ENV guard armed fresh
-
-RED LINE (b): This is the ONLY WO in the sprint that opens a LIVE socket.
-Full discipline — execute within declared grant terms, do not exceed them.
-"""
-
-from __future__ import annotations
-
-import asyncio
-import gzip
-import hashlib
-import json
-import os
-import platform
-import sys
-import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, UTC
-from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional, Any
-
-if TYPE_CHECKING:
     from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
 
 
