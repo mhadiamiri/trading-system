@@ -42,6 +42,7 @@ def mock_env_vars(monkeypatch):
     monkeypatch.setenv("CORPUS_COMPRESSION_ENABLED", "true")
     monkeypatch.setenv("CORPUS_RETENTION_DAYS", "90")
     monkeypatch.setenv("CORPUS_DIR", "test_captures/corpus_24h")
+    monkeypatch.setenv("CORPUS_AUTO_MODE_CONFIRMED", "true")
 
 
 @pytest.fixture
@@ -220,9 +221,12 @@ class TestCorpusCaptureRunnerSegments:
         utc_time = datetime(2026, 7, 28, 14, 30, 0, tzinfo=UTC)
         segment_path = runner._get_segment_path(utc_time)
 
-        # Should align to hour boundary
-        assert "20260728T14Z.jsonl" in str(segment_path)
-        assert "corpus_" in str(segment_path)
+        # Check filename format (avoid run_id coincidence)
+        segment_filename = segment_path.name
+        # Should align to hour boundary with host prefix
+        assert "20260728T14Z.jsonl" in segment_filename
+        assert segment_filename.startswith("corpus_")
+        assert segment_filename.endswith(".jsonl")
 
     def test_get_segment_path_utc_alignment(self, mock_env_vars):
         """Segment path aligns to UTC hour boundary regardless of local time."""
@@ -231,8 +235,15 @@ class TestCorpusCaptureRunnerSegments:
         utc_time = datetime(2026, 7, 28, 14, 30, 0, tzinfo=UTC)
         segment_path = runner._get_segment_path(utc_time)
 
-        assert "T14Z" in str(segment_path)  # Not T15Z
-        assert "30" not in str(segment_path)  # Minutes stripped
+        # Extract just the filename for checking (avoid run_id coincidence)
+        segment_filename = segment_path.name
+        # Check: aligned to 14:00, not 14:30 or 15:00
+        assert "T14Z" in segment_filename  # Not T15Z - aligned to hour boundary
+        # Verify it's T14Z (hour) not T1430 (minutes) by checking the pattern
+        # The timestamp portion should be YYYYMMDDTHHZ (no minutes)
+        import re
+        timestamp_match = re.search(r'\d{8}T\d{2}Z\.jsonl$', segment_filename)
+        assert timestamp_match is not None, "Filename should end with YYYYMMDDTHHZ.jsonl pattern"
 
     def test_get_segment_boundary(self, mock_env_vars):
         """Segment boundary is top of next hour."""

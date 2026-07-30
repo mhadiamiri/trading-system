@@ -43,8 +43,9 @@ import os
 import platform
 import sys
 import time
+import traceback
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, UTC
+from datetime import datetime, timezone, UTC, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Any
 
@@ -149,6 +150,8 @@ class RunManifest:
     segments: list[SegmentManifest] = field(default_factory=list)
     gap_ledger: str = "gap_ledger.json"
     gap_ledger_sha256: str = ""
+    crash_artifact: str = ""  # CRASH_TRACEBACK.txt if capture crashed
+    crash_artifact_sha256: str = ""
     load_record: Optional[LoadRecord] = None
     host_suspend_events: int = 0
     performance_summary: dict = field(default_factory=dict)
@@ -174,6 +177,8 @@ class RunManifest:
             ],
             "gap_ledger": self.gap_ledger,
             "gap_ledger_sha256": self.gap_ledger_sha256,
+            "crash_artifact": self.crash_artifact,
+            "crash_artifact_sha256": self.crash_artifact_sha256,
             "load_record": {
                 "cpu_percent": self.load_record.cpu_percent,
                 "memory_gb": self.load_record.memory_gb,
@@ -238,6 +243,7 @@ class CorpusCaptureRunner:
         self._current_segment: Optional[Path] = None
         self._segment_frame_count: int = 0
         self._segment_start_utc: Optional[str] = None
+        self._total_frame_count: int = 0
 
         # Validate config AFTER setting up other attributes
         try:
@@ -450,6 +456,7 @@ class CorpusCaptureRunner:
             f.write(json.dumps(frame) + "\n")
 
         self._segment_frame_count += 1
+        self._total_frame_count += 1
 
     async def run(self) -> RunManifest:
         """Run the 24-hour corpus capture."""
@@ -533,6 +540,23 @@ class CorpusCaptureRunner:
         except Exception as e:
             print(f"\n❌ CAPTURE ERROR: {e}")
             print("Forensic tail will be included in manifest.")
+
+            # Write full traceback to crash artifact (minute-38 stdout-kill pattern:
+            # forensic output belongs in the durable artifact tree, never on ephemeral stdout)
+            crash_path = self._config.corpus_dir / self._run_id / "CRASH_TRACEBACK.txt"
+            crash_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(crash_path, "w") as f:
+                f.write(f"CAPTURE CRASH at frame {self._total_frame_count + 1}\n")
+                f.write(f"Error: {e}\n\n")
+                f.write("=" * 70 + "\n")
+                f.write("FULL TRACEBACK:\n")
+                f.write("=" * 70 + "\n")
+                traceback.print_exc(file=f)
+
+            # Record crash artifact in manifest for forensic tracking
+            self._manifest.crash_artifact = str(crash_path.name)
+
+            print(f"Crash traceback written to: {crash_path}")
             raise
 
         finally:
@@ -552,6 +576,16 @@ class CorpusCaptureRunner:
                     for chunk in iter(lambda: f.read(8192), b""):
                         sha256.update(chunk)
                 self._manifest.gap_ledger_sha256 = sha256.hexdigest()
+
+            # Get crash artifact SHA-256 (if capture crashed)
+            if self._manifest.crash_artifact:
+                crash_path = self._config.corpus_dir / self._run_id / self._manifest.crash_artifact
+                if crash_path.exists():
+                    sha256 = hashlib.sha256()
+                    with open(crash_path, "rb") as f:
+                        for chunk in iter(lambda: f.read(8192), b""):
+                            sha256.update(chunk)
+                    self._manifest.crash_artifact_sha256 = sha256.hexdigest()
 
             # Load ledger from adapter
             ledger = adapter.get_gap_ledger()
@@ -580,9 +614,6 @@ class CorpusCaptureRunner:
     def _get_segment_boundary(self, utc_time: datetime) -> datetime:
         """Get the next hour boundary."""
         return utc_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-
-
-from datetime import timedelta
 
 
 def main() -> None:
