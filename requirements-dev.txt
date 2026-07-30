@@ -17,3 +17,6 @@ pytest-randomly>=3.12.0
 import-linter>=2.0.0
 ruff>=0.1.0
 mypy>=1.6.0
+
+# System monitoring (WO-043 grant condition 1 / term-2 close)
+psutil>=5.9.0
