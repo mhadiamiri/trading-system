@@ -599,6 +599,66 @@ class CorpusCaptureRunner:
                 }
         record["corpus_progress_at_start"] = progress
 
+        # ── [3.9] OPERATOR PREREQUISITE: the shutdown policy (WO-044 preamble) ────────────────
+        # "The security policy that shuts the machine down must be DISABLED and confirmed. That
+        # policy caused two lost runs. State it confirmed in the preflight."
+        #
+        # OPERATOR-DECLARED, like auto-mode and like the seam cause: the process cannot inspect a
+        # host security policy, and a check that silently assumes the answer is worse than none.
+        # So it is asked for BY NAME and goes RED when absent. It is a first-class preflight
+        # condition rather than a note because of what it already cost — runs 20260729044021
+        # (~2h37m) and 20260730152029 (~3h55m) both died with every frame on disk and no manifest,
+        # and run 3 then failed §2 eligibility precisely because of that.
+        print("\n[3.9] Shutdown policy DISABLED (operator prerequisite)...")
+        shutdown_confirmed = (
+            os.environ.get("CORPUS_SHUTDOWN_POLICY_DISABLED", "").lower() == "true")
+        if shutdown_confirmed:
+            print(f"  ✅ GREEN: operator confirms the machine-shutdown security policy is DISABLED")
+            print(f"           (declared via CORPUS_SHUTDOWN_POLICY_DISABLED=true)")
+        else:
+            print(f"  ❌ RED: the shutdown policy has NOT been confirmed disabled.")
+            print(f"          It already cost two runs (20260729044021, 20260730152029).")
+            print(f"          Set CORPUS_SHUTDOWN_POLICY_DISABLED=true only after actually")
+            print(f"          disabling it — the process cannot verify a host policy itself.")
+            all_green = False
+        record["conditions"]["shutdown_policy_disabled"] = {
+            "green": shutdown_confirmed,
+            "confirmed_via": "CORPUS_SHUTDOWN_POLICY_DISABLED",
+            "operator_declared": True,
+        }
+
+        # ── [3.10] GRANT EXPIRY (D45: corpus completion or 14 days, whichever first) ──────────
+        # A grant with no ENFORCED end is a grant that quietly outlives its authorisation. The
+        # date is DECLARED (the WO embeds none) and then enforced here: past it the run refuses,
+        # rather than trusting anyone to remember.
+        print("\n[3.10] Grant expiry (D45: 14 days or corpus completion)...")
+        expiry_raw = os.environ.get("CORPUS_GRANT_EXPIRY", "").strip()
+        expiry_ok = False
+        expiry_detail: dict = {"declared": expiry_raw or None}
+        if not expiry_raw:
+            print(f"  ❌ RED: no grant expiry declared. Set CORPUS_GRANT_EXPIRY=YYYY-MM-DD.")
+            all_green = False
+        else:
+            try:
+                expiry_date = datetime.fromisoformat(expiry_raw).date()
+                today = datetime.now(UTC).date()
+                days_left = (expiry_date - today).days
+                expiry_detail.update({"expiry_date": expiry_date.isoformat(),
+                                      "today_utc": today.isoformat(),
+                                      "days_remaining": days_left})
+                if days_left < 0:
+                    print(f"  ❌ RED: the grant EXPIRED on {expiry_date} ({-days_left}d ago).")
+                    print(f"          Refusing to open a socket outside the authorised window.")
+                    all_green = False
+                else:
+                    expiry_ok = True
+                    print(f"  ✅ GREEN: grant valid until {expiry_date} "
+                          f"({days_left} day(s) remaining)")
+            except ValueError:
+                print(f"  ❌ RED: CORPUS_GRANT_EXPIRY={expiry_raw!r} is not an ISO date.")
+                all_green = False
+        record["conditions"]["grant_expiry"] = {"green": expiry_ok, **expiry_detail}
+
         record["all_green"] = all_green
         record["preflight_completed_utc"] = datetime.now(UTC).isoformat()
 

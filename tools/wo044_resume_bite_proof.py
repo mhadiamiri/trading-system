@@ -51,9 +51,14 @@ def _env():
     # DATA_SOURCE=kraken_v2 selects the LIVE-CAPABLE adapter (.env ships `simulated`, which
     # create_live_capture_feed refuses). No socket is opened regardless: the child injects the
     # scripted transport through connect_fn, and `_REAL_CONNECT` is never reached.
+    # The [3.9]/[3.10] preflight conditions apply to the bite-proof children too — they run the
+    # SAME preflight, which is the point of §3.2 (no inherited preconditions). A far-future expiry
+    # keeps the proof from rotting on a date rather than on a defect.
     return dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
                 TRADING_ENV="paper", CORPUS_AUTO_MODE_CONFIRMED="true",
-                DATA_SOURCE="kraken_v2")
+                DATA_SOURCE="kraken_v2",
+                CORPUS_SHUTDOWN_POLICY_DISABLED="true",
+                CORPUS_GRANT_EXPIRY="2099-01-01")
 
 
 def _run_and_kill(corpus_dir, corpus_id, kill_after=6.0):

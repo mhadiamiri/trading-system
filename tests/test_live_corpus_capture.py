@@ -50,6 +50,9 @@ def mock_env_vars(monkeypatch, tmp_path):
     monkeypatch.setenv("CORPUS_RETENTION_DAYS", "90")
     monkeypatch.setenv("CORPUS_DIR", str(tmp_path / "captures" / "corpus_24h"))
     monkeypatch.setenv("CORPUS_AUTO_MODE_CONFIRMED", "true")
+    # WO-044 [3.9]/[3.10]: the operator prerequisite and the grant expiry are REQUIRED greens.
+    monkeypatch.setenv("CORPUS_SHUTDOWN_POLICY_DISABLED", "true")
+    monkeypatch.setenv("CORPUS_GRANT_EXPIRY", "2099-01-01")
 
 
 @pytest.fixture
@@ -215,6 +218,53 @@ class TestCorpusCaptureRunnerPreflight:
         monkeypatch.setenv("CORPUS_ROTATION_CADENCE", "size")  # Invalid
         with pytest.raises(CorpusCaptureError, match="CONFIG_INVALID"):
             CorpusCaptureRunner()
+
+    # ── WO-044 [3.9] the operator prerequisite ────────────────────────────────────────────
+    def test_preflight_refuses_without_shutdown_policy_confirmation(self, mock_env_vars,
+                                                                    monkeypatch):
+        """The shutdown policy must be CONFIRMED disabled — absent confirmation is RED.
+
+        This is the condition whose absence cost two runs (20260729044021 ~2h37m and
+        20260730152029 ~3h55m, both killed with every frame on disk and no manifest). It is
+        operator-declared because a process cannot inspect a host security policy, and a check
+        that silently assumed the answer would be worse than no check at all.
+        """
+        monkeypatch.delenv("CORPUS_SHUTDOWN_POLICY_DISABLED", raising=False)
+        with pytest.raises(CorpusCaptureError, match="PREFLIGHT_FAILED"):
+            CorpusCaptureRunner()
+
+    def test_shutdown_policy_confirmation_is_recorded_in_the_preflight(self, mock_env_vars,
+                                                                       tmp_path):
+        """Confirmed, it is written into PREFLIGHT.json — stated, not merely believed."""
+        runner = CorpusCaptureRunner()
+        record = json.loads(
+            (runner._run_dir() / "PREFLIGHT.json").read_text(encoding="utf-8"))
+        cond = record["conditions"]["shutdown_policy_disabled"]
+        assert cond["green"] is True
+        assert cond["operator_declared"] is True
+        assert cond["confirmed_via"] == "CORPUS_SHUTDOWN_POLICY_DISABLED"
+
+    # ── WO-044 [3.10] the grant expiry ────────────────────────────────────────────────────
+    def test_preflight_refuses_without_a_declared_grant_expiry(self, mock_env_vars, monkeypatch):
+        """A grant with no declared end quietly outlives its authorisation."""
+        monkeypatch.delenv("CORPUS_GRANT_EXPIRY", raising=False)
+        with pytest.raises(CorpusCaptureError, match="PREFLIGHT_FAILED"):
+            CorpusCaptureRunner()
+
+    def test_preflight_refuses_an_expired_grant(self, mock_env_vars, monkeypatch):
+        """Past the expiry the run REFUSES rather than trusting anyone to remember."""
+        monkeypatch.setenv("CORPUS_GRANT_EXPIRY", "2020-01-01")
+        with pytest.raises(CorpusCaptureError, match="PREFLIGHT_FAILED"):
+            CorpusCaptureRunner()
+
+    def test_grant_expiry_records_days_remaining(self, mock_env_vars, tmp_path):
+        runner = CorpusCaptureRunner()
+        record = json.loads(
+            (runner._run_dir() / "PREFLIGHT.json").read_text(encoding="utf-8"))
+        cond = record["conditions"]["grant_expiry"]
+        assert cond["green"] is True
+        assert cond["expiry_date"] == "2099-01-01"
+        assert cond["days_remaining"] > 0
 
 
 # ─── SEGMENT PATH TESTS ────────────────────────────────────────────────────────────
