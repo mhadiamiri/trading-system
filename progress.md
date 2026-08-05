@@ -3335,11 +3335,18 @@ in the `finally` block masked real capture errors on zero-frame runs. (4) termin
 conflated — a breaker-terminal gap is COMPLETE by construction. (5) `captures/` was untracked AND
 unignored; `git add -A` would have committed the whole corpus into permanent history.
 
-**§5 NOT BEGUN — two blockers:** the **OPERATOR PREREQUISITE** (the shutdown policy must be DISABLED
-and confirmed — it already cost two runs) is UNCONFIRMED; and CI on the pre-capture commit is
-pending. Also required at launch: **`DATA_SOURCE=kraken_v2`** (`.env` ships `simulated`, which killed
-run `20260730151934` instantly). Grant expiry read as **2026-08-19** (14 days from the instruction
-file's timestamp) — flagged for confirmation, not asserted.
+**COMMITTED + CI GREEN.** HEAD `4d3898a` on master (pushed; local == remote). **279 passed, 2
+skipped both legs** — CI run **`31048238985`**, jobs `test (3.14)` 92448982091 and `test (3.11)`
+92448982251, counts read from the job logs not inferred from the checkmark. 256 + 17 + 6 = 279.
+Non-blocking CI annotation: the v3 checkout/setup-python/codecov actions target Node 20 and are
+being forced onto Node 24 (deprecation, not failure).
+
+**§5 NOT BEGUN — ONE BLOCKER REMAINS:** the **OPERATOR PREREQUISITE** — the shutdown policy must be
+DISABLED and confirmed — is UNCONFIRMED. It already cost two runs (`20260729044021` ~2h37m and
+`20260730152029` ~3h55m, both killed with every frame on disk and no manifest). **Do not launch
+until confirmed.** Also required at launch: **`DATA_SOURCE=kraken_v2`** (`.env` ships `simulated`,
+which killed run `20260730151934` instantly). Grant expiry read as **2026-08-19** (14 days from the
+instruction file's timestamp) — flagged for confirmation, not asserted.
 
 ---
 

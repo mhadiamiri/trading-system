@@ -463,8 +463,26 @@ ca7e9a85b491ab96  src/trading/data/corpus.py                  (new)
 - [x] Cumulative-hours accounting works (`--progress`)
 - [x] Corpus-spanning manifest; per-run preflight records; every seam ledgered
 - [x] **279 passed, 2 skipped — BOTH interpreters, BOTH orders** (see below)
-- [ ] CI green both legs on the pre-capture commit — **PENDING** (see §5)
+- [x] **CI GREEN BOTH LEGS on the pre-capture commit `4d3898a` — run `31048238985`**
 - [ ] §5 run and accumulate — **NOT BEGUN** (operator prerequisite unconfirmed)
+
+### CI — the real run on THIS commit
+
+**Commit:** `4d3898a` (pushed `0425ec6..4d3898a`) · **CI run `31048238985`** · triggered via push.
+
+| Job | ID | Duration | Result |
+|---|---|---|---|
+| `test (3.14)` | 92448982091 | 10m26s | ✅ **279 passed, 2 skipped** (290.83s) |
+| `test (3.11)` | 92448982251 | 10m8s | ✅ **279 passed, 2 skipped** (289.79s) |
+
+Counts read from the job logs, not inferred from the ✓ — both legs ran the randomized-order step
+and reported 279/2. (CLOSEOUT-1 lesson: a prior commit's green does not cover this one, and a green
+checkmark is not a test count.)
+
+Non-blocking annotation on both jobs: `actions/checkout@v3`, `actions/setup-python@v3` and
+`codecov/codecov-action@v3` target Node.js 20, which GitHub now forces onto Node 24. A deprecation
+warning, not a failure — recorded here rather than left for someone to rediscover as a surprise
+when the forcing becomes a hard break.
 
 ### Test results
 
