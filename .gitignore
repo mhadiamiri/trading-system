@@ -53,3 +53,14 @@ Thumbs.db
 # WO-026 §2: the gate-ledger instrument streams here (run-scoped, never committed).
 # Evidence is a DELIBERATE snapshot into evidence/ via tools/snapshot_gate_ledger.py.
 .artifacts/
+
+# WO-044: the CORPUS ITSELF is an archive, not source. The rotation policy budgets ~5.3 GB/day raw
+# with 90-day minimum retention (WO-042 §2.3) — that belongs on disk and in the archive, never in
+# git history where it could not later be removed. The corpus's PROVENANCE (CORPUS_MANIFEST.json,
+# seam_ledger.jsonl, gap ledgers, PREFLIGHT.json) lives alongside the data and is preserved by the
+# archive, not by the repo. This directory was previously untracked AND unignored, so a plain
+# `git add -A` would have committed the whole corpus wholesale.
+/captures/
+
+# A zero-byte file produced by a Windows shell redirection typo. Not an artifact of anything.
+/nul

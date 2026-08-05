@@ -1035,16 +1035,34 @@ class KrakenV2BookAdapter:
     # count, expected delay, and jitter (the count/rolling-window form had a WINDOW >= MAX x
     # cap subtlety that made its own worst case marginal-by-construction, so it was rejected).
     #
-    # T = 600s (10 min) is DECLARED ENGINEERING JUDGMENT — Kraken publishes no keepalive/
+    # T = 900s (15 min), RULED BY D45 (WO-044 §4.1/§4.2). Kraken still publishes no keepalive/
     # reconnect limit (documented silence, evidence/WO-014b-2/rate_limits_research.txt, rule
-    # 0.1e). Derivation: routine unplanned Kraken interruptions (network events, brief WS
-    # drops) resolve in seconds to a few minutes; ~10 min clears ordinary hiccups with margin
-    # while bounding a truly-gone venue to a DISCLOSED ~10-20 min gap (carried by the forensic
-    # tail + retained partial capture) rather than a silent multi-hour hole. Unknown without
-    # operational history; conservative and revisable once the 24h run yields data.
-    # Attempt rate is now EMERGENT from T: at cap 30s with full jitter the expected delay is
-    # ~15s, so ~40 attempts across 600s ~= 4/min — well under any plausible venue limit.
-    RECONNECT_MAX_FAILURE_SECONDS = 600.0
+    # 0.1e), so T remains DECLARED ENGINEERING JUDGMENT — but it is no longer judgement alone.
+    #
+    # SUPERSEDES T = 600s (10 min), which was set with the caveat "revisable once the 24h run
+    # yields data." THE RUN YIELDED THE DATA. Corpus run `20260729190849` died on this exact
+    # constant: a local network outage ("[WinError 64] The specified network name is no longer
+    # available", then repeated handshake timeouts) ran from 20:49:30Z to 20:59:41Z — 23 logged
+    # reopen attempts across ~611s — and the breaker tripped at 600s, ending a healthy 1h51m
+    # capture that had already banked 462,155 frames. The venue was NOT gone; the host's link was
+    # briefly down. 600s was measured to be too tight by roughly one attempt.
+    #
+    # 15 min is therefore the FIRST value in this constant's history chosen against an observed
+    # failure rather than derived from silence. It widens what the breaker TOLERATES; it does not
+    # weaken what the breaker DECIDES (§4.2: the breaker remains the sole run-terminator, and it
+    # still STOPs with the full forensic tail). The whole outage is ONE gap record carrying its
+    # TRUE duration, with the retry ladder riding along as the forensic detail (§4.1) — a longer
+    # tolerated outage is a longer HONEST gap, never a hidden one.
+    #
+    # BOUNDARY (§4.3, D45): patience toward the NETWORK does not extend to the CLOCK. The host-
+    # suspend detector is INDEPENDENT of this window — a suspend detected during an outage still
+    # VOIDs the affected windows under D24. Widening T must never launder a suspend into "we were
+    # just waiting", which is why the two are separately proved.
+    #
+    # Attempt rate stays EMERGENT from T: at cap 30s with full jitter the expected delay is ~15s,
+    # so ~60 attempts across 900s ~= 4/min — unchanged per-minute, well under any plausible venue
+    # limit. Observed rate in the run above was 23 attempts / 611s ~= 2.3/min.
+    RECONNECT_MAX_FAILURE_SECONDS = 900.0
 
     # ── WO-014b-2 §1.1 / §1.2: keepalive (application layer) ─────────────────
     # Kraken emits a heartbeat ~1/s (observed: 10 in a 70-frame sample, WO-008b-B) but

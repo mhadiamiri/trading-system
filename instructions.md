@@ -1,101 +1,129 @@
-# WO-040 CLOSEOUT — fix the impossible p99, define the reference honestly, verify real CI.
+# WO-044 — RESUMABLE 24-HOUR CORPUS. One corpus-id, N runs, every seam labeled.
+#
+# D45: "Every seam is a declared ledger record — this is MORE honest than one unbroken process,
+# not less." An in-run venue disconnect and an inter-run policy shutdown are the same epistemic
+# object: a bounded window with no data, a declared cause, a true duration.
 
-BASE: HEAD at WO-040's evidence commit (state it). The MEASUREMENT is accepted: A3 driven through
-`get_live_market_data(enable_instrument=True)`, 41/41 to MarketState, no sleep, footprint by
-construction, median 0.031ms / p95 0.057ms / max 0.154ms plausible. **The p99 is broken and the
-reference is defined against it.** Three fixes; no re-measurement of the loop.
+BASE: current HEAD — confirm in §1. Supersedes WO-043's one-continuous-process definition.
+GRANT (amended, D45): one corpus-id, all resume runs toward 24 CUMULATIVE hours. Expires on corpus
+completion or in **14 days**, whichever first. Each resume carries its OWN full preflight.
 
-SCOPE: §1 fix the percentile computation (P99 0.209 > MAX 0.154 is impossible); §2 redefine the
-reference honestly for N=41; §3 real CI on the evidence commit + the actual 3.11 leg. Commit green,
-STOP.
-SHIP IMPACT: **NO** — harness/percentile fix (tools/, `.artifacts/`, evidence). `git diff -- src/`
-empty vs `89a2842` (the instrument stays frozen — paste the diff). If a fix touches src, STOP.
-REPORTING: PER-ITEM — this is the corpus reference.
+SCOPE: §2 verify run-3's retroactive eligibility (D45 ruling 3); §3 build resume support; §4 the
+long-outage policy (15 min); §5 run and accumulate. Commit green before capturing.
+SHIP IMPACT: likely YES (resume + outage policy touch the capture path). Full discipline.
+REPORTING: PER-ITEM.
+
+**OPERATOR PREREQUISITE (before any run): the security policy that shuts the machine down must be
+DISABLED and confirmed. That policy caused two lost runs. State it confirmed in the preflight.**
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
-0.2 No src change. The loop and instrument are frozen at `89a2842`. Only the measurement HARNESS's
-    statistics code and the evidence declaration change. The raw per-frame samples are NOT re-measured
-    unless §1 finds the samples themselves (not the percentile math) are wrong.
-0.3 Report every attempt.
-0.6 AUTO MODE OFF — verify the bar; §0.2 forbids any src edit.
+0.2 Stay inside the grant: public feed, read-only, no order path, TRADING_ENV=paper.
+0.4 **The ledger owns honesty.** Every seam and every outage is a record with a declared cause and
+    TRUE duration. Never smooth a seam, never shorten an outage, never stitch a book across a gap.
+0.5 Report every attempt.
+0.6 Auto mode OFF (grant condition 2), operator-confirmed.
+0.7 BUILT-VS-OPERATED (D24): the capture runner, gap ledger, checksum, breaker, detachment,
+    rotation are OPERATED (proven across four runs). Resume support + the outage policy are THIS
+    WO's build.
 
 ---
 
-## §1 FIX THE IMPOSSIBLE PERCENTILE (P99 > MAX)
-
-The reported distribution is arithmetically impossible: **P99 (0.2090ms) > MAX (0.1538ms).** The 99th
-percentile cannot exceed the maximum. On N=41, p99 ≈ the top sample; the computation is interpolating
-past the array end or indexing wrong.
-
-1.1 Show the percentile code in `tools/measure_real_loop_baseline.py`. Identify the bug (off-by-one,
-    interpolation method producing a value above max, wrong index for small N, or reading a wrong
-    field). State it.
-1.2 Fix the statistics ONLY — not the samples. Re-compute median/p95/p99/max from the SAME 41 collected
-    samples (they are in `.artifacts/WO-040/wo040_measurement_results.json` — use them; do not re-drive
-    the loop unless the raw samples are themselves absent/corrupt, in which case re-drive A3 and say so).
-1.3 **Sanity gate:** after the fix, assert MEDIAN ≤ P95 ≤ P99 ≤ MAX. If that ordering does not hold,
-    the fix is wrong — STOP. Paste the corrected ordered distribution.
-1.4 State whether the corrected p99 now equals or approaches max (expected on N=41 — the top 1% of 41
-    samples is the top sample). If corrected p99 == max, say so plainly: at N=41, p99 and max are the
-    same measurement, which is itself the small-N honesty point.
+## §1 CONFIRM STATE
+HEAD, 237 both interpreters, `git diff -- src/` clean, CI green. Confirm the amended grant terms and
+the 14-day expiry window (state the expiry date). Confirm the shutdown policy is disabled.
 
 ---
 
-## §2 DEFINE THE REFERENCE HONESTLY FOR N=41 (the §2.5 caveat, applied not just stated)
+## §2 RUN-3 RETROACTIVE ELIGIBILITY (D45 ruling 3 — verify as FACTS, not belief)
 
-WO-040 §2.5 correctly said "N too small for stable p99, use p95 for regression" — then §3.5 defined the
-reference against p99 anyway. Resolve the contradiction in favor of the honest reading:
-
-2.1 Define the corpus regression check against the statistic the sample actually supports. On N=41,
-    p99 IS the max (one or two samples) — a threshold there flags only a new all-time-worst frame,
-    which is noisy. State the reference USE against **p95** (0.057ms, well-supported by 41 samples) as
-    the primary trip, with max/p99 reported as the observed ceiling but NOT the sole trip. Exact
-    wording to declare: what fires, on which statistic, over how many consecutive frames, with the N=41
-    limitation named in the reference itself.
-2.2 State plainly what this baseline can and cannot support: median and p95 are usable references from
-    41 real frames; the extreme tail (p99+) is provisional and should tighten when the corpus itself
-    provides millions of real frames (the corpus run will produce a vastly larger real sample — note
-    that the baseline is a PRE-corpus sanity reference, and the corpus's own data becomes the mature
-    distribution). This frames the 41-frame baseline correctly: a plausibility gate, not the final
-    performance model.
-2.3 Re-declare `evidence/WO-040/baseline.json` with the corrected distribution and the honest reference
-    definition. Preserve the correction chain (15.5ms → 0.542ms → 0.031ms real) AND annotate the p99
-    correction (impossible→fixed) — annotate-not-rewrite; the p99 error and its fix are part of the
-    evidence trail.
+Run `20260730152029` (~3h55m, 4 complete segments + 1 partial, live reconnect recorded) counts
+toward the cumulative 24 **only if all four hold as demonstrable evidence**:
+  (a) full preflight evidence EXISTS for that run — paper-env asserted, suspend armed, load recorded;
+  (b) its segments are HASHED in a manifest (note: no MANIFEST.json was written — determine whether
+      hashes can be computed now over the preserved segments and whether that satisfies the
+      condition, or whether absent-at-capture-time hashing disqualifies it. State your reading and
+      why; if uncertain, it does NOT count — provenance must be demonstrable);
+  (c) its gaps are LEDGERED (the 17:45:53 VENUE_CONNECTION_CLOSED resume is — confirm the ledger is
+      complete for the run);
+  (d) it ran the same proven machinery at the same HEAD-adjacent state as this WO.
+Verdict: COUNTS (and how many hours) or MACHINERY-VALIDATION-ONLY (cumulative starts fresh). The
+partial 19Z segment: state whether a partial hour counts or only complete segments do.
 
 ---
 
-## §3 REAL CI ON THE EVIDENCE COMMIT + THE ACTUAL 3.11 LEG
+## §3 BUILD RESUME SUPPORT (the five ratified conditions + D45's two additions)
 
-3.1 WO-040 cited CI run `30399653951` — that is WO-039's run, not a run on WO-040's evidence commit.
-    Commit the closeout (percentile fix + baseline.json), push, and run CI on THAT commit. Paste the
-    REAL run number with both legs. (CLOSEOUT-1 lesson: a prior commit's green does not cover this one.)
-3.2 The 3.11 leg was asserted "verified in prior work," not shown for this WO. Run it (the throwaway uv
-    venv acceptance leg) and paste the actual 3.11 result for this commit. "237 both interpreters" must
-    be demonstrated here, not inherited.
-3.3 If either leg fails → STOP; a red leg on the corpus-reference commit is a finding.
+3.1 **Corpus-id spanning runs.** A stable `corpus_id` under which multiple `run_id`s accumulate.
+    Directory layout groups all runs of a corpus. State the scheme.
+3.2 **Each resume = new run-id with its OWN full preflight** (condition 1). No inherited
+    preconditions: paper-env, no-credential, suspend armed, load recorded, rotation loaded, ledger
+    armed, auto-mode confirmed, kill-switch — all re-demonstrated per resume, logged as that run's
+    opening record.
+3.3 **The seam is an explicit ledger record** (condition 2) with a declared cause code and TRUE
+    duration: `PROCESS_RESTART` / `POLICY_SHUTDOWN` / `OPERATOR_STOP`. Declare these in the reason
+    vocabulary (they are runtime decision reasons — the corpus archives them). Duration = last frame
+    of prior run → first frame of resumed run, measured, never estimated.
+3.4 **NO book state across a resume** (condition 3). Each resume takes a FRESH Kraken snapshot and
+    rebuilds. **D45 addition (a): the resume snapshot's checksum MUST validate before any MarketState
+    emits** — same FR-018a(d) semantics as any resync. A resumed segment starts life proven, not
+    assumed. If the snapshot fails validation, the resume does not begin emitting — it retries or
+    STOPs; state the behavior.
+3.5 **Manifest spans the corpus-id** (condition 4): all segments from all runs, each with SHA-256,
+    plus inter-run seams as first-class ledger records.
+3.6 **D45 addition (b): the default-deny reader treats seams identically to in-run gaps** — same
+    refusal semantics, same acknowledgment machinery. Confirm NO new reader logic is needed (the
+    seam is a gap with a bigger cause code). If the reader needs a change, that is a finding — STOP.
+3.7 **Cumulative-hours accounting:** a mechanism that reports, at any time, total labeled continuous
+    hours across the corpus-id, seam count, and remaining to 24. This is the progress meter.
+
+**Bite proof (0.3-equivalent, four artifacts, sha256):** simulate a resume — run, kill the process,
+resume under the same corpus-id — and prove: the seam is ledgered with cause and true duration, the
+resumed run has its own preflight record, a fresh validated snapshot was taken, no book state
+carried, the manifest spans both runs, and cumulative hours sums correctly. Restore, sha256.
 
 ---
 
-## §4 ACCEPTANCE
-- Percentile bug shown and fixed; MEDIAN ≤ P95 ≤ P99 ≤ MAX holds (paste); corrected distribution from
-  the same 41 samples
-- Reference redefined against p95 (primary), tail reported as provisional/observed-ceiling with N=41
-  named in the reference; baseline.json re-declared, correction chain + p99-fix annotated
-- `git diff -- src/` EMPTY vs `89a2842` (paste); five src sha256 identical (`2e0f8a13…`, `103a8ba7…`,
-  `5bf833c7…`, `dab18f67…`, `3d153a11…`, `bd0747f…`)
-- CI GREEN both legs on THIS closeout's commit (real run number, not WO-039's); 3.11 leg SHOWN for this
-  commit, not inherited
-- 237 both interpreters demonstrated; lint 6/6 · contract 6/6 · ruff clean · annotation 0 · preflight
-- `wo029_reverify_partition.py` PASS 31/31
+## §4 THE LONG-OUTAGE POLICY (D45 ruling 2 — X = 15 minutes)
 
-## §5 REPORT — `WO-040-CLOSEOUT-REPORT.md`
-The percentile bug + fix + the ordered distribution; the honest reference definition (p95 primary, tail
-provisional, N=41 named); the re-declared baseline.json; the REAL CI run on this commit both legs; the
-shown 3.11 result; the empty src diff + five sha256; every attempt; any STOP.
+4.1 A sustained venue outage enters bounded retry/backoff for up to **15 minutes**, recorded as
+    **ONE gap record** with its TRUE duration and cause. The retry ladder inside it keeps the FULL
+    forensic trail — attempts, backoff intervals (D-r10 tail machinery unchanged).
+4.2 At 15 minutes the **breaker STOPs** with the standard forensic tail. The breaker remains the
+    sole run-terminator; X only widens what it tolerates before judging.
+4.3 **D45 boundary: the suspend detector and the outage window are INDEPENDENT.** A host suspend
+    DURING an outage still voids affected windows under D24. Network patience does not extend to
+    clock divergence. Prove they are independent — a suspend inside an outage must still VOID.
+4.4 Bite proof: an outage under 15 min → one gap record, retries in the tail, run continues. An
+    outage past 15 min → breaker STOP with forensic tail. A suspend during an outage → windows VOID.
+    Four artifacts, sha256.
 
-**THEN STOP.** With a correct, honestly-bounded baseline: corpus preconditions (per-item, red lines
-live here) → 24h corpus.
+---
+
+## §5 RUN AND ACCUMULATE
+5.1 Commit §3/§4 green with CI on the commit BEFORE capturing. Launch detached (the proven method).
+5.2 Capture toward 24 cumulative hours. On any interruption: restart under the SAME corpus-id, new
+    run-id, full preflight, fresh validated snapshot, seam ledgered. Repeat until cumulative ≥ 24h
+    or the 14-day grant expires.
+5.3 Report cumulative progress after each run: hours accumulated, seams and their causes, remaining.
+5.4 **Do NOT stretch or pad a run to hit a number.** Sufficiency against the real seam count is the
+    lead's ruling (condition 5 / D-r13) when it lands.
+
+## §6 ACCEPTANCE
+- Run-3 eligibility verdict with evidence (counts + hours, or validation-only)
+- Resume support built; all five conditions + D45's two additions demonstrated; resume bite proof
+- Outage policy at 15 min; three-case bite proof incl. suspend-during-outage independence
+- Seam cause codes declared in the vocabulary; reader unchanged (or the finding reported)
+- Cumulative-hours accounting works
+- CI green both legs on the pre-capture commit (real run number)
+- Corpus-spanning manifest; per-run preflight records; every seam ledgered
+
+## §7 REPORT — `WO-044-REPORT.md`
+Run-3 verdict; the resume mechanism and its bite proof; the outage policy and its three-case proof;
+the seam vocabulary; cumulative accounting; each run's preflight + duration + seam; the running
+cumulative total; every attempt; any STOP; CI run.
+
+**THEN report at each interruption and at 24 cumulative hours.** Sufficiency is the lead's call
+against the actual seam count.

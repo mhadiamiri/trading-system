@@ -34,14 +34,21 @@ from tools.live_corpus_capture import (
 # ── FIXTURES ─────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def mock_env_vars(monkeypatch):
-    """Set up environment variables for testing."""
+def mock_env_vars(monkeypatch, tmp_path):
+    """Set up environment variables for testing.
+
+    WO-044: CORPUS_DIR points at tmp_path, not a repo-relative `test_captures/`. Under WO-044 the
+    runner opens a CorpusLedger during PREFLIGHT (to report cumulative progress and demand a seam
+    cause), and a ledger creates its corpus directory on construction — so a repo-relative default
+    made every preflight test litter the working tree with corpus dirs and PREFLIGHT.json files.
+    Same family as WO-026's finding: an instrument must not write where it is not invited.
+    """
     monkeypatch.setenv("TRADING_ENV", "paper")
     monkeypatch.setenv("CORPUS_ROTATION_CADENCE", "hourly")
     monkeypatch.setenv("CORPUS_SEGMENT_DURATION_SECONDS", "3600")
     monkeypatch.setenv("CORPUS_COMPRESSION_ENABLED", "true")
     monkeypatch.setenv("CORPUS_RETENTION_DAYS", "90")
-    monkeypatch.setenv("CORPUS_DIR", "test_captures/corpus_24h")
+    monkeypatch.setenv("CORPUS_DIR", str(tmp_path / "captures" / "corpus_24h"))
     monkeypatch.setenv("CORPUS_AUTO_MODE_CONFIRMED", "true")
 
 

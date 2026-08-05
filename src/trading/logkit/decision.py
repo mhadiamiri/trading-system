@@ -175,6 +175,33 @@ VALID_REASON_CODES = {
         # every injected pair. The refusal payload names WHICH assertion failed (COUPLING vs
         # COHERENCE) — one code, diagnosable. Prefix-free (CLOCK_ is a unique stem).
         "CLOCK_INJECTION_REFUSED",
+        # WO-044 §3.3 (D45): the INTER-RUN SEAM causes. A resumable corpus accumulates toward 24
+        # CUMULATIVE hours across N runs, and the window between two runs is the same epistemic
+        # object as an in-run venue disconnect — a bounded window with no data, a declared cause,
+        # and a TRUE duration. D45, verbatim: "Every seam is a declared ledger record — this is MORE
+        # honest than one unbroken process, not less." So the seam joins the GOVERNED vocabulary
+        # rather than living as a free-text note in a manifest.
+        #
+        # Emitted by trading.data.corpus.CorpusLedger.open_seam, which validates the cause against
+        # the closed set CORPUS_SEAM_CAUSES and writes it as the seam record's `reason_code`. That
+        # is a real emission site, not a constant one line of wiring away from one — the distinction
+        # WO-037 §3 was built to catch (REASON_VETO_INSUFFICIENT_BALANCE, since retired under D43).
+        #
+        # The cause is OPERATOR-DECLARED, never inferred: a process cannot observe why it died (a
+        # policy SIGKILL, a manual stop, and a host crash are byte-identical from inside), so
+        # open_seam REFUSES an undeclared cause rather than guessing. A guessed cause is a smoothed
+        # seam, and §0.4 forbids smoothing a seam as firmly as it forbids shortening an outage.
+        # Prefix-free: PROCESS_ / POLICY_ / OPERATOR_ are each unique stems in the union, and none
+        # is a prefix of another (PROCESS_RESTART vs POLICY_SHUTDOWN diverge at PR/PO).
+        "PROCESS_RESTART",   # the capture process ended; the HOST stayed up
+        "POLICY_SHUTDOWN",   # the host was shut down / slept by a policy outside the run's control
+        "OPERATOR_STOP",     # a deliberate human stop — honest, unremarkable, still a seam
+        # WO-044 §3.3: the REFUSAL that keeps the three above honest. Raised by open_seam when a
+        # resume declares no cause (or one outside the closed set), and when the prior run leaves no
+        # measured last frame so the seam's left bound could only be estimated. Same family as
+        # GAP_PERSIST_UNCONFIGURED and LIVE_CAPTURE_ENV_REFUSED: a refusal that lives IN the code
+        # path, not in a checklist. Prefix-free (SEAM_ is a unique stem in the union).
+        "SEAM_CAUSE_UNDECLARED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

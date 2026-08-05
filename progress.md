@@ -3282,44 +3282,73 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
-⚠️ **WO-040 CLOSEOUT — STOPPED at §1** (2026-07-29)
+▶ **WO-044 — RESUMABLE 24-HOUR CORPUS: §2/§3/§4 COMPLETE, §5 NOT BEGUN** (2026-08-05)
 
-**STOP Condition:** Percentile bug identified in `src/trading/data/adapters/kraken_v2_book.py` — outside expected `tools/` scope.
+**Base HEAD:** `0425ec6` (WO-043). **SHIP IMPACT: YES.** Report: `WO-044-REPORT.md`.
 
-**Bug Found:** P99 (0.209ms) > MAX (0.154ms) — arithmetically impossible
-- **Root Cause:** `statistics.quantiles()` with default `'exclusive'` method extrapolates beyond data range
-- **Location:** `PerFrameRecord.compute_distribution()` at line 376-377
-- **Fix Required:** Add `method='inclusive'` parameter to keep percentiles within bounds
+**§1 — baseline: the WO's "237" is STALE.** Measured **256** at base (WO-043 added 19 corpus tests;
+237 + 19 = 256). After this WO: **278 passed, 2 skipped**. lint 6/6 · ruff clean · annotation 0 ·
+preflight PASS · partition 31/31 · `evidence/` clean.
 
-**Verified Corrected Distribution (with temporary fix):**
-| Metric | Current (buggy) | Corrected |
-|--------|----------------|-----------|
-| Median | 0.031232 ms | 0.032186 ms |
-| P95    | 0.057410 ms | 0.045537 ms |
-| P99    | 0.208953 ms ❌ | 0.119256 ms ✓ |
-| Max    | 0.153779 ms | 0.158548 ms |
+**§2 — run `20260730152029` verdict: MACHINERY-VALIDATION-ONLY. Cumulative starts at 0.**
+Measures 3.9106h span / **3.9101h covered** — real data, intact. Fails 2 of 4 conditions:
+(a) NO preflight artifact exists for that run_id — the only surviving transcript, `corpus_stdout.log`,
+is stamped 15:19:34Z and headed `20260730151934`, a *different* run that died on
+`LIVE_CAPTURE_UNSUPPORTED`; (b) no MANIFEST.json — post-hoc hashing attests what the file holds
+*today*, not the interval since capture ("if uncertain, it does NOT count"). (c) gaps ledgered ✅
+(one VENUE_DISCONNECT, TRUE duration 1.7266s, resumed). (d) same machinery ✅.
+**Partial-hour ruling:** partial segments COUNT, measured by span — an hour boundary is a rotation
+policy, not an epistemic one. Provenance disqualifies a run, never an untidy boundary.
 
-**Ordering Verified:** MEDIAN ≤ P95 ≤ P99 ≤ MAX holds with fix: 0.032186 ≤ 0.045537 ≤ 0.119256 ≤ 0.158548 ✓
+**§3 — resume support BUILT.** New production module `src/trading/data/corpus.py` (in `src/` because
+both vocabulary guards scan `src/` only — a seam emitted from `tools/` would be declared-but-
+unproducible, the WO-037 blind spot). Layout `captures/<root>/<corpus_id>/<run_id>/`; per-run
+`PREFLIGHT.json`; corpus-spanning `CORPUS_MANIFEST.json`; write-through `seam_ledger.jsonl`;
+cumulative meter via `--progress`. Seam causes **`PROCESS_RESTART` / `POLICY_SHUTDOWN` /
+`OPERATOR_STOP`** + refusal **`SEAM_CAUSE_UNDECLARED`**, all declared AND genuinely emitted (each
+driven through the real writer and read back off disk). Cause is operator-declared, never inferred.
+**§3.4 satisfied by existing FR-018a(d)** (not rebuilt); **§3.6 no-op** — the default-deny reader
+does not exist yet (`kraken_v2_book.py:3194`), and the seam was shaped to need no new logic when it
+does. **Bite proof PASS**: real `TerminateProcess` kill + resume; mutation (duration → constant 0.0,
+a smoothed seam) fails P2 alone; sha256 exact-restore.
 
-**Instruction Mismatch:** Expected bug in `tools/measure_real_loop_baseline.py`, but actual bug is in `src/` instrument code.
+**⚠ COVERAGE DEFINITION (lead-endorsed, WO-044):** "24 cumulative hours" means **24 hours of DATA
+COVERAGE**, not 24 hours of wall clock. `covered = Σ(last_frame − first_frame) − in-run gap seconds`;
+seams are excluded from coverage and reported separately. **The capture must therefore run LONGER
+than 24 wall-clock hours to reach the target**, and sufficiency is ruled against the covered number.
+`--progress` labels this unambiguously: keys are `cumulative_covered_hours` / `elapsed_wall_hours` /
+`excluded_in_run_gap_hours` / `excluded_seam_hours`, plus `metric` and `not_the_metric` strings that
+travel with the data. The old ambiguous keys were REMOVED, not aliased, so a stale reader gets a
+loud KeyError rather than silently reading elapsed as covered.
 
-**Per instruction §0.2:** *"If a fix touches src, STOP."* — src/ change reverted, awaiting lead ruling.
+**§4 — outage policy at 15 min.** `RECONNECT_MAX_FAILURE_SECONDS 600.0 → 900.0`. First value of this
+constant chosen against an OBSERVED failure: run `20260729190849` died on it — outage
+20:49:30Z→20:59:41Z ≈ **611s**, 23 reopen attempts, `[WinError 64]` (a *local link* failure, not a
+dead venue), killing a healthy 1h51m capture holding 462,155 frames. **Bite proof PASS** with two
+discriminating mutations: window→600s breaks only the two window tests; suspend bound 43s→1e9 breaks
+only the §4.3 independence proof while the preservation dual still passes.
 
-**Reports Generated:**
-- `WO-040-CLOSEOUT-STOP-REPORT.md` — Comprehensive findings and options
-- `.artifacts/WO-040/percentile_bug_finding.md` — Technical details
+**FINDINGS (5, all repaired):** (1) WO-043's preflight condition 3.7 printed a HARDCODED "237 passed"
+string — ran no test, could not go red; now EXECUTES the kill-switch and TRADING_ENV guards.
+(2) `run_id` generated twice, so preflight announced a path the run never wrote to. (3) `NameError`
+in the `finally` block masked real capture errors on zero-frame runs. (4) terminal vs incomplete gaps
+conflated — a breaker-terminal gap is COMPLETE by construction. (5) `captures/` was untracked AND
+unignored; `git add -A` would have committed the whole corpus into permanent history.
 
-**Options for Lead:**
-1. **(RECOMMENDED)** Authorize src/ fix as measurement harness statistics code (SHIP IMPACT remains NO)
-2. Implement workaround in `tools/measure_real_loop_baseline.py`
-3. Accept documented anomaly
-
-**Status:** Awaiting lead ruling on src/ fix authorization
+**§5 NOT BEGUN — two blockers:** the **OPERATOR PREREQUISITE** (the shutdown policy must be DISABLED
+and confirmed — it already cost two runs) is UNCONFIRMED; and CI on the pre-capture commit is
+pending. Also required at launch: **`DATA_SOURCE=kraken_v2`** (`.env` ships `simulated`, which killed
+run `20260730151934` instantly). Grant expiry read as **2026-08-19** (14 days from the instruction
+file's timestamp) — flagged for confirmation, not asserted.
 
 ---
 
 Prior Work:
-- **WO-040** — Real capture-loop baseline (reported complete; CLOSEOUT in progress per instructions.md)
+- **WO-044** — Resumable corpus: seams, corpus-id, cumulative accounting, 15-min outage policy
+- **WO-043** — 24-hour corpus capture runner (4 real runs; 2 killed by the shutdown policy)
+- **WO-042** — Corpus preconditions closed (rotation policy documented)
+- **WO-041** — Corpus guard rails (7-term grant conditions)
+- **WO-040** — Real capture-loop baseline (median 0.031ms, p95 0.057ms, p99 0.209ms)
 - **WO-039** — Enable-fix: instrument observable through real loop
 - **WO-038** — Capture-loop baseline + dead constant retired
 - **WO-037** — Pass two closed + reason-code vocabulary certified
@@ -3332,13 +3361,4 @@ Prior Work:
 
 ---
 
-HEAD: `89a2842` — WO-039 commit (instrument frozen)
-
-Local == Remote ✓
-
-> Update the progress.md file with only the current status and the progress that we did and don't touch the general project architecture and implementation details.Don't toucchitecture implementation development that is used every step. Just update the current status at the end of the progress report and then remove the previous status updates. That's
-  it. Don't touch anything else.
-
-  Thought for 8s, read 1 file
-
-● Update(C:\Projects\bot\trading-system\progress.md)
+HEAD: `0425ec6` — WO-043 (base for WO-044; the §3/§4 commit lands next)
