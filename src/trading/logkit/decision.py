@@ -309,6 +309,17 @@ VALID_REASON_CODES = {
         "RISK_VETO_KILL_SWITCH",  # vetoed: kill switch engaged
         "RISK_VETO_DAILY_LOSS",  # vetoed: daily-loss limit
         "RISK_VETO_INVALID_INPUT",  # vetoed: invalid desired-position input
+        # WO-049 §3.4 (D49): vetoed because the AGGREGATE position is already at its cap, so there
+        # is no headroom to add exposure. Distinct from RISK_CLAMP_MAX_POSITION, which is the
+        # partial-headroom case (the order is reduced to exactly the remaining room); this is the
+        # zero-headroom case where no size at all can be approved in the increasing direction.
+        # It NEVER blocks a REDUCING order — that branch is unreachable for orders moving the
+        # position toward zero, because a limit that traps you in a position is strictly more
+        # dangerous than the accumulation defect it replaces (§4.2).
+        # Genuinely producible: returned by DeterministicRiskEngine.check and driven in
+        # tests/test_risk_aggregate_position.py + the §4 bite proof. Prefix-free (no declared code
+        # is a prefix of RISK_VETO_MAX_POSITION, and it prefixes none).
+        "RISK_VETO_MAX_POSITION",
     ],
     "STRATEGY": [
         "NO_SIGNAL",  # No trading signal

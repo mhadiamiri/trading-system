@@ -1,170 +1,132 @@
-# WO-048 — THE FIRST HONEST BACKTEST. Loader, six rulings, four defect fixes, then the run.
+# WO-049 — RISK LAYER: `max_position_btc` IS THE AGGREGATE POSITION CAP. Full risk-layer discipline.
 #
-# D48: "The first backtest's product is a TRUSTWORTHY MEASUREMENT APPARATUS, not a verdict on one
-# particular rule." Any honest strategy over real recorded data proves the pipeline tells the truth
-# with real costs. That is the milestone.
+# D49: "A limit that bounds each order but not the position is not a position limit; it's a rate
+# limiter wearing one's name." Defect present since the risk engine was built, green through every
+# prior run — made visible only by a strategy firing on 90.9% of 3.85M real frames.
 
-BASE: HEAD `592e19e`+ (WO-047 investigation committed). Confirm in §1.
-Corpus: `corpus_20260805` — 36.8867 covered h, 3,847,540 frames, 20 stretches, 19 gaps + 1 seam.
-**READ ONLY. Digest `a025db1e…` must be identical at close.**
+BASE: HEAD `6e1586f` (WO-048 run) — confirm in §1.
+SCOPE: the aggregate-position clamp and its bite proofs. Commit green, STOP. **Does NOT re-run the
+backtest** (that follows the accounting WO).
+SHIP IMPACT: **YES — RISK LAYER.** Full discipline. This is the layer that exists to say no.
 
-SCOPE: §2 the strategy (declared, pre-registered); §3 the loader; §4 the six rulings; §5 the four
-defects; §6 bite proofs; **§7 the run**. Build + CI green BEFORE the run.
-SHIP IMPACT: **YES.** Full discipline.
+**The risk layer never contains AI. Deterministic code only. No heuristics, no adaptive thresholds.**
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
 0.3 Fail-then-pass bite proofs, four artifacts, sha256 exact-restore, discriminating mutations.
-0.4 Preservation duals mandatory, local and direct.
+0.4 **Preservation duals mandatory, and in the risk layer they are the DANGEROUS half.** A guard that
+    refuses everything looks correct and is catastrophic. See §4.2.
 0.5 Report every attempt.
-0.6 AUTO MODE OFF.
-0.8 **PRE-REGISTRATION — THE HARD RULE OF THIS WO.** Every strategy parameter is DECLARED WITH ITS
-    DERIVATION AND COMMITTED **BEFORE** the run in §7. **After seeing the P&L you may not change a
-    parameter and re-run.** If the number is bad, THAT IS THE NUMBER. Tuning after seeing results is
-    the classic backtest lie and it would void this entire sprint's purpose in one edit. If you
-    believe a parameter is wrong after the run, REPORT IT — do not fix it and re-run. A second run
-    with changed parameters is a NEW WO with the first run's number still on the record.
+0.6 AUTO MODE OFF — risk-layer production edit.
+0.9 **ASSERT THE ECONOMIC EFFECT, NOT THE EVENT RECORD (D49, ratified this WO's cycle).** In any
+    economic path the observable effect is the LEDGER CONSEQUENCE — the clamped quantity actually
+    applied, the resulting position, the veto that prevented a fill — never the log line or the
+    decision object announcing it. **A log line is a claim; the ledger is the effect.** WO-048's
+    §6.1 proof checked a label and missed a missing trade; do not repeat it here.
 0.7 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Where |
     |---|---|---|
-    | `compute_execution_costs` | **OPERATED — TRANSFERS UNCHANGED** | needs only bid/ask/spread/mid, all present |
-    | `CorpusReader` (default-deny, segments-as-intervals) | **OPERATED** | WO-046 |
-    | `BacktestRunner.run()` / `PaperExecutionClient` | **OPERATED** | existing continuous path — leave `run()` untouched |
-    | `corpus_20260805` | **OPERATED — READ ONLY** | ratified D46 |
-    | Frame loader, segmented runner, the strategy | **THIS WO IS THE BUILDER** | §2/§3/§4 |
+    | `risk_engine.check()` pass/clamp/veto | **OPERATED — DEFECTIVE** | clamps ORDER SIZE, never reads `current_state.current_quantity` |
+    | clamp-only-reduces-toward-zero invariant | **OPERATED** | must continue to hold — §3.3 |
+    | Reason-code vocabulary (declared ⇒ producible) | **OPERATED** | reuse existing codes if they fit; the guard has bitten repeatedly and been right |
+    | The aggregate-position clamp | **THIS WO IS THE BUILDER** | §3 |
 
 ---
 
-## §1 CONFIRM STATE
-HEAD, test count both interpreters, `git diff -- src/` empty, all gates, corpus digest snapshotted.
+## §1 CONFIRM STATE + READ THE ENGINE
+HEAD, test count both interpreters, `git diff -- src/` clean, all gates, corpus digest snapshotted
+(`a025db1e…` — this WO must not touch it).
+
+Paste `check()` in full with line numbers, plus `PositionState`/`current_quantity`'s definition and
+every existing clamp/veto reason code. **State exactly where the size clamp is and confirm from the
+code that `current_quantity` is never read** — the finding, re-derived at HEAD rather than inherited.
 
 ---
 
-## §2 THE STRATEGY — `BookImbalanceStrategy` (declared under its own name, D48)
-
-**Why this and not mid-price momentum:** mid-price momentum is structurally the substitution D48
-rejected, renamed. Book-imbalance consumes `bid_qty`/`ask_qty` — data only a BOOK corpus carries —
-so it is the natural consumer of this artifact and cannot be mistaken for the trivial strategy.
-
-2.1 Signal: `imbalance = (bid_qty − ask_qty) / (bid_qty + ask_qty)` ∈ [−1, 1]; take a **rolling mean
-    over N ticks**; BUY when the smoothed value ≥ `+T`, SELL when ≤ `−T`, else HOLD.
-    **The rolling window is deliberate:** a single-tick signal would carry no state, making U3's
-    per-segment reset and U4's warm-up tick VACUOUS. The window ensures the segment machinery is
-    actually exercised rather than trivially satisfied.
-2.2 **Declare N and T with derivation, and COMMIT THEM BEFORE §7** (0.8). State the reasoning for
-    each (e.g. N chosen to match the established 100-sample convention; T chosen as a round,
-    untuned starting value). **Do not sweep, do not optimise, do not pick a value because it looks
-    better.** State explicitly in the report: "these values were fixed before the run and not
-    revised after."
-2.3 Fixed order size, as the trivial strategy does. No position sizing logic — that is a separate
-    question and would be another free parameter.
-2.4 Handle degenerate ticks: `bid_qty + ask_qty == 0` → HOLD (no division). Prove it.
+## §2 THE MEANING, AS RULED (D49 — do not relitigate)
+`max_position_btc` is the **AGGREGATE POSITION CAP**. Not a per-order cap. An order is evaluated
+against the position it would PRODUCE, not against its own size.
 
 ---
 
-## §3 THE FRAME LOADER (D-d — the build WO's real work)
-`src/trading/data/corpus_frames.py`: **streaming** (never materialise 3.85 M objects), reads the
-corpus JSONL, yields `MarketState` **only inside a reader-approved segment**.
-- Takes a `CorpusReader`-issued `CorpusWindow`. **Cannot be pointed at raw files** — this is the
-  enforcement point that makes default-deny unbypassable by direct file reads rather than merely
-  impolite (D48).
-- `MarketState` construction: the corpus supplies bid/ask/sizes/spread/timestamp. The three absent
-  fields (`trade_count`, `total_volume`, `last_price`) are **NOT substituted**. State how you handle
-  them — the honest options are an optional-field variant or a book-only state type. **Whatever you
-  choose must make it impossible for a strategy to read a fabricated `last_price`.** If that requires
-  a `MarketState` change, that is production surface — report the shape before applying it, and if
-  it looks like a substitution in disguise, STOP.
+## §3 BUILD
+3.1 `check()` reads `current_state.current_quantity` and evaluates the **RESULTING** position:
+    `resulting = current_quantity ± order_quantity` (signed per side).
+3.2 **Clamp to exactly the remaining headroom.** If the resulting position would exceed the cap, the
+    order is clamped so the resulting position equals the cap exactly — not rejected wholesale, not
+    clamped to the per-order limit. At **zero headroom**, VETO.
+3.3 **CLAMP-ONLY-REDUCES-TOWARD-ZERO MUST HOLD THROUGHOUT.** The clamp may only make an order
+    smaller in the direction of increasing exposure. It must never increase an order, never flip a
+    side, never turn a reducing order into an increasing one. State how you guarantee this and prove
+    it (§4.3).
+3.4 **Reason codes:** reuse existing clamp/veto codes if they fit; if a new one is genuinely needed,
+    declare it properly (producible, prefix-free). State which you used and why.
+3.5 Deterministic only. No adaptive sizing, no heuristics.
 
 ---
 
-## §4 THE SIX RULINGS (D48)
-4.1 **U1** — `BookImbalanceStrategy` runs; TrivialMomentumStrategy's evaluation is recorded as
-    **blocked-on-trade-channel**, deferred not dropped. Add the deferred item to `progress.md`.
-4.2 **U2 — FORCE-FLAT AT EVERY BOUNDARY**, no duration threshold. "Any duration threshold is a knob
-    that quietly moves the P&L." Flattening is a **labelled event** in the output. The cost (a 1.7 s
-    reconnect flattens where a real trader would not) is DECLARED in the report, not hidden.
-4.3 **U3 — FULL STATE RESET PER SEGMENT** via a **fresh strategy instance** (stronger than a
-    `reset()` someone must call correctly). **Plus a DECLARED minimum-eligible-segment length**, with
-    derivation stated (warm-up window × safety factor). Not binding on this corpus (measured 48–64×
-    headroom; shortest stretch 201 s ≈ 4,823–6,431 frames vs a 100-tick warm-up) — declared anyway so
-    a future reconnect-burst corpus is refused by a stated bound rather than saved by accident.
-    Segments below the bound are EXCLUDED and the exclusion is reported.
-4.4 **U4 — FIRST TICK OF EVERY SEGMENT IS OBSERVATION-ONLY**, never fillable. One tick, no parameter.
-4.5 **U5 — PER-SEGMENT RESULTS PLUS A DECLARED AGGREGATE.** The report format must state the
-    dependency: **the sum is meaningful ONLY BECAUSE U2 makes every segment start and end flat.**
-    Show the distribution so a minutes-segment and an hours-segment cannot hide inside one number.
-4.6 **U6 — ACKNOWLEDGMENTS**: `KEEPALIVE_RECONNECT` and `VENUE_DISCONNECT` bounded at **60 s**
-    (declared engineering judgement; observed maxima 16.86 s / 3.29 s ≈ 3.5× headroom; state the
-    re-declaration trigger if a future corpus's gaps approach it). `PROCESS_RESTART` acknowledged
-    **to segment at, never to trade across**. `accept_open_ended` requires its own deliberate act.
-    Record the structural note: **acknowledgment governs READING, force-flat governs TRADING — so
-    acknowledging more never buys a more continuous backtest.**
+## §4 BITE PROOFS — BOTH HALVES IN ONE TEST (S13), ECONOMIC EFFECT ASSERTED (0.9)
+
+4.1 **REFUSAL HALF.** With a position below the cap, an order that would carry the aggregate PAST it
+    is clamped to **exactly the remaining headroom** — assert the RESULTING POSITION equals the cap,
+    not that a clamp event was logged. At **zero/full headroom**, the order is VETOED and **no fill
+    occurs** — assert the ledger, not the decision object.
+
+4.2 **PRESERVATION HALF — THE DANGEROUS ONE (D49, the S13 analog; state it in the test's docstring).**
+    **At or beyond the cap, an order that REDUCES the position toward zero MUST STILL PASS, unclamped.**
+    A position limit that traps you in a position is the over-blocking nightmare in risk-layer
+    clothing — it would prevent the system from ever getting flat, which is strictly more dangerous
+    than the accumulation bug it replaces. Prove: at exactly the cap, and beyond it, a reducing order
+    passes at full size and the resulting position moves toward zero.
+
+4.3 **CLAMP-ONLY-REDUCES-TOWARD-ZERO.** Prove the clamp never increases an order, never flips a
+    side, never converts a reducing order into an increasing one. Include the beyond-cap case (a
+    position somehow above the cap — from a config change or a prior state — must still be reducible).
+
+4.4 **NECESSITY MUTATION.** Revert `check()` to the per-order clamp (ignore `current_quantity`) →
+    4.1 fails, 4.2 still passes. That asymmetry proves the aggregate check is doing the work and not
+    something adjacent. Then a SECOND mutation: make the clamp refuse ALL orders at the cap →
+    **4.2 fails**, proving the preservation half discriminates over-blocking. Two mutations, each
+    failing a different half.
+
+4.5 **THE WO-048 CONDITION, REPRODUCED.** A regression test driving the accumulation pattern that
+    produced 738,510 trades in one segment: repeated same-side 0.1 BTC orders against a fixed cap.
+    Assert the position **plateaus at the cap** and never exceeds it. This is the condition the
+    fixtures never reached and the corpus did — pin it so it can never return.
+
+Four artifacts each, sha256 exact-restore.
 
 ---
 
-## §5 THE FOUR DEFECTS
-5.1 **D-a (serious) — MARKET TIME IS THE TRADE TIMESTAMP.** Today every fill and decision is stamped
-    `datetime.now(UTC)` (`paper.py:288`, `trivial.py:73`) — replay wall-clock, so no trade can be
-    reconciled against the data it replayed; Principle VIII fails at the backtest boundary. The
-    frame's timestamp becomes THE time. Replay wall-clock may ride along as a **secondary** field,
-    never as *the* time. Prove a trade's timestamp equals its originating frame's.
-5.2 **D-b — DECLARED LIMIT.** The staleness guard is INERT under replay (`paper.py:178` measures
-    wall-clock since registration ≈ 0). Document it where the guard is defined: it protects the LIVE
-    path only; under replay, U3/U4's segment machinery is the analogous protection. State the
-    equivalence.
-5.3 **D-c — `max_events` BECOMES EXPLICIT-OR-ALL.** Default `None` = full corpus. A default of 1000
-    silently covering 0.026% is the silent-truncation family. **Any truncated run states its coverage
-    fraction in the report header.**
-5.4 **D-d** — the §3 loader.
+## §5 SCOPE FENCE
+- Risk layer only. Does NOT touch R1/R3/R4 (the accounting WO).
+- Does NOT re-run the backtest. **The WO-048 number stands on the record, unsuperseded (D49).**
+- Does NOT touch `corpus_20260805`.
+- Does NOT change the strategy or its declared parameters.
 
----
+## §6 ACCEPTANCE
+- `check()` evaluates the resulting position; clamps to exact remaining headroom; vetoes at zero
+- Clamp-only-reduces-toward-zero holds and is proven, including beyond-cap
+- Bite proofs 4.1–4.5, both halves in one test, **economic effect asserted**, two discriminating
+  mutations, four artifacts each, sha256 exact-restore
+- Reason codes declared/reused correctly
+- Test count with arithmetic, both interpreters, both orders
+- lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition
+- `risk/engine.py` before/after sha256; corpus digest unchanged
+- Commit, push, **CI green both legs — real run number, counts from the job logs**
 
-## §6 BITE PROOFS (0.3/0.4 — four artifacts each, sha256 exact-restore)
-6.1 **THE ANTI-SPLICE PROOF — the load-bearing one.** Property: *the backtest cannot silently trade
-    across a hole.*
-    - **BITE:** two-segment fixture with a known gap, engineered so a naive continuous run WOULD fire
-      on the first post-gap tick (a price jump across the hole exceeding the threshold). Assert: **no
-      fill on that tick**, position flat across the boundary, boundary event recorded.
-    - **DUAL (S13, same test):** the *same* jump placed INSIDE one segment fires and fills normally.
-      Without this, a runner that never trades passes the bite.
-    - **NECESSITY MUTATION:** remove the per-segment reset (or the force-flat) → the bite fails (a
-      fill appears, computed against a pre-gap price) while the dual still passes.
-6.2 **Loader containment:** no `MarketState` is ever yielded outside a reader-approved segment;
-    the loader refuses a segment not issued by the reader.
-6.3 **D-a:** a trade's timestamp equals its originating frame's, not the replay clock.
-6.4 **Read-only:** corpus digest unchanged after a full run.
+## §7 REPORT — `WO-049-REPORT.md`
+`check()` before/after with the finding re-derived at HEAD; the clamp mechanism and how
+reduces-toward-zero is guaranteed; all bite proofs verbatim with sha256 and both mutations; the
+§4.5 regression; reason codes; hashes; CI; every attempt; any STOP.
 
----
+**Record note for the log (D49):** this defect existed since the risk engine was built and was
+certified green through every prior run. It took the corpus — a strategy firing on 90.9% of 3.85M
+real frames — to make accumulation-without-limit visible. **The corpus produced conditions the
+fixtures never reached.** That is what it is for.
 
-## §7 THE RUN — only after §1–§6 are committed and CI is GREEN both legs
-7.1 Commit, push, **CI green both legs (real run number, counts from job logs)** BEFORE running.
-7.2 Run `BookImbalanceStrategy` over `corpus_20260805`, full corpus (`max_events=None`), the
-    declared N and T unchanged from §2.2.
-7.3 Report, with this header, citing D48:
-    > **This backtest evaluated `BookImbalanceStrategy`, NOT `TrivialMomentumStrategy`.** The corpus
-    > is top-of-book and does not carry `last_price`/`total_volume`/`trade_count`; substituting them
-    > would produce a number by redefining what was measured (D48, U1). TrivialMomentumStrategy's
-    > evaluation is DEFERRED, blocked on a trade-channel re-capture.
-7.4 Report: per-segment results AND the declared aggregate; the metric stated in full —
-    *"Net P&L over 36.8867 h of verified continuous market data, in N independent segments, flat at
-    every boundary, excluding 0.0167 h of in-run gaps and 2.1061 h of inter-run seam"*; total fees,
-    slippage and spread attribution; trade count; segments excluded by the §4.3 bound; coverage
-    fraction; and what the number explicitly is NOT (a 39-hour continuous backtest; a strategy
-    verdict; a tradeable-edge estimate).
-7.5 **Whatever the number is, report it.** Positive, negative, or zero. **Do not revise a parameter
-    and re-run (0.8).**
-
-## §8 ACCEPTANCE
-Six rulings implemented; four defects fixed; bite proofs 6.1–6.4 with discriminating mutations;
-CI green both legs before the run; corpus digest unchanged; parameters pre-registered and unchanged;
-report carries the §7.3 header and the §7.4 full metric; test count with arithmetic; all gates.
-
-## §9 REPORT — `WO-048-REPORT.md`
-The declared parameters and their derivation (with the pre-registration statement); the loader; the
-six rulings as built; the four defect fixes; all bite proofs verbatim with sha256; **the result**;
-every attempt; any STOP; CI run.
-
-**THEN STOP.** This is the first honest backtest.
+**THEN STOP.** Next: the accounting WO (R1 closing trade, R3 position-aware P&L, R4 distinct cost
+rates), then the second run.
