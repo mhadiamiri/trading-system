@@ -1095,11 +1095,30 @@ def main() -> None:
         help="WO-045 §4: override the live-run refusal, ACCEPTING the write race against a "
              "running capture. Only for a corpus you know is not being written."
     )
+    parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="WO-046 §6: READ-ONLY coverage/gaps/seams for --corpus-id. Writes NOTHING, so it is "
+             "safe against a LIVE capture — this is the query to use while a run is in progress. "
+             "Prefer this over --progress, which reconciles and therefore writes."
+    )
     args = parser.parse_args()
 
     config = RotationConfig.from_env()
     if args.corpus_id:
         config.corpus_id = args.corpus_id
+
+    # WO-046 §6 — the READ-ONLY coverage query. Writes nothing, so no live-run refusal is needed:
+    # the restriction WO-045 §4 imposed exists because --progress WRITES, and this path does not.
+    # It is checked FIRST so `--coverage` is never gated by the writer's guard.
+    if args.coverage:
+        if not config.corpus_id:
+            print("--coverage requires --corpus-id (or CORPUS_ID).")
+            raise SystemExit(2)
+        from trading.data.corpus_reader import CorpusReader
+        reader = CorpusReader(config.corpus_dir / config.corpus_id)
+        print(json.dumps(reader.coverage(), indent=2))
+        return
 
     # §3.7 — the progress meter, answerable at ANY time from the committed artifacts alone.
     #

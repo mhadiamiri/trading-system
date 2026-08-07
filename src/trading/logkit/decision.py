@@ -234,6 +234,27 @@ VALID_REASON_CODES = {
         # omission — a future `break` that forgets to declare itself reports this instead of ending
         # the capture in silence.
         "CAPTURE_ENDED_UNDECLARED",
+        # WO-046 §3 (D20): the DEFAULT-DENY CORPUS READER's two refusals.
+        #
+        # D20, verbatim: "The guarantee moves from 'every consumer remembers to check metadata'
+        # (vigilance, 0-for-4) to 'the only way to get gap-spanning data is to have written code
+        # that asked for it' (mechanical)." These are the codes that mechanism speaks.
+        #
+        # CORPUS_READ_REFUSED — a requested window spans a recorded gap or seam that the request
+        # did not acknowledge. Raised by CorpusReader.read_window; its subclass LedgerIncomplete
+        # carries the same code for the case where the ledger is not known-COMPLETE, so a "no gap
+        # here" answer could not be trusted (WO-014c-2 §1.3(4)).
+        # ACKNOWLEDGMENT_CAUSE_UNDECLARED — an Acknowledge naming a cause outside the closed set.
+        # It fails at CONSTRUCTION, at the call site, because an acknowledgment for a class that
+        # cannot occur accepts nothing while looking like it accepts something.
+        #
+        # Both are genuinely producible (raised on real paths, driven in tests/test_corpus_reader.py
+        # and the §4 bite proof), not constants — the distinction WO-037 §3 was built to catch and
+        # that the raised=>declared guard has now enforced across three consecutive WOs.
+        # Prefix-free: CORPUS_ and ACKNOWLEDGMENT_ are unique stems, and neither prefixes the other
+        # nor SEAM_CAUSE_UNDECLARED.
+        "CORPUS_READ_REFUSED",
+        "ACKNOWLEDGMENT_CAUSE_UNDECLARED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this
