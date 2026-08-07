@@ -344,9 +344,17 @@ AST-walked every import in `src/`, `tests/`, `tools/`, `config/` and compared ag
 The 3.11 legs ran in `.venv_doc_path` — the venv built by the documented command alone (§4.2) — so
 the dependency fix is proven by the acceptance run itself. Venv removed afterwards.
 
-### CI
+### CI — **run `31227410759`, GREEN both legs** (commit `b4c108a`)
 
-_pending — filled in on the close commit_
+Counts read from the job logs:
+
+| Job | Deterministic | Randomised |
+|---|---|---|
+| `test (3.11)` — id 93024397787, 10m41s | **455 passed, 2 skipped** (306.37s) | **455 passed, 2 skipped** (302.17s) |
+| `test (3.14)` — id 93024397822, 10m38s | **455 passed, 2 skipped** (305.21s) | **455 passed, 2 skipped** (302.60s) |
+
+Eight runs (four local, four CI) all report 455/2. Only annotation is the pre-existing Node.js 20
+deprecation notice.
 
 ---
 

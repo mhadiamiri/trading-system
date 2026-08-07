@@ -3325,6 +3325,7 @@ the rate rather than re-pin a literal.
 also found **`psutil`** missing from `[dev]`; `tomli` correctly absent (guarded pre-3.11 fallback).
 
 455/2 both interpreters, both orders (445 + 10 new); the 3.11 legs ran in the documented-path venv.
+CI `31227410759` green both legs.
 Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31. Corpus v1
 `e3ab1aec…` unchanged. Report: `WO-052-REPORT.md`.
 
