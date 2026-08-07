@@ -3282,6 +3282,53 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-050 — THE SECOND RUN: THE FIRST MEANINGFUL STRATEGY VERDICT, AND IT IS NEGATIVE** (2026-08-07)
+
+**NET P&L −$2,223,991.19** over 36.8867 covered hours, 21 segments, 129,695 trades (incl. 21 boundary
+closes), coverage 1.0. Pre-run CI `31214886348` green both legs (436/2). Corpus digest `a025db1e…`
+UNCHANGED. Report: `WO-050-REPORT.md`. Parameters unchanged from WO-048 (§0.8).
+
+**THE ECONOMICS:** gross realised edge **+$39,057.26** against **$2,263,048.45** of costs —
+**costs are 57.9× the edge**. Per trade: **$0.30 of edge against $16.80 of fee** (0.1 BTC ≈ $6,460
+notional × 0.26%). The strategy earns ~1.8% of its own transaction cost. Not marginal — off by ~56×.
+Fees are 96.3% of costs.
+
+**BEFORE/AFTER vs WO-048 (+$719,848,078.54, which is NOT superseded — D49):**
+trades 3,498,075 → **129,695** (−96.3%, 27.0× fewer, driven by **WO-049's position cap**, not this
+WO); boundary closes 0 → **21** (R1); fees 22,572,628 → 2,179,232; slippage 22,572,628 → 83,817.
+**The cost attribution decomposes EXACTLY:** fees/trade ratio 2.6039 vs rate ratio 2.6000;
+slippage/trade 0.1002 vs 0.1000 — the whole difference is (trade count) × (rate), no residual.
+Trade rate fell from 90.9% to **3.4%** of frames.
+
+**⚠ THE SHARPEST RESULT:** `unmatched_cashflow_legacy` == `realised_pnl` == 39,057.26 **exactly**.
+Not a coincidence: when a position starts and ends FLAT, Σ(sells) − Σ(buys) IS the realised P&L.
+So **the old formula was not wrong because it was the wrong formula — it was wrong because the
+positions never closed.** R1's missing close is what made it diverge by nine orders of magnitude.
+R3 remains the correct fix (the two diverge the instant a segment ends non-flat), but the agreement
+is strong independent evidence that R1 actually executed.
+
+**FIXED:** R1 force-flat is now a REAL costed fill at the boundary frame's market, in market time,
+flagged `boundary_close`; proved by `unrealised_residual = 0` across all 21 segments — computed from
+the POSITION, not the flatten event. R3 position-aware **average-cost** P&L (declared; chosen because
+`PositionState.average_entry_price` has existed unused since the walking skeleton, and FIFO would
+need a lot queue that type cannot express). `gross_pnl` REMOVED not renamed — surfaced a stale
+assertion loudly (WO-045 precedent). R4 distinct rates: fee 0.26% (declared judgement, NOT cited) and
+slippage 0.01% **anchored to measurement** — mean corpus spread 0.0806 bps, a 0.1 BTC order takes
+~16% of touch depth. **FURTHER FINDING: the old 0.1% slippage was ~124× the corpus's mean spread —
+wrong by two orders of magnitude, and it supplied half of WO-048's cost total.**
+
+**RECORD ITEMS:** two decision docs (a bite proof asserts the ECONOMIC EFFECT not the event record —
+with the lineage point that D-r16 already required observable effects and was defeated because an
+event record IS technically observable; and a discrimination set holds only single-purpose tests).
+The stale signed-quantity claim annotated at BOTH sites incl. **its origin in
+`specs/001-walking-skeleton/contracts/strategy.py:75-77`**; `PositionState.current_quantity`
+deliberately NOT annotated because it is correct — a POSITION is signed, an ORDER QUANTITY is not.
+
+**WHAT THE NUMBER IS NOT:** a verdict on book imbalance as an idea (it is this signal at N=100,
+T=0.20, 0.1 BTC, against a 0.26% taker fee); a tradeable-edge estimate (~37 hours of one instrument);
+or free of declared assumptions (the fee is judgement, not a cited schedule).
+
+---
 ▶ **WO-048 — THE FIRST HONEST BACKTEST: APPARATUS PROVEN, P&L NOT YET TRUSTWORTHY** (2026-08-07)
 
 **Ran `BookImbalanceStrategy` over `corpus_20260805`**, full corpus, 3,847,530 frames, 21 segments,
