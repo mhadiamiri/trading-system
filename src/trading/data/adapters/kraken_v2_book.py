@@ -1001,6 +1001,49 @@ class KrakenV2BookAdapter:
     MAX_FAILURE_CAPTURES = 200
     MAX_FAILURE_CAPTURE_BYTES = 8 * 1024 * 1024  # 8 MiB
 
+    # ── WO-045 §2 (D46): RAW-WIRE-TEXT RETENTION CAP (keep-LAST-N ring; count all) ──
+    # THE DEFECT THIS CLOSES. `captured_raw_text` retained EVERY raw wire message for the life of
+    # the run, unbounded. Measured on corpus_20260805: 35-48 MB/h, with run 2 ending near 1.6 GB
+    # private after 24 h. D46 names the failure mode, and it is not OOM — it is MISATTRIBUTION:
+    # unbounded retention -> memory pressure -> swap -> event-loop starvation -> HEARTBEAT_ABSENCE,
+    # i.e. a HOST problem entering the gap ledger wearing a VENUE problem's cause code. Exactly the
+    # confusion the suspend detector exists to prevent, arriving through a different door.
+    #
+    # DERIVATION (against the measured 35-48 MB/h, as D46 requires):
+    #   Run 1 retained 1,114,367 raw messages over 12.9035 h  ->  ~86,360 messages/h.
+    #   At the upper measured rate 48 MB/h:  48 MB / 86,360  ~=  583 B of retained cost per
+    #   message (wire text + the str object header + the list slot). Cross-check at the lower
+    #   rate 35 MB/h: ~425 B/message. Take the CONSERVATIVE 583 B/message for sizing.
+    #   50,000 frames x 583 B  ~=  29 MB  -- and it is CONSTANT, not per-hour.
+    #
+    # WHAT THE CAP MAKES SAFE (a claim someone can check, per §2.4):
+    #   Raw-text retention becomes O(1) in run length. A 7-day capture costs the SAME ~29 MB as a
+    #   1-hour one. Where the uncapped path would have reached ~8 GB in 7 days at 48 MB/h (and
+    #   ~1.6 GB at 24 h, already observed), the bound is now <= 64 MiB by the byte cap below,
+    #   whichever binds first. The 1.6 GB peak was survivable on THIS host with 15.7 GB RAM; the
+    #   condition is SCALE-DEPENDENT and the next host or the next duration may not be.
+    #
+    # WHY 50,000 AND NOT SMALLER. The only in-code consumer is `_capture_checksum_failure`, which
+    # reads the failing frame plus CHECKSUM_CAPTURE_PRECEDING_FRAMES of run-up — 21 entries. 50,000
+    # is ~2,380x that requirement, and at ~86,360 msg/h it is a ~35-minute trailing wire window:
+    # generous forensic history for any post-hoc question, at a fixed and modest cost.
+    #
+    # KEEP-LAST, NOT KEEP-FIRST — the one place this DIVERGES from the failure-capture precedent,
+    # and the divergence is forced by the consumer, not chosen. FAILURE_CAPTURE keeps the FIRST N
+    # because the ONSET is what diagnoses a failure cluster. Here the consumer reads
+    # `captured_raw_text[-1]` (the failing frame) and `[-(n+1):-1]` (its run-up), so a keep-first
+    # ring would starve the very path this buffer exists to serve. Everything else — a declared
+    # cap, count-past-cap surfaced not silent, announce-once, never terminate the run — mirrors
+    # the precedent exactly.
+    MAX_RETAINED_RAW_FRAMES = 50_000
+    MAX_RETAINED_RAW_BYTES = 64 * 1024 * 1024   # 64 MiB; binds first if frames are large
+    # Evicting one entry per message would pay an O(n) list memmove on EVERY message past the cap
+    # (~400 KB at 50k entries) — a hot-path cost against a measured 0.031 ms/frame budget (WO-040).
+    # Trimming a BATCH amortises that one memmove across RAW_TEXT_TRIM_BATCH messages. The declared
+    # bound still holds: the buffer is trimmed the moment it EXCEEDS the cap, never allowed to sit
+    # above it.
+    RAW_TEXT_TRIM_BATCH = 500
+
     # ── WO-015 addendum A: HOST_SUSPEND detection threshold ──────────────────
     # A single loop iteration whose WALL-clock delta and MONOTONIC-clock delta diverge by more
     # than this is a host SUSPEND (one clock counted the suspend, the other did not), not drift:
@@ -1259,6 +1302,21 @@ class KrakenV2BookAdapter:
         self._checksum_capture_capped = False
         self._max_failure_captures = self.MAX_FAILURE_CAPTURES
         self._max_failure_capture_bytes = self.MAX_FAILURE_CAPTURE_BYTES
+        # WO-045 §2 (D46): raw-text retention cap state. Same shape as the failure-capture cap
+        # above — COUNT everything (here via _raw_received, which already counts every message at
+        # the feed boundary), KEEP a bounded window, announce ONCE, never terminate the run.
+        # _raw_text_evicted is the COUNT-PAST-CAP: frames dropped from RETENTION, surfaced in the
+        # diagnostic counters so a memory-bounded run can never be mistaken for a quiet one.
+        self._raw_text_bytes = 0
+        self._raw_text_evicted = 0
+        self._raw_retention_capped = False
+        self._max_retained_raw_frames = self.MAX_RETAINED_RAW_FRAMES
+        self._max_retained_raw_bytes = self.MAX_RETAINED_RAW_BYTES
+        self._raw_text_trim_batch = self.RAW_TEXT_TRIM_BATCH
+        # FLOOR: never evict below what _capture_checksum_failure reads (the failing frame plus its
+        # preceding run-up). A cap that starved its own consumer would be a worse defect than the
+        # one it fixes.
+        self._raw_text_floor = self.CHECKSUM_CAPTURE_PRECEDING_FRAMES + 1
         # WO-014c-3 addendum A: beyond the capture cap, a ONE-LINE summary per subsequent
         # failure (utc, expected/computed checksum, sequence position; NO raw frames) so a
         # cluster's PHASES are visible at negligible cost where the count alone cannot show them.
@@ -1867,6 +1925,87 @@ class KrakenV2BookAdapter:
             f"capped, NOT complete, and never silently truncated. Run NOT terminated by the cap."
         )
 
+    def _retain_raw_text(self, message: str) -> None:
+        """
+        WO-045 §2 (D46). BOUNDED retention of the raw wire text — a keep-LAST-N trailing window.
+
+        Mirrors the FAILURE_CAPTURE_CAPPED precedent: a DECLARED cap (count OR bytes, whichever
+        binds first), COUNT-PAST-CAP retained and surfaced rather than silently dropped, announced
+        ONCE, and it never terminates the run (the breaker owns termination).
+
+        WHAT IS AND IS NOT BOUNDED. Only the IN-MEMORY debug/forensic buffer is bounded. Every
+        message is still COUNTED (`_raw_received`, incremented at the feed boundary before this is
+        called) and every emitted MarketState is still WRITTEN to the corpus segments on disk. The
+        corpus is unaffected by this cap; what changes is that a multi-day run no longer accumulates
+        the whole wire history in RAM.
+
+        WHY THE COUNT MATTERS (§2.2). A silent drop would make a memory-bounded run
+        INDISTINGUISHABLE from a quiet one — the reader would see a short buffer and could not tell
+        whether the venue went silent or the instrument evicted. `_raw_text_evicted` is that
+        distinction, and it is reported in the diagnostic counters.
+
+        DECLARED PRECEDENCE — FLOOR > BYTE CAP > COUNT CAP. The floor is a HARD MINIMUM: retention
+        never drops below the failure-capture window, even if that means exceeding the byte or count
+        budget. A cap that starved `_capture_checksum_failure` would break the diagnostic path this
+        buffer exists to serve, which is a worse defect than holding 21 extra frames. So the
+        effective bound is  max(cap, floor)  — surfaced here rather than left to be discovered:
+        at the production cap of 50,000 against a floor of 21 the floor never binds, but it DOES
+        bind under a misconfigured (tiny) cap, and it should.
+
+        BOUNDED, NOT CONSTANT. Because eviction is batched (RAW_TEXT_TRIM_BATCH), the buffer
+        oscillates within [cap - trim_batch, cap] rather than sitting at exactly `cap`. The declared
+        guarantee is the CEILING and that retention is O(1) in run length — not a fixed length.
+        """
+        buf = self.captured_raw_text
+        buf.append(message)
+        self._raw_text_bytes += len(message)
+
+        if (len(buf) <= self._max_retained_raw_frames
+                and self._raw_text_bytes <= self._max_retained_raw_bytes):
+            return
+
+        # COUNT cap — trim a BATCH so the O(n) slice delete is amortised (see RAW_TEXT_TRIM_BATCH).
+        drop = 0
+        if len(buf) > self._max_retained_raw_frames:
+            drop = len(buf) - self._max_retained_raw_frames + self._raw_text_trim_batch
+
+        # BYTE cap — binds INDEPENDENTLY of the count cap (a cluster of large frames exhausts bytes
+        # before count; a cluster of small ones exhausts count first). Same reasoning as the
+        # failure-capture path's dual cap.
+        if self._raw_text_bytes > self._max_retained_raw_bytes:
+            freed = sum(len(s) for s in buf[:drop])
+            i = drop
+            while i < len(buf) and (self._raw_text_bytes - freed) > self._max_retained_raw_bytes:
+                freed += len(buf[i])
+                i += 1
+            drop = i
+
+        # FLOOR — never evict below the failure-capture window.
+        drop = min(drop, max(0, len(buf) - self._raw_text_floor))
+        if drop <= 0:
+            return
+
+        self._raw_text_bytes -= sum(len(s) for s in buf[:drop])
+        del buf[:drop]
+        self._raw_text_evicted += drop
+        self._announce_raw_retention_capped()
+
+    def _announce_raw_retention_capped(self) -> None:
+        """WO-045 §2: announce the retention cap ONCE, never silently truncate. Retention continues
+        as a bounded trailing window; counting continues via `_raw_received`; the run is NOT
+        terminated (the breaker owns termination). Mirrors `_announce_capture_capped`."""
+        if self._raw_retention_capped:
+            return
+        self._raw_retention_capped = True
+        self._log_error(
+            f"RAW_RETENTION_CAPPED: raw-wire-text retention reached its declared cap "
+            f"({self._max_retained_raw_frames} frames / {self._max_retained_raw_bytes} B). "
+            f"Retention is now a BOUNDED TRAILING WINDOW — the oldest frames are evicted and the "
+            f"evicted count is retained and reported (never a silent drop). Every frame is still "
+            f"COUNTED and every emitted state is still WRITTEN to the corpus; only the in-memory "
+            f"buffer is bounded. Run NOT terminated by the cap."
+        )
+
     def _enter_resync(self, reason: str) -> None:
         """
         Begin the no-emission window (FR-018a(d)).
@@ -2265,7 +2404,12 @@ class KrakenV2BookAdapter:
             f"#{e['attempt']}@{e['at']} delay={e['delay_s']}s err={e['error']}" for e in ladder
         ) or "(no per-attempt errors recorded)"
         last_book = self._last_validated_book
-        frames = len(getattr(self, "captured_raw_text", []) or [])
+        # WO-045 §2: frames CAPTURED, not frames RETAINED. Before the retention cap these were the
+        # same number; with a bounded trailing window `len(captured_raw_text)` is the size of the
+        # in-memory buffer, which would UNDER-REPORT the run's real reach in the breaker's forensic
+        # tail — a capped buffer silently shrinking the evidentiary claim. `_raw_received` counts
+        # every message at the feed boundary and is the number this tail has always meant.
+        frames = getattr(self, "_raw_received", 0)
         message = (
             f"RECONNECT_CIRCUIT_BREAKER_TRIPPED: reconnect ({reason}) kept failing for more "
             f"than {self._reconnect_max_failure_seconds:.0f}s of continuous retry; venue "
@@ -2738,6 +2882,20 @@ class KrakenV2BookAdapter:
                 "venue": self.venue_name,
                 "mode": self._mode,
             })
+            # WO-045 §3 (D46) — THE TERMINATION REASON, declared and centralised.
+            #
+            # Doctrine: "For unattended runs, any message that explains a TERMINATION logs at
+            # WARNING or above. The line that says why it ended must never be the line that gets
+            # dropped." Enumerating the exits (§3.2) found the clean-close reason at INFO and the
+            # DEADLINE reason logged NOWHERE AT ALL.
+            #
+            # Rather than a log at each break — which a future break could silently forget — every
+            # normal exit SETS this and one guaranteed WARNING is emitted after the loop. A new
+            # break that forgets to set it logs "UNDECLARED", which is loud by construction rather
+            # than silent by omission. The two RAISING terminations (breaker STOP,
+            # RECONNECT_FLAG_STRANDED) log their own reason at ERROR before raising and never
+            # reach this line.
+            termination_reason = None
             while self._monotonic_clock() < deadline:   # WO-023 §2 (D34-1): deadline on monotonic
                 # WO-014b-1 WATCHDOG. _reconnect() sets _pending_reconnect from inside
                 # process_raw_frame (the FR-018 checksum-failure branch); the servicing
@@ -2748,6 +2906,15 @@ class KrakenV2BookAdapter:
                 # WO exists to kill. Fail loudly rather than press on against a discarded
                 # book (rule 0.1i / 0.1g).
                 if self._pending_reconnect:
+                    # WO-045 §3 (D46): LOG-THEN-RAISE, matching the breaker's shape. This path
+                    # previously raised with the reason only inside the exception. That is not
+                    # equivalent to a log: the corpus runner CATCHES the exception and writes the
+                    # traceback to CRASH_TRACEBACK.txt, so the log stream could carry no
+                    # explanation of the termination at all — the very gap §3 closes.
+                    self._log_error(
+                        "RECONNECT_FLAG_STRANDED: a reconnect was requested but the transport did "
+                        "not effect it before the next loop boundary; TERMINATING the capture."
+                    )
                     raise RuntimeError(
                         "RECONNECT_FLAG_STRANDED: a reconnect was requested "
                         "(_pending_reconnect set by _reconnect() at 5 consecutive "
@@ -2873,6 +3040,14 @@ class KrakenV2BookAdapter:
                 # _monotonic_clock too — the forced completion of "the deadline is on monotonic".
                 remaining = deadline - self._monotonic_clock()
                 if remaining <= 0:
+                    # WO-045 §3 (D46): the DEADLINE exit. Enumerating the termination paths found
+                    # this one logged NOTHING AT ALL — worse than the INFO case that prompted the
+                    # WO. It is the ordinary planned end of a bounded capture and it ended
+                    # corpus run 20260806130401, yet the logs said nothing about why.
+                    termination_reason = (
+                        f"CAPTURE_ENDED_DEADLINE: the capture window of {duration_seconds:.0f}s "
+                        f"elapsed; ending normally"
+                    )
                     break
                 # Bound recv so we wake to re-check absence/ping/deadline before either
                 # would fire. A recv timeout is a tick, NOT the end of the capture.
@@ -2890,9 +3065,18 @@ class KrakenV2BookAdapter:
                     # WO-014b-2 §1.3 (4c): a CLEAN/EXPECTED close (normal-closure code 1000/
                     # 1001) — a graceful, intentional shutdown. Do NOT reconnect into it (that
                     # would hammer a venue that closed on purpose); end the capture cleanly.
-                    logger.info(
-                        "[kraken_v2_book] venue closed the connection cleanly (normal closure); "
-                        "ending capture without reconnect"
+                    #
+                    # WO-045 §3 (D46) — THE FINDING THIS WO EXISTS FOR. This was logger.INFO, and a
+                    # detached corpus run captures WARNING and above, so the one line explaining
+                    # why corpus run 20260805220327 ended at 12.9 h was in NO log: the cause had to
+                    # be reconstructed by ELIMINATION over the loop's three exits. Raised to
+                    # WARNING. "The line that says why it ended must never be the line that gets
+                    # dropped."
+                    termination_reason = (
+                        "CAPTURE_ENDED_CLEAN_VENUE_CLOSE: the venue closed the connection cleanly "
+                        "(normal closure, code 1000/1001); ending capture WITHOUT reconnect "
+                        "(reconnecting into a deliberate close would hammer a venue that closed "
+                        "on purpose)"
                     )
                     break
                 except ConnectionClosedError as exc:
@@ -2953,7 +3137,10 @@ class KrakenV2BookAdapter:
                 # WO-008b-A3: A2 stored the POST-parse structure, which had
                 # already lost trailing zeros — the exact information the
                 # checksum depends on. Store the text as received.
-                self.captured_raw_text.append(message)
+                # WO-045 §2 (D46): retention is now BOUNDED (keep-last-N trailing window). The
+                # append moved behind _retain_raw_text so the cap cannot be bypassed by a future
+                # caller appending directly — the bound lives with the buffer, not at one call site.
+                self._retain_raw_text(message)
 
                 # LAYER 3: the SHARED entry point. Identical to the fixture path.
                 logger.debug(
@@ -3011,6 +3198,18 @@ class KrakenV2BookAdapter:
                     self._market_states_emitted += 1
                     yield market_state
 
+            # WO-045 §3 (D46): the guaranteed termination line, at WARNING so an unattended run's
+            # WARNING-and-above log always says WHY it ended. Reached only on a NORMAL exit from
+            # the loop; the raising terminations log their own reason at ERROR before propagating.
+            logger.warning(
+                "[kraken_v2_book] CAPTURE ENDED — %s (frames received %d, states emitted %d)",
+                termination_reason or (
+                    "CAPTURE_ENDED_UNDECLARED: the loop exited without setting a termination "
+                    "reason — this is a DEFECT in the exit path, not a normal end"
+                ),
+                self._raw_received, self._market_states_emitted,
+            )
+
         finally:
             self._running = False
             # WO-014c-1 §B.1/§B.2: stop the instrument tasks, finalize their records, and report
@@ -3031,7 +3230,9 @@ class KrakenV2BookAdapter:
             # gap is the exact failure this WO exists to prevent. The records are retained.
             if self._gap_ledger is not None:
                 self._gap_ledger.run_end_monotonic = time.monotonic()
-                self._gap_ledger.frames_captured = len(self.captured_raw_text)
+                # WO-045 §2: same correction as the breaker tail — frames CAPTURED (every message
+                # received), not the size of the now-bounded retention buffer.
+                self._gap_ledger.frames_captured = self._raw_received
                 incomplete = self._gap_ledger.incomplete
                 if incomplete:
                     ids = ", ".join(
@@ -3185,6 +3386,15 @@ class KrakenV2BookAdapter:
             "raw_messages_received": raw_received,
             "market_states_emitted": market_states_emitted,
             "elapsed_seconds": elapsed_seconds,
+            # WO-045 §2 (D46): the COUNT-PAST-CAP for raw-text retention, surfaced here so a
+            # memory-bounded run is never indistinguishable from a quiet one. `retained` is the
+            # live window size; `evicted` is what the cap dropped; `capped` says the bound engaged.
+            # raw_messages_received above remains the UNCAPPED total — the two together say
+            # exactly what was seen and exactly what is still held.
+            "raw_text_retained": len(getattr(self, "captured_raw_text", []) or []),
+            "raw_text_evicted": getattr(self, "_raw_text_evicted", 0),
+            "raw_text_bytes_retained": getattr(self, "_raw_text_bytes", 0),
+            "raw_retention_capped": getattr(self, "_raw_retention_capped", False),
         }
 
         # Rate reporting: WO-008a-R2 requires refusal to extrapolate for sub-60s windows

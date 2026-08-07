@@ -202,6 +202,38 @@ VALID_REASON_CODES = {
         # GAP_PERSIST_UNCONFIGURED and LIVE_CAPTURE_ENV_REFUSED: a refusal that lives IN the code
         # path, not in a checklist. Prefix-free (SEAM_ is a unique stem in the union).
         "SEAM_CAUSE_UNDECLARED",
+        # WO-045 §2 (D46): announced ONCE when raw-wire-text retention reaches its declared cap
+        # (MAX_RETAINED_RAW_FRAMES / MAX_RETAINED_RAW_BYTES) and retention becomes a bounded
+        # trailing window. Direct sibling of FAILURE_CAPTURE_CAPPED and deliberately the same
+        # shape: the cap guards MEMORY (as that one guards disk), counting never stops, the evicted
+        # count is surfaced in the diagnostic counters, and the run is NOT terminated (the breaker
+        # owns termination). D46's ruling is that the unbounded path's real failure mode was
+        # MISATTRIBUTION — memory pressure -> swap -> event-loop starvation -> HEARTBEAT_ABSENCE,
+        # a HOST problem entering the ledger wearing a VENUE problem's cause code.
+        # Genuinely producible: emitted by _announce_raw_retention_capped, driven in the §2 bite
+        # proof (WO-037/WO-044 both caught codes that were declared but only ever constants).
+        # Prefix-free (RAW_ is a unique stem in the union).
+        "RAW_RETENTION_CAPPED",
+        # WO-045 §3 (D46) — THE TERMINATION CAUSES, now first-class governed vocabulary.
+        # Doctrine (docs/decisions/2026-08-07-the-line-that-says-why-it-ended.md), verbatim:
+        #   "For unattended runs, any message that explains a TERMINATION logs at WARNING or above.
+        #    The line that says why it ended must never be the line that gets dropped."
+        # WO-044's corpus run 20260805220327 ended at 12.9 h and the reason was logged at INFO,
+        # which a detached run filters out — the cause had to be reconstructed by ELIMINATION over
+        # the loop's three exits. The §3.2 enumeration then found the DEADLINE exit logged NOTHING
+        # AT ALL, the ordinary planned end of every bounded capture.
+        # These are emitted by the single guaranteed WARNING line after the capture loop. They were
+        # promoted to declared codes because the raised=>declared scan correctly read code-shaped
+        # text in a log message as governed vocabulary — and a termination cause IS an audit fact,
+        # so the honest resolution is to govern it, not to reword it into invisibility.
+        # Prefix-free: CAPTURE_ENDED_ is a unique stem and no member prefixes another
+        # (…_DEADLINE / …_CLEAN_VENUE_CLOSE / …_UNDECLARED diverge at the first character).
+        "CAPTURE_ENDED_DEADLINE",           # the bounded capture window elapsed — the normal end
+        "CAPTURE_ENDED_CLEAN_VENUE_CLOSE",  # venue closed with a normal-closure code; no reconnect
+        # The SENTINEL: a loop exit that set no reason. Loud by construction rather than silent by
+        # omission — a future `break` that forgets to declare itself reports this instead of ending
+        # the capture in silence.
+        "CAPTURE_ENDED_UNDECLARED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

@@ -1019,6 +1019,38 @@ class CorpusCaptureRunner:
         return utc_time.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
 
+def _detect_live_run(corpus_dir: Path, stale_after_seconds: float = 120.0) -> Optional[str]:
+    """WO-045 §4: is a run of this corpus probably LIVE? Returns the run_id, or None.
+
+    CHEAP AND HONEST ABOUT ITS BOUNDS. A run is treated as live when it has NO MANIFEST.json (it
+    never finalized) AND one of its segments was written within `stale_after_seconds`. That is a
+    heuristic, not proof of liveness — this deliberately does not inspect processes, which would be
+    platform-specific and is the reader WO's job.
+
+    The two ways it can be wrong, stated rather than discovered:
+      - FALSE POSITIVE: a run killed seconds ago looks live. Cost: a refusal, and `--force-progress`
+        is right there. Cheap.
+      - FALSE NEGATIVE: a live run that has been stalled for >2 min (a long outage inside the
+        breaker window) reads as dead, and --progress proceeds into the very race it guards.
+        Cost: a possible clobber of the manifest, recoverable by reconcile().
+    The asymmetry is deliberate — the cheap failure is the likely one.
+    """
+    corpus_dir = Path(corpus_dir)
+    if not corpus_dir.is_dir():
+        return None
+    now = time.time()
+    for child in sorted(corpus_dir.iterdir()):
+        if not child.is_dir() or (child / "MANIFEST.json").exists():
+            continue
+        for seg in child.glob("corpus_*.jsonl"):
+            try:
+                if now - seg.stat().st_mtime < stale_after_seconds:
+                    return child.name
+            except OSError:
+                continue
+    return None
+
+
 def main() -> None:
     """CLI entry point."""
     import argparse
@@ -1054,7 +1086,14 @@ def main() -> None:
         "--progress",
         action="store_true",
         help="WO-044 §3.7: print cumulative hours / seams / remaining for --corpus-id and exit. "
-             "Opens no socket and runs no preflight."
+             "Opens no socket and runs no preflight. REFUSES against a corpus with a live run "
+             "(WO-045 §4) — it writes CORPUS_MANIFEST.json and would race the capture."
+    )
+    parser.add_argument(
+        "--force-progress",
+        action="store_true",
+        help="WO-045 §4: override the live-run refusal, ACCEPTING the write race against a "
+             "running capture. Only for a corpus you know is not being written."
     )
     args = parser.parse_args()
 
@@ -1063,10 +1102,28 @@ def main() -> None:
         config.corpus_id = args.corpus_id
 
     # §3.7 — the progress meter, answerable at ANY time from the committed artifacts alone.
+    #
+    # WO-045 §4 (D46) — INTERIM RESTRICTION, ENFORCED. `--progress` is a WRITER, not a reader: it
+    # calls reconcile(), which saves CORPUS_MANIFEST.json. Run against a LIVE capture it races the
+    # capturing process's own finalize write, and the capture's record is the stronger one
+    # (finalized=True, hashed_at_capture=True) — losing that race would downgrade real provenance.
+    # The read-only live-corpus query is assigned to the default-deny reader WO and is NOT built
+    # here. Until it exists this refuses rather than risking the race, and the refusal names the
+    # safe alternative.
     if args.progress:
         if not config.corpus_id:
             print("--progress requires --corpus-id (or CORPUS_ID).")
             raise SystemExit(2)
+        live = _detect_live_run(config.corpus_dir / config.corpus_id)
+        if live and not args.force_progress:
+            print(f"REFUSED: corpus {config.corpus_id!r} appears to have a LIVE run ({live}).")
+            print("  --progress calls reconcile(), which WRITES CORPUS_MANIFEST.json, and would")
+            print("  race the running capture's finalize. The capture's record is the stronger")
+            print("  one (finalized + hashed at capture); losing that race downgrades provenance.")
+            print("  The read-only live query belongs to the default-deny reader WO (WO-045 §4).")
+            print("  Read the run's own artifacts directly, or re-run after the capture ends.")
+            print("  --force-progress overrides, accepting the write race.")
+            raise SystemExit(3)
         ledger = CorpusLedger(root=config.corpus_dir, corpus_id=config.corpus_id)
         reconciled = ledger.reconcile()
         if reconciled:

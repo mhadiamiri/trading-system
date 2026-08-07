@@ -3390,6 +3390,25 @@ a proven path.
 3. **`--progress` is a writer, not a reader** — it calls `reconcile()`, which saves
    `CORPUS_MANIFEST.json`. There is no supported read-only way to query a LIVE corpus without a
    write race against the running capture.
+   → **WO-045 §4: findings 1 and 2 are FIXED; finding 3 is DECLARED and now ENFORCED, not built.**
+
+---
+▶ **WO-045 — INTERIM RESTRICTION (D46), STANDING UNTIL THE DEFAULT-DENY READER WO**
+
+**NO LIVE `--progress` QUERIES AGAINST A RUNNING CAPTURE.** `--progress` calls `reconcile()`, which
+WRITES `CORPUS_MANIFEST.json`, and would race the capturing process's own finalize write. The
+capture's record is the STRONGER one (`finalized=True`, `hashed_at_capture=True`); losing that race
+downgrades real provenance to a post-hoc reconstruction.
+
+D46 assigned the read-only live-corpus query to the **default-deny reader WO**. It is NOT built
+here. The restriction is enforced cheaply instead: `--progress` REFUSES (exit 3) when the target
+corpus has a run with no `MANIFEST.json` whose segments were written in the last 120 s, and names
+the safe alternative. `--force-progress` overrides, explicitly accepting the race.
+
+The detector is a HEURISTIC and its two failure modes are declared, not left to be discovered:
+a run killed seconds ago reads as live (cost: a refusal, overridable — cheap), and a live run
+stalled >120 s reads as dead (cost: the race it guards, recoverable via `reconcile()`). The
+asymmetry is deliberate — the cheap failure is the likely one.
 
 ---
 
