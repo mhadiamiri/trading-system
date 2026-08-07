@@ -223,6 +223,18 @@ recorded in the proof itself. Their failure under both mutations is correct beha
 **Arithmetic:** 338 at base + 86 (`tests/test_risk_aggregate_position.py`, including the 70-case
 invariant sweep) = **424**.
 
+### CI — the real run on this commit
+
+**Commit `2fff566`** (pushed `6e1586f..2fff566`) · **CI run `31210060300`** · triggered via push.
+
+| Job | ID | Duration | Result |
+|---|---|---|---|
+| `test (3.14)` | 92970477414 | 10m37s | ✅ **424 passed, 2 skipped** (302.54s) |
+| `test (3.11)` | 92970477281 | 10m37s | ✅ **424 passed, 2 skipped** (301.40s) |
+
+Counts pulled from the job logs, not inferred from the ✓. Both legs ran the randomized-order step
+and reported 424/2, matching all three local legs.
+
 ### `risk/engine.py`
 
 ```
