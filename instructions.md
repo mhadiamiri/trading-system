@@ -1,143 +1,115 @@
-# WO-046 — 008c VALIDATION PHASE: the DEFAULT-DENY CORPUS READER.
-#
-# D20: "The guarantee moves from 'every consumer remembers to check metadata' (vigilance, 0-for-4)
-# to 'the only way to get gap-spanning data is to have written code that asked for it' (mechanical)."
+# WO-047 — BACKTEST-OVER-SEGMENTED-CORPUS: INVESTIGATION AND PROPOSAL. NO IMPLEMENTATION.
 
-BASE: HEAD `89e5857` (WO-045 complete, CI green run 31185950085, 301 tests). Confirm in §1.
-Reference artifact: `corpus_20260805` at `e4dde21` — 36.8867 covered h, 38 segments, 19 gaps, 1 seam.
+BASE: WO-046 closeout HEAD (reader landed, CI green). Confirm in §1.
+Reference artifact: `corpus_20260805` — 36.8867 covered h, 3,847,540 frames, 19 gaps, 1 seam
+(`PROCESS_RESTART`, 2.1061 h), across 2 runs.
 
-SCOPE: build the reader, its bite proofs, and the read-only live query (finding 3). Commit green, STOP.
-SHIP IMPACT: **YES** — new production module in the Data layer. Full discipline.
-NOT IN SCOPE: the backtest itself; strategy; cost model. This builds the READ boundary only.
+SCOPE: **INVESTIGATE, PROPOSE, STOP.** No production code. No backtest run. No number produced.
+SHIP IMPACT: **NO.** `git diff -- src/` must be empty (paste). Evidence + proposal only.
 
-**`captures/corpus_24h/corpus_20260805/` is the ratified reference artifact. READ it; never write to
-it. Snapshot its digest before and after and prove it untouched (WO-045's practice).**
+WHY AN INVESTIGATION. The reader deliberately returns `.segments` and has NO `.concat()` — D20's
+"continuous-looking data across a gap is not a thing the API can emit." Every existing backtest
+component was built against a continuous stream. Feeding it 19 gaps and a 2.1-hour seam raises
+SEMANTIC questions that change what the P&L MEANS, and none have been ruled. Getting them wrong
+produces a beautiful number that is fiction — the exact failure this apparatus exists to prevent.
+Ops will not specify the mechanism from memory: **propose from the code.** This is the WO-027 shape.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
-0.3 Fail-then-pass bite proofs, four artifacts, sha256 exact-restore, both directions.
-0.4 Preservation duals mandatory, local and direct. **S13: refusal and preservation in ONE test.**
+0.2 **No implementation.** Not a line. If a question can only be answered by writing code, say so and
+    scope it — do not answer it by building.
 0.5 Report every attempt.
-0.6 AUTO MODE OFF — new production module.
-0.7 **BUILT-VS-OPERATED (D24).**
+0.7 **BUILT-VS-OPERATED (D24).** Everything below is OPERATED and READ; this WO builds only a proposal.
 
-    | Thing | Status | Built & verified where |
+    | Thing | Status | Where |
     |---|---|---|
-    | Gap-record schema (the CONTRACT the reader conforms to) | **OPERATED** | specified WO-014c — READ IT FIRST, §2 |
-    | `corpus_20260805` ledger, seam ledger, manifests | **OPERATED — READ ONLY** | `e4dde21`, ratified D46 |
-    | `GapLedger` zero-duration declared limit | **OPERATED** | `kraken_v2_book.py` docstring, WO-022 §3.2 |
-    | `--progress`'s live-run refusal heuristic | **OPERATED** | WO-045 §4 — the reader SUPERSEDES it, §5 |
-    | The default-deny reader | **THIS WO IS THE BUILDER** | §3 |
+    | `compute_execution_costs` (the ONE cost model) | **OPERATED** | `execution/costs.py`; ruled `total = fees + slippage`, executed price crosses the spread, spread is attribution, >5% abnormal-spread reject; reconciled to the cent (WO-011) |
+    | `BacktestRunner` → `PaperExecutionClient._simulate_fill` | **OPERATED** | the live backtest path |
+    | `CorpusReader` (default-deny, segments) | **OPERATED** | WO-046 |
+    | `corpus_20260805` | **OPERATED — READ ONLY** | ratified D46; never write to it |
 
 ---
 
-## §1 CONFIRM STATE + READ THE CONTRACT
-HEAD, test count both interpreters (301 at base — derive, don't assume), `git diff -- src/` clean,
-all gates, partition 31/31. Snapshot `corpus_20260805`'s 88-file digest (`a025db1e…`) before any work.
+## §1 CONFIRM STATE, THEN READ AND PASTE THE THREE SURFACES
+HEAD, test count both interpreters, `git diff -- src/` empty, gates green, corpus digest snapshotted.
 
-**Then read, and paste, the gap-record schema as WO-014c specified it** — field names, types,
-semantics of `open`/`close`/`duration_s`/`cause`/`gap_id`. D20: *"the reader inherits whatever the
-capture happened to write"* is fixtures-shaped-to-the-implementation one layer up. **The reader
-conforms to the declared schema; if the corpus's actual ledger DIVERGES from the declared schema,
-that is a finding — STOP and report it** rather than conforming to the divergence.
-
-Also read the SEAM record's shape (`seam_ledger.jsonl`, WO-044 §3.3) and confirm d45's ruling holds:
-**a seam is a gap with a bigger cause code** and needs no separate reader logic. If it needs
-different handling, that is a finding.
-
----
-
-## §2 THE READER'S CONTRACT (hard spec — implement exactly this)
-
-2.1 **Default-deny at the read boundary.** A consumer requests a time window. If the window spans
-    ANY recorded gap or seam, the reader REFUSES by default — either raises naming the gap's
-    IDENTITY (`gap_id`, cause, bounds, duration) or returns EXPLICITLY SEGMENTED data.
-    **Continuous-looking data across a gap must not be expressible by the API.** A caller who writes
-    the obvious thing gets a refusal, not a silent splice.
-2.2 **Acknowledgment: explicit, per-request, gap-class-aware.** A consumer may accept some gap
-    classes (e.g. sub-second `KEEPALIVE_RECONNECT`) for its purpose — but states so IN CODE, PER
-    REQUEST, PER CLASS. Not a global flag, not a config default, not omission. Design it so the
-    acknowledgment names WHAT is being accepted (cause class and/or duration bound), so a reader of
-    the calling code can see what was tolerated.
-2.3 **A ZERO-DURATION GAP IS A REAL GAP AND TRIGGERS DEFAULT-DENY** (precondition 5, hard spec).
-    Overlap tests use **INCLUSIVE** bounds. Zero-duration entries are NEVER filtered as noise.
-    *A reader that launders an honest ledger is default-deny's failure mode arriving one layer
-    downstream.*
-2.4 **Seams too** (d45): the 2.1061 h `PROCESS_RESTART` seam in `corpus_20260805` is a gap with a
-    bigger cause code. A window spanning it refuses by default like any other.
-2.5 The reader is READ-ONLY: it must never write to the corpus directory. Enforce mechanically if
-    cheap (the WO-032 evidence-write-boundary precedent) — at minimum, prove it in §4.
+Paste verbatim, with line numbers:
+1.1 **`BacktestRunner`** — how it ingests data today: what it iterates, what shape it expects, where
+    the loop is, and every assumption of CONTINUITY in it (a `for` over one stream, index arithmetic,
+    "previous bar", rolling windows, warm-up counters, timestamp deltas used as elapsed time).
+1.2 **The strategy under test** — whatever the "simple strategy" is. Name it, paste its entry/exit
+    logic, and enumerate every piece of STATE it carries across ticks (indicators, warm-up
+    requirements, position, pending orders).
+1.3 **`compute_execution_costs` + `_simulate_fill`** — the fill path, confirming what a fill needs
+    from a MarketState (bid/ask/spread/timestamp) and whether anything in it assumes the PREVIOUS
+    state is adjacent in time.
 
 ---
 
-## §3 BUILD
-Place it in the Data layer; `lint-imports` must stay 6/6 (a reader is a data-layer concern; if the
-boundary contracts push back, that is architecture telling you something — report it, don't relax a
-contract). Declare any new reason codes properly (producible, prefix-free — the guard has bitten
-twice in two WOs and was right both times).
+## §2 THE SEMANTIC QUESTIONS — answer each from the code, or mark it UNRULED and escalate
+
+For each: state what the code does TODAY if naively fed segmented data, and what you believe it
+SHOULD do. Do not implement either.
+
+2.1 **Position across a gap.** A position is open when a segment ends. The next segment begins after
+    a 16-second (or 2.1-hour) hole with no data. Options: force-flat at segment end; carry the
+    position and mark it at the next segment's first price; refuse to backtest across a gap at all.
+    What does the code do now? What is honest? Note the asymmetry: carrying a position across a
+    2.1-hour blind window and claiming the P&L is real is a strictly bigger lie than doing it across
+    16 seconds — does the answer depend on gap DURATION or CAUSE, and if so that is a class-aware
+    decision like the reader's acknowledgment.
+2.2 **Indicator warm-up across a segment boundary.** Does the strategy need N ticks of history? If a
+    segment is shorter than N, is it tradeable at all? Does state carry across a gap or reset? An
+    indicator computed from ticks spanning a hole is an indicator over data that does not exist.
+2.3 **Fill legality on the first tick after a gap.** The first MarketState after a 2.1-hour blind
+    window may be far from the last one seen. A fill there is executable in the model but was NOT
+    executable in reality — nobody could have traded on a price they could not see coming. State
+    whether the current fill path would happily fill it.
+2.4 **Elapsed-time assumptions.** Anything using `t[i] - t[i-1]` as elapsed (rates, annualisation,
+    holding periods, drawdown durations) silently absorbs gap time. Enumerate every such site.
+2.5 **What "the backtest ran over the corpus" would MEAN.** Given 36.8867 covered hours in 20
+    discontinuous stretches: is the deliverable one result over the union, or per-segment results
+    aggregated? If aggregated, how do costs, position, and P&L compose? Name the metric the number
+    would be.
 
 ---
 
-## §4 BITE PROOFS (0.3/0.4 — four artifacts each, sha256 exact-restore)
-
-4.1 **The D20 proof, both shapes in ONE test (S13):**
-    - **REFUSAL:** a corpus fixture with a KNOWN gap; request a spanning window WITHOUT
-      acknowledgment → REFUSES, naming the gap's identity.
-    - **PRESERVATION DUAL:** the same request WITH the correct acknowledgment → SERVES.
-    - **NECESSITY MUTATION:** neuter the gap check → the refusal half fails, the dual still passes.
-4.2 **Zero-duration fixture (precondition 5, hard spec):** a gap whose open == close. Request a
-    window spanning it without acknowledgment → REFUSES. Prove inclusive bounds: a window whose
-    boundary EQUALS the gap's timestamp still refuses.
-4.3 **Seam-spanning:** a window spanning a `PROCESS_RESTART` seam refuses by default; with
-    acknowledgment, serves — proving d45's "no separate reader logic" claim by demonstration.
-4.4 **Class-awareness:** acknowledging class A does NOT admit a gap of class B. An acknowledgment
-    that admits everything is not gap-class-aware — mutate it to a blanket accept and show a test
-    fails.
-4.5 **Read-only:** run the full reader test suite, then confirm the corpus directory digest is
-    unchanged. `git status --porcelain` on the corpus path empty.
-
-**Fixtures are synthetic and in-repo** (deterministic, always runnable, no 700 MB dependency).
+## §3 THE ACKNOWLEDGMENT DECISION (the reader forces it — this is the point)
+The reader will REFUSE a corpus-spanning read unless the backtest explicitly acknowledges gap
+classes, per request, per class. **So the backtest must state, in code, which discontinuities it
+tolerates and why.** That is D20's guarantee reaching the consumer. Propose: which classes should a
+backtest acknowledge (`KEEPALIVE_RECONNECT` sub-second? `VENUE_DISCONNECT`? `PROCESS_RESTART`
+never?), with the reasoning for each, and what it must do at the boundaries it does accept. An
+acknowledgment that accepts everything to make the backtest run is the failure mode — say so if you
+find yourself reaching for it.
 
 ---
 
-## §5 VALIDATE AGAINST THE REAL CORPUS (this is the "validation phase")
-Separately from the unit fixtures, run the reader against `corpus_20260805` READ-ONLY and report:
-- total windows requested, refusals, and that every refusal names a REAL ledger gap;
-- that all **19 gaps and the 1 seam** are visible to the reader and each triggers default-deny;
-- a window entirely inside one continuous stretch serves without acknowledgment (the dual, at scale);
-- the corpus digest UNCHANGED after the validation pass (`a025db1e…`).
-This is evidence in the report, NOT a committed test (no test may depend on the 700 MB artifact).
+## §4 PROPOSE AND STOP
+Produce: the recommended design (how the runner consumes segments, what happens at each boundary,
+which classes are acknowledged and why, what the reported metric is and what it excludes), its diff
+shape (files and signatures, NOT applied), what it costs, what it forecloses, and the acceptance
+criterion you would hold it to — including the bite proof that would prove the backtest CANNOT
+silently trade across a hole.
 
----
+Then **STOP.** Any question you mark UNRULED goes to the lead. Ops expects several: these are
+semantics, not implementation, and they decide what the first honest number MEANS.
 
-## §6 FINDING 3 — THE READ-ONLY LIVE QUERY (D46 folded it here)
-`--progress` is a writer: it calls `reconcile()`, which saves `CORPUS_MANIFEST.json`. Build the
-read-only path the reader makes possible: query a corpus's coverage/seams/gaps **without writing
-anything**, safe against a live run. Then: WO-045's live-run refusal heuristic becomes unnecessary
-for the read-only path — state whether it is retired, kept for the writing path, or narrowed, and
-why. Prove no-write (digest unchanged with a run in progress, or the closest safe equivalent).
+## §5 ACCEPTANCE
+- Three surfaces pasted with line numbers; every continuity assumption enumerated
+- 2.1–2.5 each answered from the code or marked UNRULED with the question stated precisely
+- §3 acknowledgment proposal with per-class reasoning
+- §4 proposal with diff shape, cost, foreclosures, acceptance criterion, and the anti-splice bite proof
+- `git diff -- src/` EMPTY (paste); corpus digest unchanged; test count unchanged
+- Commit the investigation evidence standalone; push; CI green both legs (real run number, counts
+  from job logs)
 
----
+## §6 REPORT — `WO-047-INVESTIGATION-REPORT.md`
+The three surfaces; the continuity-assumption enumeration; 2.1–2.5 with evidence or UNRULED
+verdicts; the acknowledgment proposal; the design proposal with its anti-splice bite proof; every
+attempt; any STOP; CI run.
 
-## §7 ACCEPTANCE
-- Schema read and conformed to (or divergence reported as a finding)
-- Default-deny implemented per §2.1–2.5; acknowledgment explicit/per-request/class-aware
-- Bite proofs 4.1–4.5, four artifacts each, sha256 exact-restore, necessity mutations discriminating
-- Real-corpus validation: 19 gaps + 1 seam all trigger default-deny; digest unchanged
-- Read-only live query built; `--progress` disposition stated
-- `corpus_20260805` byte-untouched — digest before and after
-- Test count with arithmetic, both interpreters, both orders
-- lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31
-- Commit, push, local == remote, CI GREEN both legs — REAL run number, **counts pulled from the job
-  logs** (a green ✓ says the job exited zero, not what it ran)
-
-## §8 REPORT — `WO-046-REPORT.md`
-The schema as read; the reader's contract as built; all bite proofs verbatim with sha256 and their
-discriminating mutations; the real-corpus validation with the 19+1 accounting; the read-only query
-and the `--progress` disposition; corpus-untouched digests; src hashes; CI with log-derived counts;
-every attempt; any STOP.
-
-**THEN STOP.** Next: **the first backtest measured against `corpus_20260805`** — the unified cost
-model's first encounter with real recorded market data.
+**THEN STOP.** The lead rules the unruled semantics; then the backtest is built and run against
+`corpus_20260805`.
