@@ -15,6 +15,7 @@ import asyncio
 
 from trading.execution.interface import ExchangeClient, KillSwitchEngagedError
 from trading.execution.fill import Fill
+from trading.execution import fee_schedule
 from trading.execution.costs import compute_execution_costs
 from trading.data.market_state import MarketState
 
@@ -25,9 +26,9 @@ class PaperExecutionClient(ExchangeClient):
 
     All fills are simulated with realistic cost modeling:
     - Executed price reflects spread crossing (BUY pays ask, SELL gets bid)
-    - Trading fees (default 0.1% taker per side, observed from venue)
+    - Trading fees (Kraken Pro spot TAKER rate for the declared tier — cited, see fee_schedule)
     - Spread cost (observed from market state, included in executed price - WO-008a-R6)
-    - Slippage adjustment (assumed 0.1% constant - WO-008a-R5)
+    - Slippage adjustment (1 bp constant, measured against corpus_20260805 - WO-050 §4)
 
     Constitutional requirements:
     - No real-money orders (simulated only)
@@ -49,10 +50,11 @@ class PaperExecutionClient(ExchangeClient):
     # between the paper venue and the backtest CostModel still holds (both call the same function
     # and `test_cost_reconciliation` passes its own explicit rates, insulated from these defaults).
     #
-    # FEE — 0.26% taker. DECLARED ENGINEERING JUDGEMENT, not a citation: a typical spot taker fee at
-    # the base (lowest-volume) tier of a major crypto venue. I did not verify a published schedule
-    # from here, so it is declared rather than cited (rule 0.1e). It is deliberately the LARGER
-    # channel, which is realistic for liquid top-of-book trading where fees dominate.
+    # FEE — ⚠ SUPERSEDED BY WO-051. This comment previously read: "0.26% taker. DECLARED
+    # ENGINEERING JUDGEMENT, not a citation... I did not verify a published schedule from here."
+    # WO-051 verified it. The rate is now CITED and TIER-AWARE — see below and `fee_schedule.py`.
+    # The 0.26% figure was WRONG BY 3.08x against the published Tier 1 taker rate of 0.80%, and it
+    # was the larger of the two cost channels in the only verdict this project has produced.
     #
     # SLIPPAGE — 0.01% (1 bp). ANCHORED TO THE CORPUS, MEASURED not assumed. Over 50,000 frames of
     # `corpus_20260805`: mean spread 0.521 on a mean mid of 64,635.87 = **0.0806 bps** of mid
@@ -65,7 +67,11 @@ class PaperExecutionClient(ExchangeClient):
     # ⚠ FINDING (§0.5): the OLD 0.1% slippage default was ~124x the corpus's mean full spread.
     # For this instrument at this size that figure was not conservative, it was wrong by two orders
     # of magnitude — and it silently dominated WO-048's cost total.
-    DEFAULT_FEE_RATE_PCT = Decimal("0.26")      # PERCENT of notional -> 0.26%
+    # ⚠ NOT A LITERAL, DELIBERATELY (WO-051 §3.1/§3.2). The taker fee is LOOKED UP from the cited
+    # Kraken schedule for a NAMED tier, so the value carries its provenance and cannot be edited
+    # without either changing a declared tier or re-citing the schedule. `test_fee_schedule.py`
+    # fails if this constant ever drifts from the citation.
+    DEFAULT_FEE_RATE_PCT = fee_schedule.taker_pct()  # PERCENT of notional -> Tier 1 taker, 0.80%
     # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - pass observed spread
     DEFAULT_SLIPPAGE_FACTOR = Decimal("0.0001")  # FRACTION of notional -> 0.01% (1 bp)
 

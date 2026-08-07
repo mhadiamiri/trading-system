@@ -3282,6 +3282,45 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-051 — CITE THE FEE: THE DECLARED 0.26% WAS WRONG BY 3.08×** (2026-08-07)
+
+Kraken's **published Tier 1 spot taker rate is 0.80%**, not the 0.26% declared as engineering
+judgement in WO-050. Source: https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07,
+Kraken Pro (advanced trading). The schedule page publishes no effective date; the related change to
+how a tier is *determined* is dated 2026-07-09 (best of spot 30-day volume or Assets on Platform).
+Delta **+0.54pp, ratio 3.0769×** — $1.68 → $5.17 on one 0.1 BTC fill at ~$64,600.
+
+**WO-050's verdict (−$2,223,991.19) STANDS AND WAS NOT RECOMPUTED** (§0.1 / D50). The cited rate
+applies to FUTURE runs only. No result was re-derived; the delta above is between two *rates*.
+
+**DECLARED TIER: Tier 1** ($0+ volume). This system has never placed an order — $0 of 30-day volume,
+no Assets on Platform. Tier 1 is not conservative, it is the only tier the account can substantiate.
+Maker 0.40% **recorded but NOT wired** (D51's parked track will need it cited *before* it can see
+what it would save). New `src/trading/execution/fee_schedule.py` holds the table, the provenance and
+the named tier; `paper.py` now does `DEFAULT_FEE_RATE_PCT = fee_schedule.taker_pct()`.
+
+**Bite proof PASS** (`tools/wo051_citation_bite_proof.py`), two discriminating mutations: DRIFT
+(back to a bare literal) fails the pin while the tier tests hold; OPTIMISM (`ASSUMED_TIER = "Tier 6"`)
+fails the tier tests **while the pin still passes** — a pin on the number alone would have certified
+an unsubstantiable fee as cited. R4 survives, now 80× apart (0.008 vs 0.0001); WO-011 reconciliation
+intact; `compute_execution_costs` untouched.
+
+**⚠ FINDINGS.** (1) The corpus digest `a025db1e…`, certified in five reports, is **not reproducible**
+— the scheme was never committed; 20 candidate schemes fail to regenerate it. `tools/corpus_digest.py`
+now declares a scheme in code; the corpus is v1 `e3ab1aec…`, 88 files, unchanged and git-clean across
+this WO. (2) **The WO-048 identical-channels coincidence is still alive in `backtest/costs.py`** —
+`CostModel` fee 0.1% == slippage 0.001 of notional, and its fee is uncited. WO-050's R4 fix and guard
+cover only `PaperExecutionClient`. Out of scope, not fixed, follow-up WO recommended. (3)
+`websockets` is missing from `[project.dependencies]`, so the documented `-e ".[dev]"` acceptance
+path fails collection with 13 errors.
+
+445/2 both interpreters, both orders (436 + 9 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+annotation 0 · preflight · partition 31/31. Report: `WO-051-REPORT.md`.
+
+**NEXT: the phase-A pre-registration** — the bar-based strategy suite, declared in full before any
+run. The lead rules on the registered suite BEFORE the first backtest.
+
+---
 ▶ **WO-050 — THE SECOND RUN: THE FIRST MEANINGFUL STRATEGY VERDICT, AND IT IS NEGATIVE** (2026-08-07)
 
 **NET P&L −$2,223,991.19** over 36.8867 covered hours, 21 segments, 129,695 trades (incl. 21 boundary

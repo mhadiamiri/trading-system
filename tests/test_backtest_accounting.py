@@ -252,8 +252,17 @@ async def test_r4_a_real_fill_produces_different_fee_and_slippage():
 
 
 def test_r4_the_rates_carry_their_declared_values():
-    """The derivation lives in the code comment; these pin the values it derives."""
-    assert PaperExecutionClient.DEFAULT_FEE_RATE_PCT == Decimal("0.26")
+    """The derivation lives in the code comment; these pin the values it derives.
+
+    ⚠ WO-051: the FEE half of this test is SUPERSEDED and deliberately no longer asserted here.
+    It used to read `== Decimal("0.26")` — pinning a DECLARED engineering judgement. WO-051 cited
+    Kraken's published schedule and the rate became a lookup, so pinning a literal here would
+    re-create exactly the uncited constant the citation removed. The fee is now pinned to its
+    source in `test_fee_schedule.py`, which is where a fee assertion belongs.
+
+    SLIPPAGE is untouched and still pinned: it is measured against corpus_20260805, not cited,
+    and WO-051 §1 puts it explicitly out of scope.
+    """
     assert PaperExecutionClient.DEFAULT_SLIPPAGE_FACTOR == Decimal("0.0001")
 
 
