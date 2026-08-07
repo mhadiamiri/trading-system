@@ -305,9 +305,21 @@ passed**; it passes explicit rates and is insulated from these defaults by const
 
 All four legs agree with the arithmetic. The 3.11 leg ran in a throwaway `uv` venv, removed after.
 
-### CI
+### CI — **run `31224446780`, GREEN both legs** (commit `8e3997c`)
 
-_pending — filled in on the close commit_
+Counts read from the job logs, not the summary badge:
+
+| Job | Deterministic (`-p no:randomly`) | Randomised |
+|---|---|---|
+| `test (3.11)` — id 93015762296, 10m31s | **445 passed, 2 skipped** (306.02s) | **445 passed, 2 skipped** (301.54s) |
+| `test (3.14)` — id 93015762537, 10m41s | **445 passed, 2 skipped** (305.72s) | **445 passed, 2 skipped** (303.15s) |
+
+Eight independent runs (four local, four CI) all report 445/2. The only annotation is a Node.js 20
+deprecation notice on the checkout/setup-python/codecov actions — pre-existing, unrelated to this WO.
+
+**Note on WO-050's close commit.** WO-050 §7.1 required CI green *before* the run, which was
+satisfied by run `31214886348` on `605a4e6`. Its post-run commit `b9d9b45` also went green
+independently — run `31216247330`, 10m54s — so no CI gap is left behind this WO's base.
 
 ---
 

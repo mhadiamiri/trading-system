@@ -3314,7 +3314,7 @@ cover only `PaperExecutionClient`. Out of scope, not fixed, follow-up WO recomme
 `websockets` is missing from `[project.dependencies]`, so the documented `-e ".[dev]"` acceptance
 path fails collection with 13 errors.
 
-445/2 both interpreters, both orders (436 + 9 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+445/2 both interpreters, both orders (436 + 9 new); CI `31224446780` green both legs. Gates: lint 6/6 · contract 6/6 · ruff ·
 annotation 0 · preflight · partition 31/31. Report: `WO-051-REPORT.md`.
 
 **NEXT: the phase-A pre-registration** — the bar-based strategy suite, declared in full before any
