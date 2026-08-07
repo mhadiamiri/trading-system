@@ -175,6 +175,26 @@ class PaperExecutionClient(ExchangeClient):
                 "This is a staleness guard invariant violation."
             )
 
+        # ── WO-048 §5.2 (D-b) — DECLARED LIMIT: THIS GUARD IS INERT UNDER REPLAY ────────────────
+        # `_market_state_timestamp` is stamped with `datetime.now(UTC)` at set_market_state(), so
+        # `state_age` measures WALL-CLOCK TIME SINCE REGISTRATION IN THIS PROCESS — not the age of
+        # the data. In a backtest, set_market_state() is followed immediately by place_order(), so
+        # state_age is ~0 microseconds however old the frame is and however large the gap preceding
+        # it. A 2.1-hour-old price passes this guard untouched.
+        #
+        #   - PROTECTS: the LIVE path, where registration time and market time coincide and a
+        #     genuinely stale feed shows up as elapsed wall-clock. That is what it was built for
+        #     (WO-008a-R6) and there it works.
+        #   - DOES NOT PROTECT: any replay. It cannot — nothing here can distinguish "the feed
+        #     stalled" from "we are replaying history quickly".
+        #
+        # THE ANALOGOUS PROTECTION UNDER REPLAY is the segmented runner's boundary machinery
+        # (WO-048 §4.3/§4.4): a fresh strategy instance per segment, and the first tick of every
+        # segment observation-only. The equivalence: this guard refuses to price against data that
+        # got old while we waited; the segment machinery refuses to trade on the first tick after a
+        # hole we could not see across. Both refuse a fill the system had no right to make — one on
+        # the live path, one on the replay path. Neither substitutes for the other, and the replay
+        # path must NOT be given a fake staleness signal to make this guard appear to work.
         state_age = datetime.now(UTC) - self._market_state_timestamp
         if state_age > self._staleness_threshold:
             raise ValueError(
@@ -186,7 +206,12 @@ class PaperExecutionClient(ExchangeClient):
         # Simulate fill with realistic costs (paper venue computes internally)
         fill = self._simulate_fill(symbol, side, size, price)
         return {
+            # WO-048 §5.1 (D-a): MARKET time — the timestamp of the state this fill was priced from.
             "timestamp": fill.timestamp.isoformat(),
+            # SECONDARY, never the trade's time. Carried so a run can be debugged against the clock
+            # it executed on without that clock ever being mistaken for the market's.
+            "replay_timestamp": (
+                fill.replay_timestamp.isoformat() if fill.replay_timestamp else None),
             "symbol": fill.symbol,
             "side": fill.side,
             "size": float(fill.size),
@@ -284,8 +309,25 @@ class PaperExecutionClient(ExchangeClient):
         notional = size_dec * costs.executed_price
         cad_value = notional * Decimal("1.35")
 
+        # WO-048 §5.1 (D-a): MARKET TIME is the trade's time. This was `datetime.now(UTC)`, which
+        # under replay stamped every historical trade with the moment the backtest ran — so no trade
+        # could be reconciled against the frame it was priced from. The state's own timestamp is
+        # authoritative; the replay wall-clock rides along as a secondary field.
+        #
+        # A state with no timestamp is a defect, not something to paper over with now(): that would
+        # silently restore the behaviour this fixes. Fall back only when the attribute is absent
+        # entirely (a non-conforming test double), and never when it is present.
+        market_time = getattr(self._current_market_state, "timestamp", None)
+        if market_time is None:
+            raise ValueError(
+                "EXEC_MARKET_STATE_TIMESTAMP_MISSING: the registered market state carries no "
+                "timestamp, so the fill has no market time to be stamped with. Refusing to "
+                "substitute the replay clock (WO-048 §5.1 / D-a)."
+            )
+
         return Fill(
-            timestamp=datetime.now(UTC),
+            timestamp=market_time,
+            replay_timestamp=datetime.now(UTC),
             symbol=symbol,
             side=side,
             size=size_dec,

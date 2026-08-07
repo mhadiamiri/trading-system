@@ -9,6 +9,7 @@ Constitutional Principles:
 from datetime import datetime
 from decimal import Decimal
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,12 @@ class Fill:
     - Cost-inclusive (Principle I: Truth Before Profit)
     - CAD tax fields captured (Principle VIII: Total Observability & Provenance)
     """
+    # WO-048 §5.1 (D-a): `timestamp` is MARKET TIME — the timestamp of the MarketState/BookState the
+    # fill was priced from. Before WO-048 it was `datetime.now(UTC)`, i.e. replay wall-clock, so a
+    # backtested trade could not be reconciled against the data it replayed and Principle VIII
+    # (Total Observability & Provenance) failed at the backtest boundary. The frame's time IS the
+    # time. `replay_timestamp` below carries the wall-clock of the replaying process as a SECONDARY
+    # field — useful for debugging a run, never the trade's time.
     timestamp: datetime
     symbol: str
     side: str  # "BUY", "SELL"
@@ -36,3 +43,5 @@ class Fill:
     fees: Decimal
     total_cost: Decimal  # fees + slippage_cost (spread is attribution, WO-008a-R6)
     cad_value: Decimal  # For Canadian tax records
+    # SECONDARY, never authoritative. Optional so every existing construction site is unaffected.
+    replay_timestamp: Optional[datetime] = None

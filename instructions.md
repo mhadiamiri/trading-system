@@ -1,115 +1,170 @@
-# WO-047 — BACKTEST-OVER-SEGMENTED-CORPUS: INVESTIGATION AND PROPOSAL. NO IMPLEMENTATION.
+# WO-048 — THE FIRST HONEST BACKTEST. Loader, six rulings, four defect fixes, then the run.
+#
+# D48: "The first backtest's product is a TRUSTWORTHY MEASUREMENT APPARATUS, not a verdict on one
+# particular rule." Any honest strategy over real recorded data proves the pipeline tells the truth
+# with real costs. That is the milestone.
 
-BASE: WO-046 closeout HEAD (reader landed, CI green). Confirm in §1.
-Reference artifact: `corpus_20260805` — 36.8867 covered h, 3,847,540 frames, 19 gaps, 1 seam
-(`PROCESS_RESTART`, 2.1061 h), across 2 runs.
+BASE: HEAD `592e19e`+ (WO-047 investigation committed). Confirm in §1.
+Corpus: `corpus_20260805` — 36.8867 covered h, 3,847,540 frames, 20 stretches, 19 gaps + 1 seam.
+**READ ONLY. Digest `a025db1e…` must be identical at close.**
 
-SCOPE: **INVESTIGATE, PROPOSE, STOP.** No production code. No backtest run. No number produced.
-SHIP IMPACT: **NO.** `git diff -- src/` must be empty (paste). Evidence + proposal only.
-
-WHY AN INVESTIGATION. The reader deliberately returns `.segments` and has NO `.concat()` — D20's
-"continuous-looking data across a gap is not a thing the API can emit." Every existing backtest
-component was built against a continuous stream. Feeding it 19 gaps and a 2.1-hour seam raises
-SEMANTIC questions that change what the P&L MEANS, and none have been ruled. Getting them wrong
-produces a beautiful number that is fiction — the exact failure this apparatus exists to prevent.
-Ops will not specify the mechanism from memory: **propose from the code.** This is the WO-027 shape.
+SCOPE: §2 the strategy (declared, pre-registered); §3 the loader; §4 the six rulings; §5 the four
+defects; §6 bite proofs; **§7 the run**. Build + CI green BEFORE the run.
+SHIP IMPACT: **YES.** Full discipline.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
-0.2 **No implementation.** Not a line. If a question can only be answered by writing code, say so and
-    scope it — do not answer it by building.
+0.3 Fail-then-pass bite proofs, four artifacts, sha256 exact-restore, discriminating mutations.
+0.4 Preservation duals mandatory, local and direct.
 0.5 Report every attempt.
-0.7 **BUILT-VS-OPERATED (D24).** Everything below is OPERATED and READ; this WO builds only a proposal.
+0.6 AUTO MODE OFF.
+0.8 **PRE-REGISTRATION — THE HARD RULE OF THIS WO.** Every strategy parameter is DECLARED WITH ITS
+    DERIVATION AND COMMITTED **BEFORE** the run in §7. **After seeing the P&L you may not change a
+    parameter and re-run.** If the number is bad, THAT IS THE NUMBER. Tuning after seeing results is
+    the classic backtest lie and it would void this entire sprint's purpose in one edit. If you
+    believe a parameter is wrong after the run, REPORT IT — do not fix it and re-run. A second run
+    with changed parameters is a NEW WO with the first run's number still on the record.
+0.7 **BUILT-VS-OPERATED (D24).**
 
     | Thing | Status | Where |
     |---|---|---|
-    | `compute_execution_costs` (the ONE cost model) | **OPERATED** | `execution/costs.py`; ruled `total = fees + slippage`, executed price crosses the spread, spread is attribution, >5% abnormal-spread reject; reconciled to the cent (WO-011) |
-    | `BacktestRunner` → `PaperExecutionClient._simulate_fill` | **OPERATED** | the live backtest path |
-    | `CorpusReader` (default-deny, segments) | **OPERATED** | WO-046 |
-    | `corpus_20260805` | **OPERATED — READ ONLY** | ratified D46; never write to it |
+    | `compute_execution_costs` | **OPERATED — TRANSFERS UNCHANGED** | needs only bid/ask/spread/mid, all present |
+    | `CorpusReader` (default-deny, segments-as-intervals) | **OPERATED** | WO-046 |
+    | `BacktestRunner.run()` / `PaperExecutionClient` | **OPERATED** | existing continuous path — leave `run()` untouched |
+    | `corpus_20260805` | **OPERATED — READ ONLY** | ratified D46 |
+    | Frame loader, segmented runner, the strategy | **THIS WO IS THE BUILDER** | §2/§3/§4 |
 
 ---
 
-## §1 CONFIRM STATE, THEN READ AND PASTE THE THREE SURFACES
-HEAD, test count both interpreters, `git diff -- src/` empty, gates green, corpus digest snapshotted.
-
-Paste verbatim, with line numbers:
-1.1 **`BacktestRunner`** — how it ingests data today: what it iterates, what shape it expects, where
-    the loop is, and every assumption of CONTINUITY in it (a `for` over one stream, index arithmetic,
-    "previous bar", rolling windows, warm-up counters, timestamp deltas used as elapsed time).
-1.2 **The strategy under test** — whatever the "simple strategy" is. Name it, paste its entry/exit
-    logic, and enumerate every piece of STATE it carries across ticks (indicators, warm-up
-    requirements, position, pending orders).
-1.3 **`compute_execution_costs` + `_simulate_fill`** — the fill path, confirming what a fill needs
-    from a MarketState (bid/ask/spread/timestamp) and whether anything in it assumes the PREVIOUS
-    state is adjacent in time.
+## §1 CONFIRM STATE
+HEAD, test count both interpreters, `git diff -- src/` empty, all gates, corpus digest snapshotted.
 
 ---
 
-## §2 THE SEMANTIC QUESTIONS — answer each from the code, or mark it UNRULED and escalate
+## §2 THE STRATEGY — `BookImbalanceStrategy` (declared under its own name, D48)
 
-For each: state what the code does TODAY if naively fed segmented data, and what you believe it
-SHOULD do. Do not implement either.
+**Why this and not mid-price momentum:** mid-price momentum is structurally the substitution D48
+rejected, renamed. Book-imbalance consumes `bid_qty`/`ask_qty` — data only a BOOK corpus carries —
+so it is the natural consumer of this artifact and cannot be mistaken for the trivial strategy.
 
-2.1 **Position across a gap.** A position is open when a segment ends. The next segment begins after
-    a 16-second (or 2.1-hour) hole with no data. Options: force-flat at segment end; carry the
-    position and mark it at the next segment's first price; refuse to backtest across a gap at all.
-    What does the code do now? What is honest? Note the asymmetry: carrying a position across a
-    2.1-hour blind window and claiming the P&L is real is a strictly bigger lie than doing it across
-    16 seconds — does the answer depend on gap DURATION or CAUSE, and if so that is a class-aware
-    decision like the reader's acknowledgment.
-2.2 **Indicator warm-up across a segment boundary.** Does the strategy need N ticks of history? If a
-    segment is shorter than N, is it tradeable at all? Does state carry across a gap or reset? An
-    indicator computed from ticks spanning a hole is an indicator over data that does not exist.
-2.3 **Fill legality on the first tick after a gap.** The first MarketState after a 2.1-hour blind
-    window may be far from the last one seen. A fill there is executable in the model but was NOT
-    executable in reality — nobody could have traded on a price they could not see coming. State
-    whether the current fill path would happily fill it.
-2.4 **Elapsed-time assumptions.** Anything using `t[i] - t[i-1]` as elapsed (rates, annualisation,
-    holding periods, drawdown durations) silently absorbs gap time. Enumerate every such site.
-2.5 **What "the backtest ran over the corpus" would MEAN.** Given 36.8867 covered hours in 20
-    discontinuous stretches: is the deliverable one result over the union, or per-segment results
-    aggregated? If aggregated, how do costs, position, and P&L compose? Name the metric the number
-    would be.
+2.1 Signal: `imbalance = (bid_qty − ask_qty) / (bid_qty + ask_qty)` ∈ [−1, 1]; take a **rolling mean
+    over N ticks**; BUY when the smoothed value ≥ `+T`, SELL when ≤ `−T`, else HOLD.
+    **The rolling window is deliberate:** a single-tick signal would carry no state, making U3's
+    per-segment reset and U4's warm-up tick VACUOUS. The window ensures the segment machinery is
+    actually exercised rather than trivially satisfied.
+2.2 **Declare N and T with derivation, and COMMIT THEM BEFORE §7** (0.8). State the reasoning for
+    each (e.g. N chosen to match the established 100-sample convention; T chosen as a round,
+    untuned starting value). **Do not sweep, do not optimise, do not pick a value because it looks
+    better.** State explicitly in the report: "these values were fixed before the run and not
+    revised after."
+2.3 Fixed order size, as the trivial strategy does. No position sizing logic — that is a separate
+    question and would be another free parameter.
+2.4 Handle degenerate ticks: `bid_qty + ask_qty == 0` → HOLD (no division). Prove it.
 
 ---
 
-## §3 THE ACKNOWLEDGMENT DECISION (the reader forces it — this is the point)
-The reader will REFUSE a corpus-spanning read unless the backtest explicitly acknowledges gap
-classes, per request, per class. **So the backtest must state, in code, which discontinuities it
-tolerates and why.** That is D20's guarantee reaching the consumer. Propose: which classes should a
-backtest acknowledge (`KEEPALIVE_RECONNECT` sub-second? `VENUE_DISCONNECT`? `PROCESS_RESTART`
-never?), with the reasoning for each, and what it must do at the boundaries it does accept. An
-acknowledgment that accepts everything to make the backtest run is the failure mode — say so if you
-find yourself reaching for it.
+## §3 THE FRAME LOADER (D-d — the build WO's real work)
+`src/trading/data/corpus_frames.py`: **streaming** (never materialise 3.85 M objects), reads the
+corpus JSONL, yields `MarketState` **only inside a reader-approved segment**.
+- Takes a `CorpusReader`-issued `CorpusWindow`. **Cannot be pointed at raw files** — this is the
+  enforcement point that makes default-deny unbypassable by direct file reads rather than merely
+  impolite (D48).
+- `MarketState` construction: the corpus supplies bid/ask/sizes/spread/timestamp. The three absent
+  fields (`trade_count`, `total_volume`, `last_price`) are **NOT substituted**. State how you handle
+  them — the honest options are an optional-field variant or a book-only state type. **Whatever you
+  choose must make it impossible for a strategy to read a fabricated `last_price`.** If that requires
+  a `MarketState` change, that is production surface — report the shape before applying it, and if
+  it looks like a substitution in disguise, STOP.
 
 ---
 
-## §4 PROPOSE AND STOP
-Produce: the recommended design (how the runner consumes segments, what happens at each boundary,
-which classes are acknowledged and why, what the reported metric is and what it excludes), its diff
-shape (files and signatures, NOT applied), what it costs, what it forecloses, and the acceptance
-criterion you would hold it to — including the bite proof that would prove the backtest CANNOT
-silently trade across a hole.
+## §4 THE SIX RULINGS (D48)
+4.1 **U1** — `BookImbalanceStrategy` runs; TrivialMomentumStrategy's evaluation is recorded as
+    **blocked-on-trade-channel**, deferred not dropped. Add the deferred item to `progress.md`.
+4.2 **U2 — FORCE-FLAT AT EVERY BOUNDARY**, no duration threshold. "Any duration threshold is a knob
+    that quietly moves the P&L." Flattening is a **labelled event** in the output. The cost (a 1.7 s
+    reconnect flattens where a real trader would not) is DECLARED in the report, not hidden.
+4.3 **U3 — FULL STATE RESET PER SEGMENT** via a **fresh strategy instance** (stronger than a
+    `reset()` someone must call correctly). **Plus a DECLARED minimum-eligible-segment length**, with
+    derivation stated (warm-up window × safety factor). Not binding on this corpus (measured 48–64×
+    headroom; shortest stretch 201 s ≈ 4,823–6,431 frames vs a 100-tick warm-up) — declared anyway so
+    a future reconnect-burst corpus is refused by a stated bound rather than saved by accident.
+    Segments below the bound are EXCLUDED and the exclusion is reported.
+4.4 **U4 — FIRST TICK OF EVERY SEGMENT IS OBSERVATION-ONLY**, never fillable. One tick, no parameter.
+4.5 **U5 — PER-SEGMENT RESULTS PLUS A DECLARED AGGREGATE.** The report format must state the
+    dependency: **the sum is meaningful ONLY BECAUSE U2 makes every segment start and end flat.**
+    Show the distribution so a minutes-segment and an hours-segment cannot hide inside one number.
+4.6 **U6 — ACKNOWLEDGMENTS**: `KEEPALIVE_RECONNECT` and `VENUE_DISCONNECT` bounded at **60 s**
+    (declared engineering judgement; observed maxima 16.86 s / 3.29 s ≈ 3.5× headroom; state the
+    re-declaration trigger if a future corpus's gaps approach it). `PROCESS_RESTART` acknowledged
+    **to segment at, never to trade across**. `accept_open_ended` requires its own deliberate act.
+    Record the structural note: **acknowledgment governs READING, force-flat governs TRADING — so
+    acknowledging more never buys a more continuous backtest.**
 
-Then **STOP.** Any question you mark UNRULED goes to the lead. Ops expects several: these are
-semantics, not implementation, and they decide what the first honest number MEANS.
+---
 
-## §5 ACCEPTANCE
-- Three surfaces pasted with line numbers; every continuity assumption enumerated
-- 2.1–2.5 each answered from the code or marked UNRULED with the question stated precisely
-- §3 acknowledgment proposal with per-class reasoning
-- §4 proposal with diff shape, cost, foreclosures, acceptance criterion, and the anti-splice bite proof
-- `git diff -- src/` EMPTY (paste); corpus digest unchanged; test count unchanged
-- Commit the investigation evidence standalone; push; CI green both legs (real run number, counts
-  from job logs)
+## §5 THE FOUR DEFECTS
+5.1 **D-a (serious) — MARKET TIME IS THE TRADE TIMESTAMP.** Today every fill and decision is stamped
+    `datetime.now(UTC)` (`paper.py:288`, `trivial.py:73`) — replay wall-clock, so no trade can be
+    reconciled against the data it replayed; Principle VIII fails at the backtest boundary. The
+    frame's timestamp becomes THE time. Replay wall-clock may ride along as a **secondary** field,
+    never as *the* time. Prove a trade's timestamp equals its originating frame's.
+5.2 **D-b — DECLARED LIMIT.** The staleness guard is INERT under replay (`paper.py:178` measures
+    wall-clock since registration ≈ 0). Document it where the guard is defined: it protects the LIVE
+    path only; under replay, U3/U4's segment machinery is the analogous protection. State the
+    equivalence.
+5.3 **D-c — `max_events` BECOMES EXPLICIT-OR-ALL.** Default `None` = full corpus. A default of 1000
+    silently covering 0.026% is the silent-truncation family. **Any truncated run states its coverage
+    fraction in the report header.**
+5.4 **D-d** — the §3 loader.
 
-## §6 REPORT — `WO-047-INVESTIGATION-REPORT.md`
-The three surfaces; the continuity-assumption enumeration; 2.1–2.5 with evidence or UNRULED
-verdicts; the acknowledgment proposal; the design proposal with its anti-splice bite proof; every
-attempt; any STOP; CI run.
+---
 
-**THEN STOP.** The lead rules the unruled semantics; then the backtest is built and run against
-`corpus_20260805`.
+## §6 BITE PROOFS (0.3/0.4 — four artifacts each, sha256 exact-restore)
+6.1 **THE ANTI-SPLICE PROOF — the load-bearing one.** Property: *the backtest cannot silently trade
+    across a hole.*
+    - **BITE:** two-segment fixture with a known gap, engineered so a naive continuous run WOULD fire
+      on the first post-gap tick (a price jump across the hole exceeding the threshold). Assert: **no
+      fill on that tick**, position flat across the boundary, boundary event recorded.
+    - **DUAL (S13, same test):** the *same* jump placed INSIDE one segment fires and fills normally.
+      Without this, a runner that never trades passes the bite.
+    - **NECESSITY MUTATION:** remove the per-segment reset (or the force-flat) → the bite fails (a
+      fill appears, computed against a pre-gap price) while the dual still passes.
+6.2 **Loader containment:** no `MarketState` is ever yielded outside a reader-approved segment;
+    the loader refuses a segment not issued by the reader.
+6.3 **D-a:** a trade's timestamp equals its originating frame's, not the replay clock.
+6.4 **Read-only:** corpus digest unchanged after a full run.
+
+---
+
+## §7 THE RUN — only after §1–§6 are committed and CI is GREEN both legs
+7.1 Commit, push, **CI green both legs (real run number, counts from job logs)** BEFORE running.
+7.2 Run `BookImbalanceStrategy` over `corpus_20260805`, full corpus (`max_events=None`), the
+    declared N and T unchanged from §2.2.
+7.3 Report, with this header, citing D48:
+    > **This backtest evaluated `BookImbalanceStrategy`, NOT `TrivialMomentumStrategy`.** The corpus
+    > is top-of-book and does not carry `last_price`/`total_volume`/`trade_count`; substituting them
+    > would produce a number by redefining what was measured (D48, U1). TrivialMomentumStrategy's
+    > evaluation is DEFERRED, blocked on a trade-channel re-capture.
+7.4 Report: per-segment results AND the declared aggregate; the metric stated in full —
+    *"Net P&L over 36.8867 h of verified continuous market data, in N independent segments, flat at
+    every boundary, excluding 0.0167 h of in-run gaps and 2.1061 h of inter-run seam"*; total fees,
+    slippage and spread attribution; trade count; segments excluded by the §4.3 bound; coverage
+    fraction; and what the number explicitly is NOT (a 39-hour continuous backtest; a strategy
+    verdict; a tradeable-edge estimate).
+7.5 **Whatever the number is, report it.** Positive, negative, or zero. **Do not revise a parameter
+    and re-run (0.8).**
+
+## §8 ACCEPTANCE
+Six rulings implemented; four defects fixed; bite proofs 6.1–6.4 with discriminating mutations;
+CI green both legs before the run; corpus digest unchanged; parameters pre-registered and unchanged;
+report carries the §7.3 header and the §7.4 full metric; test count with arithmetic; all gates.
+
+## §9 REPORT — `WO-048-REPORT.md`
+The declared parameters and their derivation (with the pre-registration statement); the loader; the
+six rulings as built; the four defect fixes; all bite proofs verbatim with sha256; **the result**;
+every attempt; any STOP; CI run.
+
+**THEN STOP.** This is the first honest backtest.

@@ -255,6 +255,28 @@ VALID_REASON_CODES = {
         # nor SEAM_CAUSE_UNDECLARED.
         "CORPUS_READ_REFUSED",
         "ACKNOWLEDGMENT_CAUSE_UNDECLARED",
+        # WO-048 §3/§4 (D48): the BACKTEST-OVER-CORPUS refusals. All three are genuinely producible
+        # (raised on real paths, driven in tests/test_segmented_backtest.py and the §6.1 bite proof)
+        # and prefix-free — CORPUS_FRAMES_ and SEGMENT_ are unique stems, and neither
+        # CORPUS_FRAMES_UNAPPROVED_WINDOW nor CORPUS_FRAMES_UNRESOLVED_RUN prefixes the other.
+        #
+        # CORPUS_FRAMES_UNAPPROVED_WINDOW — the frame loader was handed something other than a
+        # CorpusWindow issued by CorpusReader.read_window(), or a Segment the window does not
+        # contain. This is THE enforcement point that makes default-deny unbypassable: without it a
+        # consumer could skip the reader, open the JSONL directly, and splice across every gap in
+        # the corpus with nothing to stop it (D20's guarantee is only as strong as the data path).
+        #
+        # CORPUS_FRAMES_UNRESOLVED_RUN — a segment resolves to no run, so there are no frames to
+        # read. Raised rather than yielding an empty stream, because a silent empty read is
+        # INDISTINGUISHABLE from an honest empty window and would let a backtest report a clean,
+        # entirely wrong result. Found by WO-048's own tests before it could reach a run.
+        #
+        # SEGMENT_BELOW_MIN_FRAMES — a segment shorter than the declared minimum eligible length
+        # (U3: warm-up window x safety factor 10) is EXCLUDED from the backtest, and the exclusion
+        # is reported rather than silently skipped.
+        "CORPUS_FRAMES_UNAPPROVED_WINDOW",
+        "CORPUS_FRAMES_UNRESOLVED_RUN",
+        "SEGMENT_BELOW_MIN_FRAMES",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

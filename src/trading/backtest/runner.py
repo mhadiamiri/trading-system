@@ -12,7 +12,7 @@ import asyncio
 import dataclasses
 from datetime import datetime, UTC
 from decimal import Decimal
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 from pathlib import Path
 
@@ -126,17 +126,24 @@ class BacktestRunner:
     async def run(
         self,
         data_points: List[MarketState] = None,
-        max_events: int = 1000,
+        max_events: Optional[int] = None,
     ) -> Dict:
         """
         Run backtest on stored market data.
 
         Args:
             data_points: List of market data points (default: sample data)
-            max_events: Maximum events to process
+            max_events: Maximum events to process. **None = ALL** (WO-048 §5.3 / D-c).
 
         Returns:
-            Backtest results dict
+            Backtest results dict, including `coverage` (see below)
+
+        WO-048 §5.3 (D-c) — `max_events` IS NOW EXPLICIT-OR-ALL. It defaulted to **1000**. Against
+        `corpus_20260805`'s 3,847,540 frames that silently covers **0.026%** and reports the result
+        as though it were the whole thing — the silent-truncation family, the same defect class as a
+        positionally-sampled failure ledger or an uncapped-looking retention buffer. The default is
+        now None (process everything), truncation must be ASKED FOR, and any truncated run states
+        its coverage fraction in the result (`coverage`), which the report header carries.
 
         Constitutional requirements:
             - Completes in under 60 seconds for 1000 data points (SC-003)
@@ -154,8 +161,10 @@ class BacktestRunner:
         window_start = None
         window_end = None
 
+        available_count = len(data_points)
         for market_state in data_points:
-            if processed_count >= max_events:
+            # WO-048 §5.3 (D-c): None means ALL. Truncation is now an explicit request.
+            if max_events is not None and processed_count >= max_events:
                 break
 
             # Track data window
@@ -223,6 +232,17 @@ class BacktestRunner:
                 "start": window_start.isoformat() if window_start else None,
                 "end": window_end.isoformat() if window_end else None,
                 "events": processed_count,
+            },
+            # WO-048 §5.3 (D-c): a truncated run must SAY it was truncated. `truncated` is the fact
+            # a reader needs; `coverage_fraction` is how much of the supplied data was seen. A run
+            # that processed everything reports 1.0 and truncated=False, so the field is never
+            # ambiguous by omission.
+            "coverage": {
+                "available_events": available_count,
+                "processed_events": processed_count,
+                "coverage_fraction": (processed_count / available_count) if available_count else 1.0,
+                "max_events": max_events,
+                "truncated": max_events is not None and processed_count < available_count,
             },
             "pnl_report": pnl_report,
         }
