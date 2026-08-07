@@ -274,6 +274,19 @@ inference is stated rather than dressed as a measurement.
 
 **Arithmetic:** 301 at base + 21 (`tests/test_corpus_reader.py`) = **322**.
 
+### CI — the real run on this commit
+
+**Commit `ceb1cd0`** (pushed `744ba1e..ceb1cd0`) · **CI run `31191726876`** · triggered via push.
+
+| Job | ID | Duration | Result |
+|---|---|---|---|
+| `test (3.14)` | 92909909250 | 10m41s | ✅ **322 passed, 2 skipped** (303.77s) |
+| `test (3.11)` | 92909909372 | 10m26s | ✅ **322 passed, 2 skipped** (300.96s) |
+
+Counts pulled from the job logs, not inferred from the ✓ — a green checkmark says the job exited
+zero, not what it ran. Both legs ran the randomized-order step and reported 322/2, matching all
+three local legs.
+
 Gates: `lint-imports` **6 kept / 0 broken** · ruff clean · annotation **0** · preflight PASS ·
 `wo029_reverify_partition` **PASS 31/31** · `git status --porcelain evidence/` empty.
 
