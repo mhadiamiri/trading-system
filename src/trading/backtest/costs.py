@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, TYPE_CHECKING
 from enum import Enum
 
+from trading.execution import fee_schedule
 from trading.execution.costs import compute_execution_costs
 
 # Avoid circular import
@@ -75,10 +76,30 @@ class CostModel:
         - Taker fees for momentum strategy crossing spread
     """
 
-    # Default parameters (configurable)
-    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side (observed)
+    # ── WO-052 §3 (D51 ruling 4a): THE SECOND FEE SITE, ROUTED ────────────────────────────────
+    #
+    # THE DEFECT THIS CLOSES — TWICE OVER. Until WO-052 this class carried
+    # `DEFAULT_FEE_RATE_PCT = Decimal("0.1")` and `DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")`,
+    # which was:
+    #
+    #   (a) AN UNCITED FEE. WO-051 cited Kraken's published schedule and routed
+    #       `PaperExecutionClient`, leaving this site at 0.1% — 8x below the cited 0.80% and
+    #       sourced to nothing. The two cost models that WO-011 unified into ONE ruled
+    #       implementation had drifted apart again, at their defaults rather than their arithmetic.
+    #
+    #   (b) THE WO-048 IDENTICAL-CHANNELS COINCIDENCE, STILL ALIVE. `0.1` is a PERCENT and
+    #       `0.001` is a FRACTION — the same 0.001 of notional. WO-050 fixed exactly this bug in
+    #       `PaperExecutionClient` and guarded it there; the guard's scope is why it survived here
+    #       for two more work orders. Two channels that always agree cannot be told apart, and a
+    #       real divergence between them is invisible.
+    #
+    # Both halves are fixed the same way WO-050/WO-051 fixed the paper venue: the FEE is a lookup
+    # from the cited schedule at the declared tier, and SLIPPAGE is the corpus-measured 1 bp. The
+    # slippage figure is REUSED, NOT RE-DERIVED (§3.3) — it is anchored to 50,000 frames of
+    # corpus_20260805 and is already evidence-backed.
+    DEFAULT_FEE_RATE_PCT = fee_schedule.taker_pct()  # PERCENT of notional -> Tier 1 taker, 0.80%
     # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - use calculate_costs_from_market_state()
-    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # Linear slippage factor (ASSUMED CONSTANT - WO-008a-R5)
+    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.0001")  # FRACTION of notional -> 0.01% (1 bp), measured
 
     def __init__(
         self,
@@ -89,8 +110,10 @@ class CostModel:
         Initialize cost model.
 
         Args:
-            fee_rate_pct: Taker fee rate as % of notional (default 0.1%)
-            slippage_factor: Linear slippage factor (default 0.001)
+            fee_rate_pct: Taker fee rate as % of notional. Defaults to the CITED Kraken Pro
+                spot taker rate for the declared tier (see trading.execution.fee_schedule).
+            slippage_factor: Constant slippage fraction of notional. Defaults to the
+                corpus-measured 1 bp (WO-050 §4).
 
         Note:
             spread_pct parameter REMOVED (T028): No synthetic spread allowed.

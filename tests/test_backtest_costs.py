@@ -61,8 +61,16 @@ class TestCostModel:
         costs = self.cost_model.calculate_costs_from_market_state(
             side=Side.BUY, size=Decimal("1.0"), market_state=ms
         )
-        # BUY executes at ask; fees = executed notional * rate (0.1%).
-        expected_fees = Decimal("1.0") * ms.best_ask * (Decimal("0.1") / Decimal("100"))
+        # BUY executes at ask; fees = executed notional * rate.
+        #
+        # ⚠ WO-052 §3.5: the rate is READ FROM THE MODEL, not written as a literal. This line used
+        # to say `Decimal("0.1")`. Re-pinning it to the new number would recreate exactly the
+        # uncited constant this WO removes — and would go stale again the next time the cited
+        # schedule changes. What this test asserts is the ARITHMETIC (notional x rate), which is
+        # what it was always for; the rate itself is pinned to its citation in
+        # `test_fee_default_sites.py`.
+        expected_fees = (Decimal("1.0") * ms.best_ask
+                         * (CostModel.DEFAULT_FEE_RATE_PCT / Decimal("100")))
         assert costs.fees == expected_fees, f"Fees {costs.fees} != expected {expected_fees}"
         assert costs.fees > 0, "Every trade must incur a fee"
 
@@ -75,14 +83,22 @@ class TestCostModel:
 
         Fees are charged on the executed notional (BUY at ask, SELL at bid).
         """
-        # (side, size, bid, ask, expected_fees) — executed price is ask/bid.
+        # (side, size, bid, ask, executed_price) — executed price is ask for BUY, bid for SELL.
+        #
+        # ⚠ WO-052 §3.5: these cases used to carry hard-coded expected fees (30.00, 70.00, 125.00)
+        # computed at the old 0.1%. They are now DERIVED from the executed notional and the model's
+        # routed rate. The test's subject is fee ACCURACY against a manual calculation, and that is
+        # preserved exactly; only the stale literals are gone. The rate is pinned to its citation
+        # in `test_fee_default_sites.py`.
+        rate = CostModel.DEFAULT_FEE_RATE_PCT / Decimal("100")
         test_cases = [
-            (Side.BUY, Decimal("0.5"), "59999.00", "60000.00", Decimal("30.00")),
-            (Side.SELL, Decimal("1.0"), "70000.00", "70001.00", Decimal("70.00")),
-            (Side.BUY, Decimal("2.5"), "49999.00", "50000.00", Decimal("125.00")),
+            (Side.BUY, Decimal("0.5"), "59999.00", "60000.00", Decimal("60000.00")),
+            (Side.SELL, Decimal("1.0"), "70000.00", "70001.00", Decimal("70000.00")),
+            (Side.BUY, Decimal("2.5"), "49999.00", "50000.00", Decimal("50000.00")),
         ]
 
-        for side, size, bid, ask, expected_fees in test_cases:
+        for side, size, bid, ask, executed_price in test_cases:
+            expected_fees = size * executed_price * rate
             costs = self.cost_model.calculate_costs_from_market_state(
                 side=side, size=size, market_state=self._ms(bid, ask)
             )
@@ -195,9 +211,13 @@ class TestCostModel:
         # Manual calculation mirroring the ruled model exactly.
         executed_price = ms.best_ask  # BUY fills at ask
         notional = size * executed_price
-        manual_fees = notional * Decimal("0.1") / Decimal("100")
+        # ⚠ WO-052 §3.5: rates read from the model, not written as literals (was 0.1 / 0.001 —
+        # which were also the WO-048 identical-channels pair). The point of this test is that a
+        # hand-written formula reproduces the system EXACTLY; that is unchanged and is now
+        # independent of what the rates happen to be.
+        manual_fees = notional * CostModel.DEFAULT_FEE_RATE_PCT / Decimal("100")
         manual_spread = (ms.spread / Decimal("2")) * size  # attribution
-        manual_slippage = notional * Decimal("0.001")      # constant, no volume term
+        manual_slippage = notional * CostModel.DEFAULT_SLIPPAGE_FACTOR  # constant, no volume term
         manual_total = manual_fees + manual_slippage       # ruled: spread excluded
 
         assert costs.fees == manual_fees, f"fees {costs.fees} != {manual_fees}"

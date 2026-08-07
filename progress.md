@@ -3282,6 +3282,53 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-052 — ⛔ THE GIT WITNESS DOES NOT EXIST; every fee site routed; documented path restored**
+(2026-08-07)
+
+**§1 STOP — RULING 2 CANNOT BE CLOSED AS WRITTEN.** `/captures/` is **gitignored by deliberate
+policy** (WO-042 §2.3 — capture data must not enter history it could never be removed from).
+**Zero corpus files are tracked, in any commit, in all of history** — confirmed four ways
+(`git ls-files` empty, `git log --all -- captures/` 0 commits, `captures/` absent from `HEAD^{tree}`,
+no deletion commit). There are no blobs to compare; the remedy is **unexecutable, not failed.**
+
+**A STRONGER WITNESS EXISTS AND VERIFIES.** `CORPUS_MANIFEST.json` carries per-segment SHA-256 with
+`hashed_at_capture=true`, written by `trading.data.corpus.sha256_file` — committed code, in the tree
+it certifies, exactly as the new standing rule demands. `tools/corpus_verify.py`: **38/38 segments
+match, 0 mismatched, 0 missing.** Better than the git log asked for: per-segment (a failure names the
+file) and dated from CAPTURE (covers each byte from when it was written). Honest limit: it does not
+prove the manifest itself is unaltered.
+
+**The ruled provenance line was NOT recorded verbatim** — its middle clause ("witnessed by git") is
+false, and §1 also asks to write into the ratified read-only corpus, which would change the v1 digest
+§5 requires unchanged. Recorded in `docs/decisions/` with the clause corrected. **Lead ruling needed.**
+
+**⚠ CORRECTION TO WO-051:** its report cited `git status --porcelain` on the corpus returning empty as
+corroboration of invariance. **That was not evidence** — an ignored path always reports clean. New
+specimen: **an empty result from a query that cannot fail is not evidence.** The invariance claim
+still holds on better grounds (v1 `e3ab1aec…` identical, 38/38 capture hashes).
+
+**§3 4a — 10 FEE SITES ENUMERATED, NOT TWO** (§0.11). `CostModel` carried an **uncited 0.1% fee (8×
+below the cited 0.80%)** *and* the WO-048 identical-channels coincidence still alive — `0.1` percent
+and `0.001` fraction are the same 0.001 of notional. Both routed/fixed. Also found: a **dead
+`EXECUTION_FEE_RATE_PCT` knob** in `.env.example` implemented nowhere, and **four stale 0.1%
+declarations in the frozen walking-skeleton spec (FR-017)** — reported, not edited; lead rules.
+
+The new guard **discovers** sites by AST-walking `src/` and reconciles against a declared registry, so
+a new unrouted default fails by name. Bite proof **PASS**: BITE names `[CostModel]`; **NECESSITY —
+with the defect present and the guard at its pre-WO-052 scope, the per-site check goes SILENT.** That
+silence is what a green build looked like for two work orders. Dual empty in all four artifacts.
+Predicted churn was "five test files"; actual was **one file, three tests**, each rewritten to derive
+the rate rather than re-pin a literal.
+
+**§4 4b — DOCUMENTED PATH RESTORED.** `websockets>=12.0` added to `[project.dependencies]`;
+`uv pip install -e ".[dev]"` alone now collects **457 tests, 0 errors** (was 13 errors). Enumeration
+also found **`psutil`** missing from `[dev]`; `tomli` correctly absent (guarded pre-3.11 fallback).
+
+455/2 both interpreters, both orders (445 + 10 new); the 3.11 legs ran in the documented-path venv.
+Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31. Corpus v1
+`e3ab1aec…` unchanged. Report: `WO-052-REPORT.md`.
+
+---
 ▶ **WO-051 — CITE THE FEE: THE DECLARED 0.26% WAS WRONG BY 3.08×** (2026-08-07)
 
 Kraken's **published Tier 1 spot taker rate is 0.80%**, not the 0.26% declared as engineering

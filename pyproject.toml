@@ -9,6 +9,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
     "httpx>=0.25.0",
+    # WO-052 §4: `websockets` is imported by src/trading/data/adapters/ and 13 test modules, but
+    # was declared ONLY in requirements.txt. A venv built the documented way —
+    # `uv pip install -e ".[dev]"` — therefore failed collection with 13 errors, so the
+    # DOCUMENTED ACCEPTANCE PATH DID NOT WORK. It is a runtime dependency of `src/`, not a dev
+    # one. Constraint matches requirements.txt exactly; the two must not drift again.
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +29,11 @@ dev = [
     # deterministic; randomization is invoked explicitly with -p randomly.
     "pytest-randomly>=3.15.0",
     "mypy>=1.6.0",
+    # WO-052 §4.3: the same drift, found by enumerating rather than assuming. `psutil` is required
+    # by tools/live_corpus_capture.py and tools/measure_real_loop_baseline.py to record real load
+    # (WO-043 grant condition 1) and was declared only in requirements-dev.txt. It fails LOUDLY
+    # (LOAD_SENSOR_UNAVAILABLE) rather than at collection, which is why it went unnoticed longer.
+    "psutil>=5.9.0",
 ]
 
 [build-system]
