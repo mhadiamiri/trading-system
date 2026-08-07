@@ -473,6 +473,28 @@ unchanged (§5, snapshotted before any work and re-verified at close).
 
 **Gates:** `lint-imports` 6 kept / 0 broken · ruff clean.
 
+**Test count — UNCHANGED from base, as an investigation-only WO requires:**
+
+| Leg | Interpreter | Result |
+|---|---|---|
+| dev | 3.14.6 | **322 passed, 2 skipped** (308.94s) |
+| acceptance | 3.11.15 (throwaway uv venv) | **322 passed, 2 skipped** (308.37s) |
+
+### CI — the real run on this commit
+
+**Commit `4089d33`** (pushed `592e19e..4089d33`) · **CI run `31196540536`** · triggered via push.
+
+| Job | ID | Duration | Result |
+|---|---|---|---|
+| `test (3.14)` | 92926002931 | 10m36s | ✅ **322 passed, 2 skipped** (302.36s) |
+| `test (3.11)` | 92926002835 | 10m35s | ✅ **322 passed, 2 skipped** (301.00s) |
+
+Counts pulled from the job logs, not inferred from the ✓. Both legs report 322/2 — **identical to
+base**, which is the correct outcome for a WO that wrote no code.
+
+The commit contains exactly two files (`WO-047-INVESTIGATION-REPORT.md`, `instructions.md`) and
+**no `src/`** — verified with `git show --stat --name-only`.
+
 ---
 
 ## EVERY ATTEMPT
