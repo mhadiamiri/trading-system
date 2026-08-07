@@ -3341,12 +3341,55 @@ skipped both legs** — CI run **`31048238985`**, jobs `test (3.14)` 92448982091
 Non-blocking CI annotation: the v3 checkout/setup-python/codecov actions target Node 20 and are
 being forced onto Node 24 (deprecation, not failure).
 
-**§5 NOT BEGUN — ONE BLOCKER REMAINS:** the **OPERATOR PREREQUISITE** — the shutdown policy must be
-DISABLED and confirmed — is UNCONFIRMED. It already cost two runs (`20260729044021` ~2h37m and
-`20260730152029` ~3h55m, both killed with every frame on disk and no manifest). **Do not launch
-until confirmed.** Also required at launch: **`DATA_SOURCE=kraken_v2`** (`.env` ships `simulated`,
-which killed run `20260730151934` instantly). Grant expiry read as **2026-08-19** (14 days from the
-instruction file's timestamp) — flagged for confirmation, not asserted.
+**§5 — THE CORPUS IS COMPLETE. 36.8867 COVERED HOURS / 24 target, 2 runs, 1 seam, fully
+provenanced.** Operator prerequisite CONFIRMED (shutdown policy disabled) and grant expiry CONFIRMED
+(2026-08-19); both are now first-class preflight conditions that can go RED ([3.9]/[3.10]).
+
+| Run | Covered | Segments | Gaps | Terminal | Incomplete | Ended by |
+|---|---|---|---|---|---|---|
+| `20260805220327` | 12.8981 h | 13 | 8 (19.337s) | 0 | 0 | clean venue close |
+| `20260806130401` | 23.9886 h | 25 | 11 (40.754s) | 0 | 0 | 24h deadline |
+| **TOTAL** | **36.8867 h** | **38** | **19 (60.09s)** | **0** | **0** | — |
+
+**3,847,540 frames.** All 38 segments `hashed_at_capture=True`; both runs `finalized=True`; both
+preflights all-green; `unfinalized_runs: []`; `open_seams: 0`; zero checksum failures.
+
+**ELAPSED vs COVERED (the definition made concrete):** elapsed 39.0094 h − in-run gaps 0.0167 h −
+seams 2.1061 h = **covered 36.8867 h**. Reconciliation delta 0.0001 h (rounding). **39.0 wall-clock
+hours were needed to bank 36.9 covered ones.**
+
+**SEAM 0** `PROCESS_RESTART`, TRUE duration **7581.835s = 2.1061 h**, both endpoints real frames
+(`20260805220327` last 10:57:46.081Z → `20260806130401` first 13:04:07.917Z). Cause established from
+evidence, not inferred: host uptime 1d23h with last boot BEFORE the run rules out `POLICY_SHUTDOWN`
+as fact; no operator intervened, ruling out `OPERATOR_STOP`.
+
+**Run 1's clean-close finding:** it ended at 12.9 h, not its deadline, and ended cleanly (no
+exception, `crash_artifact: ""`, full manifest, `run_end` with 0 incomplete). By elimination over
+`get_live_market_data`'s three exits, Kraken sent a normal-closure code and WO-014b-2 §1.3(4c) ends
+the capture without reconnecting — ruled behaviour, not a defect. **Both graceful paths were used,
+one per run** (clean close / deadline); the never-operated signal-stop path was deliberately NOT
+attempted while 11.6 unbanked hours were at stake (D24, lead-endorsed).
+
+**Causes exercised live:** `VENUE_DISCONNECT` (repeatedly) and `KEEPALIVE_RECONNECT` (once, 16.86 s
+— the longest gap, four orders of magnitude inside the 900 s breaker). The breaker never fired.
+
+**SUFFICIENCY IS THE LEAD'S RULING** (§5.4 / condition 5 / D-r13) against the real seam count of 1.
+No run was stretched or padded to hit a number; the overshoot is real data from letting run 2 end on
+a proven path.
+
+**⚠ TWO OPEN FINDINGS (neither affected this corpus; both warrant a follow-up WO):**
+1. **`captured_raw_text` is unbounded** (`kraken_v2_book.py:2956`) — every raw wire message is
+   retained for the life of the run. Measured ~35–48 MB/h; run 2 ended near ~1.6 GB private. Failure
+   captures ARE capped (`FAILURE_CAPTURE_CAPPED`) but this retention is not. A longer or
+   resume-heavy corpus would walk into it, and the failure mode is nasty: memory pressure → swapping
+   → event-loop starvation → `HEARTBEAT_ABSENCE`, i.e. a HOST problem recorded as a VENUE problem.
+2. **The clean-close reason is `logger.info`** and so is filtered out of a detached run's logs — the
+   single line explaining why run 1 ended was NOT in any log; the cause had to be derived from code
+   paths. For an unattended multi-day capture, the message that explains a termination must not be
+   the one that gets dropped.
+3. **`--progress` is a writer, not a reader** — it calls `reconcile()`, which saves
+   `CORPUS_MANIFEST.json`. There is no supported read-only way to query a LIVE corpus without a
+   write race against the running capture.
 
 ---
 

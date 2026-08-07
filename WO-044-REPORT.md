@@ -501,7 +501,83 @@ Auxiliary gates: `lint-imports` **6 kept / 0 broken** · `ruff` all checks passe
 
 ---
 
-## §5 — NOT BEGUN, AND WHY
+## §5 — RUN AND ACCUMULATE: **COMPLETE**
+
+**36.8867 COVERED hours against a 24-hour target, across 2 runs and 1 seam. Fully provenanced.**
+
+| Run | Covered | Segments | Gaps | Terminal | Incomplete | Ended by |
+|---|---|---|---|---|---|---|
+| `20260805220327` | 12.8981 h | 13 | 8 (19.337s) | 0 | 0 | clean venue close |
+| `20260806130401` | 23.9886 h | 25 | 11 (40.754s) | 0 | 0 | 24h deadline |
+| **TOTAL** | **36.8867 h** | **38** | **19 (60.09s)** | **0** | **0** | — |
+
+**3,847,540 frames.** Both runs `finalized=True`; both preflights all-green; **all 38 segments
+`hashed_at_capture=True`**; `unfinalized_runs: []`; `open_seams: 0`; zero checksum failures.
+
+### Elapsed vs covered — reconciled
+
+```
+  elapsed_wall_hours            39.0094 h   (NOT the target)
+    - excluded in-run gaps       0.0167 h
+    - excluded seams             2.1061 h
+  = cumulative_covered_hours    36.8867 h   <-- THE TARGET METRIC
+    target                      24.0000 h   remaining 0.0000 h   COMPLETE True
+```
+
+`36.8867 + 0.0167 + 2.1061 = 39.0095` vs elapsed `39.0094` — delta **0.0001 h**, 4-decimal
+rounding only. The identity holds, and it makes the definition concrete: **39.0 wall-clock hours
+were required to bank 36.9 covered ones.**
+
+### The seam
+
+```
+seam 0  cause=PROCESS_RESTART  reason_code=PROCESS_RESTART  resolved=True
+  20260805220327 last frame   2026-08-06T10:57:46.081498+00:00
+  20260806130401 first frame  2026-08-06T13:04:07.916842+00:00
+  TRUE duration 7581.835s = 2.1061 h  (EXCLUDED from coverage)
+```
+
+Both endpoints are real frames. The left bound was read off the prior run's last segment; the seam
+opened before the socket and closed on the first validated frame of the resume.
+
+### Run 1's termination — the cause, and how it was established
+
+Run 1 ended at 12.9 h, not at its 24 h deadline, and ended **cleanly**: no exception,
+`crash_artifact: ""`, full `MANIFEST.json`, `run_end` ledger record with 0 incomplete gaps.
+`get_live_market_data` has exactly three exits — the deadline (not reached), an exception (none),
+and `ConnectionClosedOK` -> `break` (`kraken_v2_book.py:2889`). **By elimination, Kraken closed with
+a normal-closure code (1000/1001)**, and WO-014b-2 §1.3(4c) rules that a clean venue close ends the
+capture without reconnecting. Ruled behaviour firing correctly, not a defect. (Kraken had already
+sent a `1012 service restart` at 07:01Z, which the adapter DID reconnect through in 3.28 s.)
+
+The seam cause was established from evidence, not inferred: host uptime was 1d23h with last boot
+2026-08-04T13:59Z — **before the run started** — which rules out `POLICY_SHUTDOWN` as fact; no
+operator intervened, ruling out `OPERATOR_STOP`; the process ended while the host stayed up, which
+is `PROCESS_RESTART` by its declared definition.
+
+### Both graceful paths were used, one per run
+
+Run 1 banked on a **clean venue close**; run 2 on its **24 h deadline** (23.9999 h elapsed). The
+lead endorsed using only these two proven paths rather than attempting a never-operated signal-based
+stop while 11.6 unbanked hours were at stake (D24). Neither run needed it.
+
+### Causes exercised in real conditions
+
+`VENUE_DISCONNECT` (repeatedly) and `KEEPALIVE_RECONNECT` (once, 16.86 s — the corpus's longest
+gap, and four orders of magnitude inside the 900 s breaker). The breaker never fired. The
+heartbeat-absence detector, whose 10 s threshold aborted a WO-043 attempt on 2026-07-29, here
+recovered a stalled link mid-run without ending the capture.
+
+### Sufficiency
+
+Per §5.4 / condition 5 / D-r13, sufficiency against the actual seam count is **the lead's ruling**.
+The facts: **36.8867 covered hours, 2 runs, 1 seam (`PROCESS_RESTART`), 19 gaps all resolved, 0
+terminal, 0 incomplete, all segments hashed at capture.** No run was stretched or padded to hit a
+number — the overshoot is real data produced by letting run 2 end on a proven path.
+
+---
+
+## §5 — ORIGINAL PRE-LAUNCH NOTE (preserved; superseded by the section above)
 
 §5.1 requires §3/§4 committed green with CI **before** capturing. Beyond that, the WO's stated
 **OPERATOR PREREQUISITE** — the security policy that shuts the machine down must be DISABLED and
