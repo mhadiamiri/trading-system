@@ -3282,6 +3282,51 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-048 — THE FIRST HONEST BACKTEST: APPARATUS PROVEN, P&L NOT YET TRUSTWORTHY** (2026-08-07)
+
+**Ran `BookImbalanceStrategy` over `corpus_20260805`**, full corpus, 3,847,530 frames, 21 segments,
+coverage 1.0. Pre-capture CI `31205003045` green both legs (338/2). Corpus digest `a025db1e…`
+UNCHANGED. Report: `WO-048-REPORT.md`.
+
+**THE NUMBER, REPORTED AS PRODUCED (§0.8/§7.5 — no parameter touched, no second run):**
+net +$719,848,078.54 on 3,498,075 trades. **It is not a P&L**, and the report says so at the top.
+
+**WHAT THE RUN PROVES — the apparatus, at corpus scale.** `first_trade_frame_index` ≥ 100 on ALL 21
+segments (19 × exactly 100, one 108, one 156): **no segment traded on data it could not have seen.**
+D20's anti-splice guarantee holding across 3.85 M real frames and 20 real discontinuities. Plus:
+force-flat on 21/21 segments, coverage 1.0 untruncated, 0 segments excluded, corpus never written.
+10 frames of the manifest's 3,847,540 were discarded — exactly the frames lying inside recorded gaps.
+
+**FOUR DEFECTS FOUND BY THE RUN, REPORTED NOT REPAIRED** (repairing and re-running after seeing the
+number is the hazard §0.8 exists to prevent):
+1. **R1 (MINE, this WO)** — force-flat zeroes the position with **no closing trade**, so U2 is
+   labelled but not economically executed and the P&L omits every segment's close. **My §6.1 bite
+   proof asserted the label, never the effect** — a proof gap, recorded as such.
+2. **R2 (pre-existing)** — `DeterministicRiskEngine.check` clamps ORDER size to `max_position_btc`
+   but never reads `current_state.current_quantity`, so position accumulates without limit
+   (738,510 trades in one segment). Touches **Principle VI**; needs a ruling.
+3. **R3 (pre-existing, self-declared)** — `gross_pnl` is unmatched cash flow (`report.py:104`:
+   "simplified for walking skeleton"), meaningless over 3.5 M unmatched trades.
+4. **R4** — fees and slippage numerically identical under default rates; two channels
+   indistinguishable in any output.
+
+**BUILT:** `BookState` (book-only type — no `last_price`/`total_volume`/`trade_count` attributes at
+all, so a fabricated price channel is unreadable rather than merely absent; `MarketState` untouched);
+`corpus_frames.py` (streaming loader, takes only a reader-issued `CorpusWindow`, cannot be pointed at
+raw files); `BookImbalanceStrategy`; `SegmentedBacktestRunner`. Four defect fixes: market time as the
+trade timestamp (D-a), the staleness guard's replay inertness declared (D-b), `max_events`
+explicit-or-all (D-c), the loader (D-d). Loader defect found mid-build: it would have **silently
+yielded zero frames** for an unresolvable segment — now refuses.
+
+**PRE-REGISTERED PARAMETERS (§0.8), fixed before the run and not revised after:** N=100 (the house
+100-sample convention), T=0.20 (round, untuned, one-fifth of the bounded [−1,+1] range),
+size=0.1 BTC, min eligible segment 1,000 frames (warm-up × 10).
+
+**⚠ DEFERRED, NOT DROPPED:** `TrivialMomentumStrategy`'s evaluation is **blocked on a trade-channel
+re-capture** — `corpus_20260805` is top-of-book and carries no `last_price`/`total_volume`/
+`trade_count` (WO-047 FINDING A, ruled U1). It returns when a corpus with a trade channel exists.
+
+---
 ▶ **WO-044 — RESUMABLE 24-HOUR CORPUS: §2/§3/§4 COMPLETE, §5 NOT BEGUN** (2026-08-05)
 
 **Base HEAD:** `0425ec6` (WO-043). **SHIP IMPACT: YES.** Report: `WO-044-REPORT.md`.
