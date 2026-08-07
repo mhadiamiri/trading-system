@@ -1,132 +1,140 @@
-# WO-049 — RISK LAYER: `max_position_btc` IS THE AGGREGATE POSITION CAP. Full risk-layer discipline.
+# WO-050 — BACKTEST ACCOUNTING: R1 the missing close, R3 real P&L, R4 distinct cost channels.
 #
-# D49: "A limit that bounds each order but not the position is not a position limit; it's a rate
-# limiter wearing one's name." Defect present since the risk engine was built, green through every
-# prior run — made visible only by a strategy firing on 90.9% of 3.85M real frames.
+# Then the second run. The WO-048 number stands on the record, unsuperseded (D49).
 
-BASE: HEAD `6e1586f` (WO-048 run) — confirm in §1.
-SCOPE: the aggregate-position clamp and its bite proofs. Commit green, STOP. **Does NOT re-run the
-backtest** (that follows the accounting WO).
-SHIP IMPACT: **YES — RISK LAYER.** Full discipline. This is the layer that exists to say no.
-
-**The risk layer never contains AI. Deterministic code only. No heuristics, no adaptive thresholds.**
+BASE: HEAD `2fff566` (WO-049, CI green run 31210060300, 424 tests). Confirm in §1.
+SCOPE: §2 R1; §3 R3; §4 R4; §5 three record items; §6 bite proofs; **§7 the second run**.
+SHIP IMPACT: **YES.** Full discipline. Build + CI green BEFORE the run.
+**`corpus_20260805` READ ONLY — digest `a025db1e…` identical at close.**
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
 0.3 Fail-then-pass bite proofs, four artifacts, sha256 exact-restore, discriminating mutations.
-0.4 **Preservation duals mandatory, and in the risk layer they are the DANGEROUS half.** A guard that
-    refuses everything looks correct and is catastrophic. See §4.2.
+0.4 Preservation duals mandatory, local and direct.
 0.5 Report every attempt.
-0.6 AUTO MODE OFF — risk-layer production edit.
-0.9 **ASSERT THE ECONOMIC EFFECT, NOT THE EVENT RECORD (D49, ratified this WO's cycle).** In any
-    economic path the observable effect is the LEDGER CONSEQUENCE — the clamped quantity actually
-    applied, the resulting position, the veto that prevented a fill — never the log line or the
-    decision object announcing it. **A log line is a claim; the ledger is the effect.** WO-048's
-    §6.1 proof checked a label and missed a missing trade; do not repeat it here.
-0.7 **BUILT-VS-OPERATED (D24).**
-
-    | Thing | Status | Where |
-    |---|---|---|
-    | `risk_engine.check()` pass/clamp/veto | **OPERATED — DEFECTIVE** | clamps ORDER SIZE, never reads `current_state.current_quantity` |
-    | clamp-only-reduces-toward-zero invariant | **OPERATED** | must continue to hold — §3.3 |
-    | Reason-code vocabulary (declared ⇒ producible) | **OPERATED** | reuse existing codes if they fit; the guard has bitten repeatedly and been right |
-    | The aggregate-position clamp | **THIS WO IS THE BUILDER** | §3 |
+0.6 AUTO MODE OFF.
+0.8 **PRE-REGISTRATION STILL BINDS.** The strategy parameters (N, T, size) are UNCHANGED from WO-048
+    and are not revisable. This WO fixes ACCOUNTING, not the strategy. **After the §7 run you may not
+    revise anything and re-run** — if the number is bad, that is the number.
+0.9 **ASSERT THE ECONOMIC EFFECT, NOT THE EVENT RECORD (D49).** In an economic path the observable
+    effect is the LEDGER CONSEQUENCE — the trade, the cost, the position change — never the log line
+    or event object announcing it. **A log line is a claim; the ledger is the effect.** R1 exists
+    because a proof checked a label; do not repeat it.
+0.10 **A DISCRIMINATION SET CONTAINS ONLY SINGLE-PURPOSE TESTS** (WO-049's finding). A test
+    exercising both halves fails under either mutation and attributes nothing. Broad/contract tests
+    are excluded from discrimination sets, and the exclusion is recorded IN the proof.
 
 ---
 
-## §1 CONFIRM STATE + READ THE ENGINE
-HEAD, test count both interpreters, `git diff -- src/` clean, all gates, corpus digest snapshotted
-(`a025db1e…` — this WO must not touch it).
-
-Paste `check()` in full with line numbers, plus `PositionState`/`current_quantity`'s definition and
-every existing clamp/veto reason code. **State exactly where the size clamp is and confirm from the
-code that `current_quantity` is never read** — the finding, re-derived at HEAD rather than inherited.
+## §1 CONFIRM STATE
+HEAD, 424 both interpreters, `git diff -- src/` clean, all gates, corpus digest snapshotted.
 
 ---
 
-## §2 THE MEANING, AS RULED (D49 — do not relitigate)
-`max_position_btc` is the **AGGREGATE POSITION CAP**. Not a per-order cap. An order is evaluated
-against the position it would PRODUCE, not against its own size.
+## §2 R1 — FORCE-FLAT MUST EXECUTE AN ECONOMIC CLOSE (ratified D49)
+Today force-flat zeroes the position with **no closing trade** — U2 is labelled but never
+economically executed, so the P&L omits every segment's close.
+
+2.1 At every segment boundary the flatten is **a real fill**: costed through
+    `compute_execution_costs`, at the **boundary frame's market** (its bid/ask/spread), **timestamped
+    in market time** (the frame's timestamp — D-a, already ruled), on the correct side to reduce the
+    position to zero.
+2.2 It appears in the trade ledger like any other trade and is **labelled** as a boundary close, so
+    it is attributable but not excluded.
+2.3 Prove the ledger consequence: after every boundary, position == 0 **and a closing trade exists
+    with non-zero cost**. Asserting the flatten event is NOT sufficient (0.9).
 
 ---
 
-## §3 BUILD
-3.1 `check()` reads `current_state.current_quantity` and evaluates the **RESULTING** position:
-    `resulting = current_quantity ± order_quantity` (signed per side).
-3.2 **Clamp to exactly the remaining headroom.** If the resulting position would exceed the cap, the
-    order is clamped so the resulting position equals the cap exactly — not rejected wholesale, not
-    clamped to the per-order limit. At **zero headroom**, VETO.
-3.3 **CLAMP-ONLY-REDUCES-TOWARD-ZERO MUST HOLD THROUGHOUT.** The clamp may only make an order
-    smaller in the direction of increasing exposure. It must never increase an order, never flip a
-    side, never turn a reducing order into an increasing one. State how you guarantee this and prove
-    it (§4.3).
-3.4 **Reason codes:** reuse existing clamp/veto codes if they fit; if a new one is genuinely needed,
-    declare it properly (producible, prefix-free). State which you used and why.
-3.5 Deterministic only. No adaptive sizing, no heuristics.
+## §3 R3 — POSITION-AWARE P&L (ratified D49)
+`gross_pnl` is the walking-skeleton unmatched cash-flow figure — honest at 5 trades, meaningless at
+3.5M. Replace it.
+
+3.1 Implement real position-aware accounting. **DECLARE WHICH: average-cost or FIFO.** State the
+    choice and why. Either is acceptable; leaving it ambiguous is not.
+3.2 Realised vs unrealised must be distinguishable. With U2 force-flat every segment ends flat, so
+    **segment-end unrealised must be exactly zero** — assert it; a non-zero residual means the close
+    did not execute (which R1 just fixed, so this is R1's independent check).
+3.3 Net P&L = realised P&L − total costs, with fees and slippage attributed separately.
+3.4 Keep the old figure available under an unambiguous name if useful for comparison, but the
+    reported P&L is the new one. **Do not silently rename** — if the old key is removed, remove it
+    loudly (the WO-045 precedent: a stale reader gets a KeyError, not a wrong number).
 
 ---
 
-## §4 BITE PROOFS — BOTH HALVES IN ONE TEST (S13), ECONOMIC EFFECT ASSERTED (0.9)
-
-4.1 **REFUSAL HALF.** With a position below the cap, an order that would carry the aggregate PAST it
-    is clamped to **exactly the remaining headroom** — assert the RESULTING POSITION equals the cap,
-    not that a clamp event was logged. At **zero/full headroom**, the order is VETOED and **no fill
-    occurs** — assert the ledger, not the decision object.
-
-4.2 **PRESERVATION HALF — THE DANGEROUS ONE (D49, the S13 analog; state it in the test's docstring).**
-    **At or beyond the cap, an order that REDUCES the position toward zero MUST STILL PASS, unclamped.**
-    A position limit that traps you in a position is the over-blocking nightmare in risk-layer
-    clothing — it would prevent the system from ever getting flat, which is strictly more dangerous
-    than the accumulation bug it replaces. Prove: at exactly the cap, and beyond it, a reducing order
-    passes at full size and the resulting position moves toward zero.
-
-4.3 **CLAMP-ONLY-REDUCES-TOWARD-ZERO.** Prove the clamp never increases an order, never flips a
-    side, never converts a reducing order into an increasing one. Include the beyond-cap case (a
-    position somehow above the cap — from a config change or a prior state — must still be reducible).
-
-4.4 **NECESSITY MUTATION.** Revert `check()` to the per-order clamp (ignore `current_quantity`) →
-    4.1 fails, 4.2 still passes. That asymmetry proves the aggregate check is doing the work and not
-    something adjacent. Then a SECOND mutation: make the clamp refuse ALL orders at the cap →
-    **4.2 fails**, proving the preservation half discriminates over-blocking. Two mutations, each
-    failing a different half.
-
-4.5 **THE WO-048 CONDITION, REPRODUCED.** A regression test driving the accumulation pattern that
-    produced 738,510 trades in one segment: repeated same-side 0.1 BTC orders against a fixed cap.
-    Assert the position **plateaus at the cap** and never exceeds it. This is the condition the
-    fixtures never reached and the corpus did — pin it so it can never return.
-
-Four artifacts each, sha256 exact-restore.
+## §4 R4 — DISTINCT COST CHANNELS (ratified D49)
+Fees and slippage are numerically identical under the default rates (22,572,628.06 each), making two
+channels indistinguishable and able to mask each other's divergence.
+4.1 Give them **distinct default rates**, stated with derivation (a realistic taker fee vs a
+    realistic slippage assumption — say where each comes from).
+4.2 **A permanent test asserting fees ≠ slippage under defaults.** Cheap, permanent, and it prevents
+    the coincidence returning silently.
+4.3 This changes the cost model's DEFAULTS, not its arithmetic — `compute_execution_costs` stays the
+    one implementation, reconciled to the cent. Confirm the WO-011 reconciliation still holds.
 
 ---
 
-## §5 SCOPE FENCE
-- Risk layer only. Does NOT touch R1/R3/R4 (the accounting WO).
-- Does NOT re-run the backtest. **The WO-048 number stands on the record, unsuperseded (D49).**
-- Does NOT touch `corpus_20260805`.
-- Does NOT change the strategy or its declared parameters.
+## §5 THREE RECORD ITEMS (small, but they close open loops)
+5.1 **The D49 decision doc, if not yet written:**
+    `docs/decisions/2026-08-07-a-bite-proof-asserts-the-economic-effect.md` — *a bite proof must
+    assert the ECONOMIC EFFECT, not the EVENT RECORD.* Lineage: D-r16 said proofs terminate in
+    observable effects; this proof was written AFTER that rule and still checked the label, because
+    an event record is technically observable. **In an economic path the observable effect is the
+    ledger consequence — the trade, the cost, the position change — never the log line announcing
+    it. A log line is a claim; the ledger is the effect.**
+5.2 **The WO-049 discrimination-set finding:**
+    `docs/decisions/2026-08-07-a-discrimination-set-holds-only-single-purpose-tests.md` — a test
+    exercising both halves fails under either mutation and therefore attributes nothing. Specimen:
+    WO-049's first run, where neither mutation discriminated because the S13 contract test and the
+    70-case sweep sat in the discriminating sets. Broad tests prove the contract; only
+    single-purpose tests attribute a failure. Record that the exclusion belongs IN the proof.
+5.3 **Annotate the stale `DesiredPosition` docstring** (D47 form — annotate at the site, do not
+    rewrite). It declares `quantity < 0 if side == SELL`; `check()` vetoes `quantity <= 0`, so a SELL
+    obeying the docstring is rejected as invalid input. Actual convention: **quantity is an UNSIGNED
+    MAGNITUDE; `side` carries direction.** Annotate, naming what the stale form would cause. Grep for
+    other sites carrying the signed-quantity claim and annotate each; report the full list (third
+    document-vs-code contradiction in this family — *detail reads as authority*).
 
-## §6 ACCEPTANCE
-- `check()` evaluates the resulting position; clamps to exact remaining headroom; vetoes at zero
-- Clamp-only-reduces-toward-zero holds and is proven, including beyond-cap
-- Bite proofs 4.1–4.5, both halves in one test, **economic effect asserted**, two discriminating
-  mutations, four artifacts each, sha256 exact-restore
-- Reason codes declared/reused correctly
-- Test count with arithmetic, both interpreters, both orders
-- lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition
-- `risk/engine.py` before/after sha256; corpus digest unchanged
-- Commit, push, **CI green both legs — real run number, counts from the job logs**
+---
 
-## §7 REPORT — `WO-049-REPORT.md`
-`check()` before/after with the finding re-derived at HEAD; the clamp mechanism and how
-reduces-toward-zero is guaranteed; all bite proofs verbatim with sha256 and both mutations; the
-§4.5 regression; reason codes; hashes; CI; every attempt; any STOP.
+## §6 BITE PROOFS (four artifacts each, sha256 exact-restore; 0.9 and 0.10 apply)
+6.1 **R1 — the close exists and costs money.** BITE: a segment ending with an open position produces
+    a closing trade with non-zero cost, position 0, timestamped at the boundary frame's market time.
+    DUAL: a segment ending already flat produces NO spurious close. MUTATION: revert to zeroing the
+    variable → the bite fails (no trade), the dual passes.
+6.2 **R3 — the P&L is position-aware.** BITE: a buy-then-sell round trip yields the correct realised
+    P&L under the declared method, and segment-end unrealised == 0. MUTATION: revert to unmatched
+    cash-flow → the bite fails on a case where the two differ.
+6.3 **R4** — the fees ≠ slippage assertion (4.2).
+Use single-purpose tests in the discrimination sets (0.10); record any exclusions in the proof.
 
-**Record note for the log (D49):** this defect existed since the risk engine was built and was
-certified green through every prior run. It took the corpus — a strategy firing on 90.9% of 3.85M
-real frames — to make accumulation-without-limit visible. **The corpus produced conditions the
-fixtures never reached.** That is what it is for.
+---
 
-**THEN STOP.** Next: the accounting WO (R1 closing trade, R3 position-aware P&L, R4 distinct cost
-rates), then the second run.
+## §7 THE SECOND RUN — only after §1–§6 committed and CI GREEN both legs
+7.1 Commit, push, **CI green both legs (real run number, counts from job logs)** before running.
+7.2 Run `BookImbalanceStrategy` over `corpus_20260805`, full corpus, **parameters unchanged from
+    WO-048** (0.8). Same strategy, same data, fixed accounting.
+7.3 Report with the WO-048 header (which strategy, why not the trivial one, citing D48) PLUS:
+    - the full metric statement (36.8867 h, N segments, flat at every boundary, gaps and seam excluded);
+    - per-segment results AND the declared aggregate, with U5's dependency stated (the sum is
+      meaningful **only because** U2 makes every segment start and end flat);
+    - realised P&L, fees, slippage, spread attribution, trade count, boundary closes as a distinct
+      line, position plateau behaviour under the new cap;
+    - **an explicit before/after against WO-048's number**, with each defect's contribution
+      attributed as far as it can be. The first number is NOT superseded — it is the record of what
+      this apparatus produced under those defects.
+7.4 **Whatever the number is, report it.** Do not revise and re-run (0.8).
+
+## §8 ACCEPTANCE
+R1/R3/R4 implemented; three record items landed; bite proofs 6.1–6.3 with single-purpose
+discrimination sets; CI green before the run; parameters unchanged; corpus digest identical; the §7.3
+report complete with the before/after attribution; all gates; test count with arithmetic.
+
+## §9 REPORT — `WO-050-REPORT.md`
+The three fixes; the declared P&L method and cost-rate derivations; the annotation grep list; all
+bite proofs verbatim with sha256; **the second number** with its before/after attribution; every
+attempt; any STOP; CI run.
+
+**THEN STOP.** This is the first meaningful strategy verdict this project has produced.

@@ -43,6 +43,7 @@ import dataclasses
 from decimal import Decimal
 from typing import Callable, Dict, List, Optional
 
+from trading.backtest.position_pnl import PositionLedger
 from trading.data.corpus_frames import count_window_frames, iter_segment_frames
 from trading.data.corpus_reader import Acknowledge, CorpusWindow
 from trading.execution.interface import ExchangeClient
@@ -186,11 +187,17 @@ class SegmentedBacktestRunner:
             unrealized_pnl=Decimal("0"), realized_pnl=Decimal("0"), daily_pnl=Decimal("0"),
         )
 
+        # WO-050 §3 (R3): position-aware AVERAGE-COST accounting replaces the unmatched cash-flow
+        # figure. `ledger` is the economic truth; `position` below is kept only as the risk engine's
+        # input, and the two are reconciled at the boundary.
+        ledger = PositionLedger()
+
         trades: List[Dict] = []
         boundary_events: List[Dict] = []
         frames_processed = 0
         first_tick_skipped = False
         first_frame_utc = last_frame_utc = None
+        last_state = None                    # the boundary frame: R1 closes at ITS market
         # WO-048 §6.1: WHEN the segment first traded, and how many frames in. This is the
         # OBSERVABLE that distinguishes a cold segment from one carrying leaked state: a genuinely
         # fresh strategy cannot trade until it has warmed on THIS segment's own data, so an early
@@ -205,6 +212,7 @@ class SegmentedBacktestRunner:
             if first_frame_utc is None:
                 first_frame_utc = state.timestamp
             last_frame_utc = state.timestamp
+            last_state = state
             frames_processed += 1
 
             # U4: the FIRST tick of every segment is OBSERVATION-ONLY. The strategy still SEES it
@@ -237,27 +245,58 @@ class SegmentedBacktestRunner:
                 kill_switch_engaged=False,
             )
             trades.append(fill)
+            ledger.apply_fill(fill)
             if first_trade_utc is None:
                 first_trade_utc = state.timestamp
                 first_trade_frame_index = frames_processed
             position = self._apply_fill(position, fill)
 
-        # U2: FORCE-FLAT AT THE BOUNDARY, unconditionally, as a LABELLED EVENT.
+        # ── U2 + WO-050 §2 (R1): FORCE-FLAT EXECUTES A REAL ECONOMIC CLOSE ────────────────────
+        #
+        # THE DEFECT THIS CLOSES. This previously did `dataclasses.replace(position,
+        # current_quantity=0)` — it zeroed the variable and executed NO TRADE. U2 was labelled but
+        # never economically executed, so the P&L omitted the cost and proceeds of closing all 21
+        # segments of WO-048's run. The bite proof asserted the EVENT and missed the missing trade,
+        # which is the specimen behind D49 ("a log line is a claim; the ledger is the effect").
+        #
+        # The flatten is now a REAL FILL: priced by `compute_execution_costs` at the BOUNDARY
+        # FRAME's own bid/ask/spread, stamped in MARKET time (D-a), on the side that reduces the
+        # position to zero. It enters the trade ledger like any other trade, LABELLED so it is
+        # attributable — but never excluded, because excluding it would be the same omission in a
+        # different disguise.
         flatten = None
-        if position.current_quantity != 0:
+        if position.current_quantity != 0 and last_state is not None:
+            qty = abs(position.current_quantity)
+            close_side = "SELL" if position.current_quantity > 0 else "BUY"
+
+            self._execution_client.set_market_state(last_state)
+            close_fill = await self._execution_client.place_order(
+                symbol="BTC/USD", side=close_side, size=float(qty), price=0.0,
+                kill_switch_engaged=False,
+            )
+            close_fill["boundary_close"] = True        # attributable, not excluded
+            trades.append(close_fill)
+            ledger.apply_fill(close_fill, is_boundary_close=True)
+            position = self._apply_fill(position, close_fill)
+
             flatten = {
                 "event": "SEGMENT_CLOSE_FORCE_FLAT",
                 "segment_index": index,
                 "utc": last_frame_utc.isoformat() if last_frame_utc else None,
-                "quantity_flattened": str(position.current_quantity),
+                "quantity_flattened": str(qty),
+                "close_side": close_side,
+                # THE LEDGER CONSEQUENCE, recorded alongside the label so the two cannot drift:
+                "close_fill_price": str(close_fill["fill_price"]),
+                "close_fill_timestamp": close_fill["timestamp"],
+                "close_cost": str(close_fill["total_cost"]),
                 "detail": (
-                    "position force-flattened at segment end (U2, no duration threshold). "
-                    "DECLARED COST: a short reconnect flattens where a real trader would not — "
-                    "the result is conservative in a stated direction."
+                    "position force-flattened at segment end (U2, no duration threshold) via a "
+                    "REAL costed fill at the boundary frame's market. DECLARED COST: a short "
+                    "reconnect flattens where a real trader would not — the result is conservative "
+                    "in a stated direction."
                 ),
             }
             boundary_events.append(flatten)
-            position = dataclasses.replace(position, current_quantity=Decimal("0"))
 
         return {
             "segment_index": index,
@@ -268,16 +307,27 @@ class SegmentedBacktestRunner:
             "last_frame_utc": last_frame_utc.isoformat() if last_frame_utc else None,
             "frames_processed": frames_processed,
             "trades": len(trades),
+            # WO-050 §3.2 (R3): with R1's real close, the segment MUST end flat and its unrealised
+            # P&L MUST be exactly zero. A non-zero residual means the close did not execute — this
+            # is R1's independent check, computed from the position rather than from the event.
+            "realised_pnl": str(ledger.realised_pnl),
+            "unrealised_pnl_at_close": str(
+                ledger.position.unrealised_pnl(last_state.mid_price) if last_state else Decimal("0")),
+            "final_quantity": str(ledger.position.quantity),
+            "boundary_closes": ledger.boundary_closes,
             "first_trade_utc": first_trade_utc.isoformat() if first_trade_utc else None,
             # 1-based index of the frame on which this segment first traded. Under U3+U4 it can
             # never be less than WINDOW_TICKS + 1: the strategy must warm on this segment's own
             # data, and the first frame is observation-only.
             "first_trade_frame_index": first_trade_frame_index,
             "force_flattened": flatten is not None,
-            "gross_pnl": str(self._gross_pnl(trades)),
-            "fees": str(sum(Decimal(str(t["fees"])) for t in trades)),
-            "slippage_cost": str(sum(Decimal(str(t["slippage_cost"])) for t in trades)),
-            "spread_cost_attribution": str(sum(Decimal(str(t["spread_cost"])) for t in trades)),
+            # WO-050 §3.4: the OLD unmatched-cash-flow figure is KEPT under an unambiguous name for
+            # the before/after attribution (§7.3), never as "gross_pnl". The old key is REMOVED, so
+            # a stale reader gets a loud KeyError rather than a wrong number (the WO-045 precedent).
+            "unmatched_cashflow_legacy": str(self._gross_pnl(trades)),
+            "fees": str(ledger.fees),
+            "slippage_cost": str(ledger.slippage),
+            "spread_cost_attribution": str(ledger.spread_attribution),
             "_trades": trades,
             "_boundary_events": boundary_events,
         }
@@ -303,11 +353,13 @@ class SegmentedBacktestRunner:
         def _sum(key):
             return sum(Decimal(s[key]) for s in segments) if segments else Decimal("0")
 
-        gross = _sum("gross_pnl")
+        realised = _sum("realised_pnl")
         fees = _sum("fees")
         slippage = _sum("slippage_cost")
         spread_attr = _sum("spread_cost_attribution")
         total_costs = fees + slippage           # spread is attribution, never additive (WO-008a-R6)
+        legacy = _sum("unmatched_cashflow_legacy")
+        residual = _sum("unrealised_pnl_at_close")
 
         return {
             "aggregate": {
@@ -318,16 +370,25 @@ class SegmentedBacktestRunner:
                     "would depend on boundary handling and summing would be arithmetic dressed as "
                     "a measurement."
                 ),
+                "pnl_method": "average_cost",     # §3.1 — declared, never ambiguous
                 "segments_run": len(segments),
                 "segments_excluded": len(excluded),
                 "trades": sum(s["trades"] for s in segments),
-                "gross_pnl": str(gross),
+                "boundary_closes": sum(s["boundary_closes"] for s in segments),
+                # §3.3: net = REALISED − total costs, with the channels attributed separately.
+                "realised_pnl": str(realised),
                 "total_fees": str(fees),
                 "total_slippage_cost": str(slippage),
                 "total_spread_cost_attribution": str(spread_attr),
                 "total_costs": str(total_costs),
-                "net_pnl": str(gross - total_costs),
+                "net_pnl": str(realised - total_costs),
+                # §3.2: every segment ends flat, so this MUST be exactly zero. A non-zero value
+                # means a close did not execute — R1's independent check, at the aggregate.
+                "unrealised_residual": str(residual),
                 "force_flattenings": sum(1 for s in segments if s["force_flattened"]),
+                # §3.4 / §7.3: the OLD figure, kept under an unambiguous name for the before/after
+                # attribution. It is NOT the reported P&L and is never called gross_pnl.
+                "unmatched_cashflow_legacy": str(legacy),
             },
             "segments": [{k: v for k, v in s.items() if not k.startswith("_")} for s in segments],
             "excluded_segments": excluded,

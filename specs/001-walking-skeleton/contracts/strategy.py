@@ -76,6 +76,22 @@ class DesiredPosition:
     - quantity < 0 if side == Side.SELL
     - quantity == 0 if side == Side.HOLD
 
+    ═══════════════════════════════════════════════════════════════════════════════════════════
+    ⚠ DATED ANNOTATION — 2026-08-07 (WO-050 §5.3, D47 form: annotate, do not rewrite)
+
+    THIS IS THE ORIGIN OF A FALSE INVARIANT. The two sign rules above were copied into the
+    production model (`src/trading/data/desired_position.py`) and are contradicted by the code:
+    `DeterministicRiskEngine.check` VETOES any `quantity <= 0`, so a SELL written as a negative
+    quantity is rejected as MALFORMED INPUT. Every strategy emits a positive magnitude and takes
+    direction from `side`.
+
+    ACTUAL CONVENTION: **`quantity` is an UNSIGNED MAGNITUDE; `side` carries the direction.**
+
+    Preserved unrewritten — a spec contract that shipped a wrong invariant into production is
+    exactly the kind of thing the record should keep. The full annotation, including what the stale
+    form would cause (a system that silently only ever goes long), is at the production site.
+    ═══════════════════════════════════════════════════════════════════════════════════════════
+
     Constitutional requirement (Principle III: AI Proposes, Deterministic Code Disposes):
     - No confidence field: This is a latent hook for ML scores to enter live decision path
     - A trivial rule-based strategy has no meaningful confidence value

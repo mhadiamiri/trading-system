@@ -442,8 +442,18 @@ async def test_the_aggregate_states_why_the_sum_is_valid(tmp_path):
     validity = result["aggregate"]["sum_validity"]
     assert "ONLY BECAUSE" in validity and "force-flat" in validity.lower()
     # Per-segment results are present alongside the aggregate — the distribution is not hidden.
-    assert result["segments"] and "gross_pnl" in result["segments"][0]
+    # WO-050 §3.4: the reported figure is `realised_pnl`; `gross_pnl` was REMOVED, not renamed, so
+    # a stale reader gets a KeyError rather than a wrong number.
+    assert result["segments"] and "realised_pnl" in result["segments"][0]
+    assert "gross_pnl" not in result["segments"][0], (
+        "the unmatched-cash-flow key must be GONE, not silently repurposed"
+    )
+    assert "gross_pnl" not in result["aggregate"]
     # Costs: spread is attribution and is NEVER in total_costs (WO-008a-R6).
     agg = result["aggregate"]
     assert (Decimal(agg["total_costs"])
             == Decimal(agg["total_fees"]) + Decimal(agg["total_slippage_cost"]))
+    # §3.3: net = REALISED − total costs.
+    assert (Decimal(agg["net_pnl"])
+            == Decimal(agg["realised_pnl"]) - Decimal(agg["total_costs"]))
+    assert agg["pnl_method"] == "average_cost"

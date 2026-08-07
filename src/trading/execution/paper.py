@@ -35,10 +35,39 @@ class PaperExecutionClient(ExchangeClient):
     - Cancellation succeeds even when kill switch engaged (Principle VI)
     """
 
-    # Default cost parameters
-    DEFAULT_FEE_RATE_PCT = Decimal("0.1")  # 0.1% taker fee per side (observed)
+    # ── WO-050 §4 (R4): DISTINCT COST CHANNELS ────────────────────────────────────────────────
+    #
+    # THE DEFECT THIS CLOSES. These were `fee_rate_pct = 0.1` (a PERCENT) and
+    # `slippage_factor = 0.001` (a FRACTION) — arithmetically the SAME 0.1% of notional. WO-048's
+    # run reported total_fees == total_slippage_cost == 22,572,628.06 to the cent. Two independent
+    # cost channels that always produce identical numbers cannot be told apart in any output, and a
+    # genuine divergence between them would be invisible. The units differ, which is exactly how the
+    # coincidence survived: one reads "0.1" and the other "0.001" and they look unrelated.
+    #
+    # §4.3: this changes the DEFAULTS ONLY. `compute_execution_costs` remains the one ruled
+    # implementation and its arithmetic is untouched, so the WO-011 cent-level reconciliation
+    # between the paper venue and the backtest CostModel still holds (both call the same function
+    # and `test_cost_reconciliation` passes its own explicit rates, insulated from these defaults).
+    #
+    # FEE — 0.26% taker. DECLARED ENGINEERING JUDGEMENT, not a citation: a typical spot taker fee at
+    # the base (lowest-volume) tier of a major crypto venue. I did not verify a published schedule
+    # from here, so it is declared rather than cited (rule 0.1e). It is deliberately the LARGER
+    # channel, which is realistic for liquid top-of-book trading where fees dominate.
+    #
+    # SLIPPAGE — 0.01% (1 bp). ANCHORED TO THE CORPUS, MEASURED not assumed. Over 50,000 frames of
+    # `corpus_20260805`: mean spread 0.521 on a mean mid of 64,635.87 = **0.0806 bps** of mid
+    # (half-spread 0.000403%), with mean resting depth 0.34 BTC bid / 0.90 BTC ask. A 0.1 BTC order
+    # consumes ~16% of mean touch depth, so it does NOT exhaust level 1 and incurs essentially no
+    # price impact beyond the spread — and the spread is ALREADY accounted for separately, since the
+    # executed price crosses it (WO-008a-R6). 1 bp is therefore a deliberately generous allowance:
+    # ~12x the entire observed spread, for an order that should slip almost nothing.
+    #
+    # ⚠ FINDING (§0.5): the OLD 0.1% slippage default was ~124x the corpus's mean full spread.
+    # For this instrument at this size that figure was not conservative, it was wrong by two orders
+    # of magnitude — and it silently dominated WO-048's cost total.
+    DEFAULT_FEE_RATE_PCT = Decimal("0.26")      # PERCENT of notional -> 0.26%
     # DEFAULT_SPREAD_PCT REMOVED (T028): No synthetic spread - pass observed spread
-    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.001")  # 0.1% slippage factor (ASSUMED CONSTANT - WO-008a-R5)
+    DEFAULT_SLIPPAGE_FACTOR = Decimal("0.0001")  # FRACTION of notional -> 0.01% (1 bp)
 
     # Staleness threshold (WO-008a-R6: guard against filling against stale market data)
     # Historical rate: ~10 MarketStates/min = 1 state every 6 seconds
