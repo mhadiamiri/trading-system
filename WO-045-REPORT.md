@@ -252,6 +252,19 @@ would be platform-specific and is the reader WO's job.
 **Arithmetic:** 284 at base + 12 (`tests/test_raw_retention_cap.py`) + 5
 (`tests/integration/test_termination_log_level.py`) = **301**.
 
+### CI — the real run on this commit
+
+**Commit `89e5857`** (pushed `e4dde21..89e5857`) · **CI run `31185950085`** · triggered via push.
+
+| Job | ID | Duration | Result |
+|---|---|---|---|
+| `test (3.14)` | 92890383902 | 10m47s | ✅ **301 passed, 2 skipped** (302.03s) |
+| `test (3.11)` | 92890383877 | 10m30s | ✅ **301 passed, 2 skipped** (300.74s) |
+
+Counts pulled from the job logs, not inferred from the ✓ — a green checkmark says the job exited
+zero, not what it ran (the WO-044 practice, carried forward). Both legs ran the randomized-order
+step and reported 301/2, matching all three local legs.
+
 ### src disposition
 
 ```
