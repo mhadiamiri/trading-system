@@ -3328,7 +3328,7 @@ ratified (0.12); stale fee declarations annotated — **⚠ the count was 10 acr
 reported 4; `tasks.md` was missed entirely by the previous enumeration.**
 
 475/2 both interpreters, both orders (455 + 20 new); CI `31232684456` green both legs BEFORE the
-run. Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31. Corpus v1
+run (§4.1) and `31233356291` green on the report commit. Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31. Corpus v1
 `e3ab1aec…` unchanged, 38/38 capture hashes verify. Report: `WO-053-REPORT.md`.
 
 **LIMITS, stated because the result is emphatic:** one instrument, one quiet regime, 36.9 hours;

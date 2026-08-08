@@ -327,6 +327,10 @@ Stated because the result is emphatic and emphatic results invite overreach:
 | **CI 3.11** (93039450185) | **475, 2 skipped** (304.58s) | **475, 2 skipped** (301.17s) |
 | **CI 3.14** (93039450249) | **475, 2 skipped** (304.87s) | **475, 2 skipped** (303.06s) |
 
+**Post-run CI — run `31233356291`, GREEN both legs** on the report commit `ee42a41`:
+`test (3.11)` 93041348293 → 475/2 both orders; `test (3.14)` 93041348280 → 475/2 both orders.
+Twelve independent runs (four local, eight CI across the two commits) all report 475/2.
+
 ---
 
 ## FILES
