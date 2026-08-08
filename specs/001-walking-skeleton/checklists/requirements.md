@@ -68,7 +68,8 @@ All checklist items validated successfully:
 
 8. **Assumptions**: 18 assumptions are documented covering target environment, scope boundaries, cost model parameters, and architectural constraints.
 
-9. **Constitutional Invariants**: All load-bearing invariants from the reference specification have been restored: clamp constraint, kill switch, provenance fields, append-only data, no secrets in logs, CAD tax fields, and Truth Before Profit. Clarified values: BTC/USD pair, configurable risk limits (max position default 1 BTC, max daily loss default 5% of equity), configurable taker fees (default 0.1% per side), no minimum backtest data requirement.
+9. **Constitutional Invariants**: All load-bearing invariants from the reference specification have been restored: clamp constraint, kill switch, provenance fields, append-only data, no secrets in logs, CAD tax fields, and Truth Before Profit. Clarified values: BTC/USD pair, configurable risk limits (max position default 1 BTC, max daily loss default 5% of equity), configurable taker fees (default 0.1% per side), no minimum backtest data requirement.  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 
 ## Notes
 

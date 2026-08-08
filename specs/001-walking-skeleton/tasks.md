@@ -169,7 +169,8 @@ contract_layers:
 - `place_order()` raises `KillSwitchEngagedError` when `kill_switch_engaged=True`
 - `cancel_order()` succeeds regardless of kill switch state (Constitutional requirement VI)
 - `Fill` includes all cost components (fees, spread, slippage, total_cost, cad_value)
-- Fees default to 0.1% taker per side (configurable)
+- Fees default to 0.1% taker per side (configurable)  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 - No real-money orders (simulated only)
 
 **Dependencies**: Task 101
@@ -361,7 +362,8 @@ contract_layers:
 
 **File Changes**:
 - Create `src/trading/backtest/costs.py` with `CostModel` class
-- Implement: Fee calculation (0.1% taker per side, configurable)
+- Implement: Fee calculation (0.1% taker per side, configurable)  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 - Implement: Spread cost calculation (buy at ask, sell at bid)
 - Implement: Slippage model (linear function of order size vs liquidity)
 

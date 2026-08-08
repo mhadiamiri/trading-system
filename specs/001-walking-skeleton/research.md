@@ -116,7 +116,7 @@ risk:
 
 execution:
   venue: bybit_testnet
-  fee_rate_pct: 0.1
+  fee_rate_pct: 0.1  # ⚠ STALE 2026-08-08 (WO-053 §1.2, D47): superseded by the CITED Kraken Pro Tier 1 taker 0.80% in src/trading/execution/fee_schedule.py. Illustrative config only; the spec stays frozen.
 
 backtest:
   input_data: data/btcusd.parquet

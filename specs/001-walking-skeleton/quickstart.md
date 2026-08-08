@@ -55,6 +55,13 @@ TRADING_ENV=testnet
 # EXECUTION_FEE_RATE_PCT=0.1
 ```
 
+> ⚠ **DEAD KNOB — 2026-08-08 (WO-053 §1.2, D47).** `EXECUTION_FEE_RATE_PCT` is read by no code
+> (enumerated WO-052 §3.1; pinned by `tests/test_fee_default_sites.py`). Setting it does nothing,
+> and the `0.1` it advertises is 8× below the live rate. The fee is a **cited** constant looked up
+> from a named tier in `src/trading/execution/fee_schedule.py` — Kraken Pro spot **Tier 1 taker
+> 0.80%** (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays
+> FROZEN — this annotates, it does not rewrite.
+
 **⚠️ WARNING**: Never commit real API keys to git. The `.env` file is gitignored.
 
 ## 3. Verify Installation
@@ -251,7 +258,7 @@ risk:
 
 execution:
   venue: bybit_testnet
-  fee_rate_pct: 0.1
+  fee_rate_pct: 0.1  # ⚠ STALE 2026-08-08 (WO-053 §1.2, D47): superseded by the CITED Kraken Pro Tier 1 taker 0.80% in src/trading/execution/fee_schedule.py. Illustrative config only; the spec stays frozen.
 
 backtest:
   input_data: data/btcusd.parquet

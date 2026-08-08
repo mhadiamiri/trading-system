@@ -15,7 +15,8 @@
 - Q: Which crypto pair should the system support for Phase 1? → A: BTC/USD (deepest liquidity for realistic spread/slippage modeling)
 - Q: What is the maximum position size the risk engine will allow? → A: Configurable via environment, default 1 BTC
 - Q: What is the maximum daily loss that triggers the kill switch? → A: Configurable as percentage of account equity, default 5% (account equity itself is configurable)
-- Q: What trading fee rate should the backtest and live simulation assume? → A: Configurable via environment, default 0.1% taker fee per side
+- Q: What trading fee rate should the backtest and live simulation assume? → A: Configurable via environment, default 0.1% taker fee per side  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 - Q: How much historical data does the backtest need to function? → A: No minimum — backtest runs on whatever stored data exists
 
 ## User Scenarios & Testing *(mandatory)*
@@ -96,7 +97,8 @@ A trader runs the same strategy-to-risk-to-execution logic over previously store
 - **FR-014**: No credential or secret MUST ever appear in any log line or decision record, nor be committed to version control
 - **FR-015**: System MUST capture the fields required for Canadian tax records from the start: timestamp, pair, side, size, price, fees, and CAD value
 - **FR-016**: System MUST support backtesting over previously stored market data using the same strategy-to-risk-to-execution logic
-- **FR-017**: Backtest mode MUST apply trading fees to every simulated trade (configurable, default 0.1% taker fee per side)
+- **FR-017**: Backtest mode MUST apply trading fees to every simulated trade (configurable, default 0.1% taker fee per side)  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 - **FR-018**: Backtest mode MUST apply bid/ask spread cost on both entry and exit of each position
 - **FR-019**: Backtest mode MUST apply a realistic slippage/fill model that reduces fill prices based on order size and simulated market impact
 - **FR-020**: System MUST produce a profit-and-loss report that is net of all costs (fees, spread, slippage)
@@ -140,7 +142,8 @@ A trader runs the same strategy-to-risk-to-execution logic over previously store
 - Market data is sourced from a testnet environment - real-money trading is out of scope
 - The strategy is deliberately trivial (reacts to short-term price moves or volume spikes) - sophisticated strategies are out of scope
 - Initial capital for paper trading and backtesting is a configurable parameter
-- Trading fees are configured as a percentage of notional value (default 0.1% taker fee per side)
+- Trading fees are configured as a percentage of notional value (default 0.1% taker fee per side)  
+  > ⚠ **STALE FIGURE — 2026-08-08 (WO-053 §1.2, D47).** The 0.1% above is SUPERSEDED and is no longer load-bearing. The living source is `src/trading/execution/fee_schedule.py`: Kraken Pro spot **Tier 1 taker 0.80%**, cited (https://www.kraken.com/features/fee-schedule, retrieved 2026-08-07). The spec stays FROZEN — this annotates, it does not rewrite.
 - Bid/ask spread is modeled as a fixed percentage (e.g., 0.05%) or loaded from the market data feed
 - Slippage model is a simple linear function of order size relative to average volume (e.g., slippage = k * order_volume / avg_volume)
 - Only one position may be open at a time - new signals either add to, reduce, or close the existing position
