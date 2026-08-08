@@ -33,6 +33,27 @@ from tools.live_corpus_capture import (
 
 # ── FIXTURES ─────────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _term2_gate_satisfied(monkeypatch):
+    """WO-057 §2.3: the preflight now evaluates the Term 2 memory gate, whose declared observation
+    window is 60 REAL seconds of swap sampling (see `trading.data.capture_gate`).
+
+    Every test in this file drives fixtures and opens no socket, so the gate is satisfied for their
+    duration. Patched at the evaluator rather than via an env override — an env back door in
+    production code would be a hole in the gate itself.
+
+    That the gate can actually go RED, and that a RED gate blocks the preflight, is proved in
+    `tests/test_capture_gate.py`; it is deliberately NOT left to this file's silence.
+    """
+    from trading.data import capture_gate
+
+    monkeypatch.setattr(
+        capture_gate, "evaluate",
+        lambda *a, **k: capture_gate.GateVerdict(
+            green=True, swap_green=True, memory_green=True, free_mib=99999.0,
+            swap_samples_mib=[0.0], detail="fixture: gate satisfied, no socket opens"))
+
+
 @pytest.fixture
 def mock_env_vars(monkeypatch, tmp_path):
     """Set up environment variables for testing.

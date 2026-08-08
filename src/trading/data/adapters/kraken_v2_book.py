@@ -1289,6 +1289,9 @@ class KrakenV2BookAdapter:
         #         interval of a resumed run cannot fabricate a delta over the seam.
         self._trade_merger = trade_channel.TradeMerger(observable=False)
         self._trade_ack_deadline = None      # monotonic; None = not awaiting an ack
+        # WO-057 §5: trim EVENTS since the last segment rotation. Reset by the capture runner at
+        # segment close, so the number that lands in the segment record is per-segment.
+        self._raw_text_trim_events = 0
         self._unrecognised_channels = {}     # §4.1: socket traffic matching none of the five
         # WO-014c-1 §B.2: pong-observer config (instance-overridable for ms-scale tests).
         self._ping_sample_interval = self.PING_SAMPLE_INTERVAL_SECONDS
@@ -2001,6 +2004,12 @@ class KrakenV2BookAdapter:
         self._raw_text_bytes -= sum(len(s) for s in buf[:drop])
         del buf[:drop]
         self._raw_text_evicted += drop
+        # WO-057 §5.1 — THE PER-SEGMENT TRIM COUNTER. Abort condition 4 reads "the retention caps
+        # trim more than once per segment", and WO-055 found it NOT MEASURABLE: the caps existed
+        # but nothing counted trim EVENTS. `_raw_text_evicted` counts evicted FRAMES, which is a
+        # different quantity — one trim of 500 frames and 500 trims of one frame are identical in
+        # it, and only the second is the condition's subject. This counts the EVENT.
+        self._raw_text_trim_events += 1
         self._announce_raw_retention_capped()
 
     def _announce_raw_retention_capped(self) -> None:
@@ -2312,6 +2321,19 @@ class KrakenV2BookAdapter:
         """The trade-channel availability ledger. Separate from the GAP ledger, deliberately:
         a trade outage produces no no-emission window, so it is not a gap (WO-054 §2.4)."""
         return self._trade_merger.ledger()
+
+    def take_trim_events(self) -> int:
+        """WO-057 §5.1 — read AND reset the per-segment retention-trim event count.
+
+        Read-and-reset in one call, deliberately: two separate calls could interleave with a trim
+        and lose an event, which would understate exactly the number abort condition 4 tests.
+
+        Called by `tools/live_corpus_capture.py` at segment close, so the count lands in the
+        SEGMENT RECORD — in the corpus, not only in a log (0.9: the record, not the log line).
+        """
+        events = self._raw_text_trim_events
+        self._raw_text_trim_events = 0
+        return events
 
     def get_unrecognised_channels(self) -> dict:
         """Counts of socket traffic matching none of the five enumerated kinds (§4.1)."""

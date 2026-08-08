@@ -85,11 +85,19 @@ async def _run_capture(tmp_path, frames):
     # live capture from a non-live adapter (LIVE_CAPTURE_UNSUPPORTED); `kraken_v2` is the
     # live-capable one. The SOCKET is still the scripted fake — this names the adapter without
     # opening anything.
+    from trading.data import capture_gate
     from trading.data.adapters import factory as adapter_factory
 
     # The preflight runs in __init__ (deliberately — "BEFORE any connection"), so construction
     # must happen inside the patched environment too, not only run().
-    with patch.dict(os.environ, grant_env), patch("time.sleep"),             patch.object(adapter_factory.Settings, "DATA_SOURCE", "kraken_v2"):
+    # WO-057 §2.3: the preflight now reads the Term 2 memory gate. It is a HOST condition — on a
+    # host that is paging it is RED and correctly refuses to open a socket. These fixtures open no
+    # socket, so the gate is satisfied for their duration by patching the evaluator itself rather
+    # than by an env override; an env back door in production code would be a hole in the gate.
+    green_gate = capture_gate.GateVerdict(
+        green=True, swap_green=True, memory_green=True, free_mib=99999.0,
+        swap_samples_mib=[0.0], detail="fixture: gate satisfied, no socket opens")
+    with patch.dict(os.environ, grant_env), patch("time.sleep"),             patch.object(adapter_factory.Settings, "DATA_SOURCE", "kraken_v2"),             patch.object(capture_gate, "evaluate", lambda *a, **k: green_gate):
         cap = CorpusCaptureRunner(
             config=RotationConfig(corpus_dir=Path(tmp_path), corpus_id="validation_fixture"),
             trading_env="paper",

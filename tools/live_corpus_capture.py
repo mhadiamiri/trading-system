@@ -81,6 +81,7 @@ sys.path.insert(0, str(project_root / "src"))
 # WO-044 §3: the corpus-spanning records live in src/ (production), not here. The three seam causes
 # are DECLARED reason codes and both vocabulary guards scan src/ only, so a seam emitted from tools/
 # would be declared-but-unproducible — the exact blind spot WO-037 caught. See corpus.py's docstring.
+from trading.data import capture_gate  # noqa: E402
 from trading.data.corpus import (  # noqa: E402
     CORPUS_SEAM_CAUSES,
     CORPUS_TARGET_HOURS,
@@ -95,6 +96,24 @@ from trading.data.corpus import (  # noqa: E402
 
 if TYPE_CHECKING:
     from trading.data.adapters.kraken_v2_book import KrakenV2BookAdapter
+
+
+# ── WO-057 §5.2: ABORT CONDITION 4's THRESHOLD ────────────────────────────────────────
+#
+# The condition reads "the retention caps trim MORE THAN ONCE per segment", so the threshold is
+# TWO. It is stated here as a named constant rather than left in prose, because a threshold that
+# lives only in a checklist cannot be read by the code that must trip on it.
+#
+# WHY MORE THAN ONE IS THE RIGHT BAR. The caps are sized so a well-behaved segment never trims at
+# all; ONE trim means the buffer reached its ceiling once, which is the cap working as designed
+# and is expected on a busy hour. REPEATED trimming within a single segment means the message rate
+# has outrun the buffer — the caps were sized for a book-only feed, and the trade channel roughly
+# doubles the message count. That is precisely what abort condition 4 exists to detect.
+#
+# ⚠ CARRIED AS AN ASSUMPTION, NOT A MEASUREMENT: the trade rate (1 trade per 8 book frames,
+# WO-054) is still unmeasured because no socket has opened. This threshold's *relevance* depends
+# on that assumption; its *definition* does not.
+RETENTION_TRIM_ABORT_THRESHOLD = 2
 
 
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────────────
@@ -181,6 +200,10 @@ class SegmentManifest:
     compressed: bool
     start_utc: str
     end_utc: str
+    # WO-057 §5.1: retention-cap TRIM EVENTS during this segment. Abort condition 4's subject,
+    # in the corpus rather than only in a log. `None` means the runner had no adapter to ask
+    # (a reconstructed manifest), which is distinct from a measured zero.
+    raw_text_trim_events: Optional[int] = None
 
 
 @dataclass
@@ -272,6 +295,9 @@ class CorpusCaptureRunner:
             wall_clock: Wall clock (test seam)
         """
         self._config = config or RotationConfig.from_env()
+        # WO-057 §5.1: the live adapter, once built. None until run() creates it, and None in a
+        # reconstructed manifest — which is why the segment field distinguishes None from 0.
+        self._adapter = None
         if trading_env is None:
             trading_env = os.environ.get("TRADING_ENV")
         self._trading_env = trading_env
@@ -599,6 +625,27 @@ class CorpusCaptureRunner:
                 }
         record["corpus_progress_at_start"] = progress
 
+        # ── [3.8b] TERM 2: THE RE-SPECIFIED MEMORY GATE (WO-057 §2, D57 ruling 1) ────────────
+        #
+        # The gate is READ from committed code (`trading.data.capture_gate`), not re-derived here.
+        # That module carries the derivation, the declared floor, the observation window and the
+        # falsifier, so this site cannot drift from the figure the report cites — and the figure
+        # is computed by code committed in the tree it certifies (the D51 standing rule).
+        #
+        # ⚠ IT REPLACES A COMPARISON THAT WAS NOT EVEN LIKE-FOR-LIKE. The old Term 2 reference,
+        # "12.33 GB free", is the WO-044 preflight's `memory_gb` — which `LoadRecord.capture()`
+        # computes as `virtual_memory().used`, i.e. memory USED. Three reports compared today's
+        # AVAILABLE against that capture's USED. On this host the WO-044 capture actually ran with
+        # ~3.4 GiB free — LESS than the readings later called RED.
+        print("\n[3.8b] Term 2 memory gate (WO-057 §2: zero swap sustained + derived floor)...")
+        gate = capture_gate.evaluate()
+        if gate.green:
+            print(f"  ✅ GREEN: {gate.detail}")
+        else:
+            print(f"  ❌ RED: {gate.detail}")
+            all_green = False
+        record["conditions"]["term2_memory_gate"] = gate.to_dict()
+
         # ── [3.9] OPERATOR PREREQUISITE: the shutdown policy (WO-044 preamble) ────────────────
         # "The security policy that shuts the machine down must be DISABLED and confirmed. That
         # policy caused two lost runs. State it confirmed in the preflight."
@@ -749,6 +796,15 @@ class CorpusCaptureRunner:
             compressed = True
 
         # Create manifest entry
+        # WO-057 §5.1 — abort condition 4's number, READ AND RESET at rotation so it is
+        # per-segment. Lands in the segment record (the corpus), not only in a log.
+        trim_events = None
+        if self._adapter is not None and hasattr(self._adapter, "take_trim_events"):
+            trim_events = self._adapter.take_trim_events()
+            if trim_events >= RETENTION_TRIM_ABORT_THRESHOLD:
+                print(f"           ⚠ RETENTION TRIMS: {trim_events} "
+                      f"(abort threshold {RETENTION_TRIM_ABORT_THRESHOLD})")
+
         manifest = SegmentManifest(
             filename=segment_path.name,
             sha256=segment_sha256,
@@ -757,6 +813,7 @@ class CorpusCaptureRunner:
             compressed=compressed,
             start_utc=self._segment_start_utc or utc_time.isoformat(),
             end_utc=utc_time.isoformat(),
+            raw_text_trim_events=trim_events,
         )
 
         return manifest
@@ -845,6 +902,8 @@ class CorpusCaptureRunner:
             factory_kwargs["wall_clock"] = self._wall_clock
 
         adapter, feed_iter = factory.create_live_capture_feed(**factory_kwargs)
+        # WO-057 §5.1: held so segment close can read the per-segment trim counter off it.
+        self._adapter = adapter
 
         # Track rotation boundaries
         segment_boundary = self._get_segment_boundary(start_utc)

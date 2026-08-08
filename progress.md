@@ -3282,6 +3282,69 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-057 — ABORT DETECTORS 1/2/4 + the re-specified Term 2 gate. ⚠ "12.33 GB free" WAS NEVER
+FREE MEMORY** (2026-08-08)
+
+**NO SOCKET OPENED.** Fixtures only.
+
+**⛔ THE FINDING THAT REFRAMES THREE REPORTS.** `LoadRecord.capture()` computes
+`memory_gb = psutil.virtual_memory().used / (1024**3)` — memory **USED**. WO-054, WO-055 and WO-056
+each compared today's *available* memory against the WO-044 capture's *used* memory. Two different
+quantities. On this host (total 15.715 GiB):
+
+```
+  WO-044 capture (banked 12.9h) : 12.334 GiB USED  ->  ~3.381 GiB FREE
+  reading during this WO        : 11.141 GiB USED  ->   4.573 GiB FREE
+```
+
+**The capture that succeeded ran with LESS free memory than the readings later called RED.** The
+gate was demanding ~3.6× more headroom than its own reference run ever had. The swap observation was
+independent and stands; the free-memory ground did not. **The 12.33 figure should be retired by
+name, as `a025db1e…` was.**
+
+**§2 THE GATE, RE-SPECIFIED AND ENCODED** (`src/trading/data/capture_gate.py`, committed code in the
+tree it certifies). Footprint **measured**, not estimated — the real runner over a fixture socket,
+sampling RSS: baseline 71.92 MiB + 64 MiB retention cap + ~18 MiB segment-close/gzip transient, ×2
+fragmentation = **307.84 MiB derived**; declared floor **512 MiB**. The trade channel adds **zero**
+to the ceiling by construction (the buffer is BYTE-capped, so a higher rate makes the cap bind
+sooner, not higher) — so the unmeasured trade-rate assumption is **not** promoted here, and is
+carried as an assumption only where it is load-bearing (condition 4). "Sustained" = **60 s, sampled
+every 2 s, EVERY sample zero**, with a falsifier for the window itself. Preflight condition [3.8b]
+reads it; a RED gate **blocks**, proven by its own test.
+
+**Gate verdict on this host now: RED on swap alone** (503.8 MiB in use). **memory_green: TRUE** —
+5,029 MiB free against a 512 MiB floor, i.e. green by 10×.
+
+**§3/§4/§5 THE THREE DETECTORS THAT COULD NOT FIRE, NOW FIRE:**
+- **1 (ack timeout):** bite + dual + fires-once, and the effect is that every frame says
+  `observable: false` — not a log line.
+- **2 (fabricated `last_price`): the committed scanner** `tools/corpus_fabrication_scan.py`, with
+  **three outcomes that are never conflated** — NOT_APPLICABLE (exit 3) / CLEAN (0) / VIOLATIONS (1).
+  Every report states frames **examined of examinable**. Run against `corpus_20260805`:
+  **7,695,082 frames read, 0 examinable → NOT_APPLICABLE** — the book-only corpus correctly refusing
+  a question it cannot answer. The WO-055 false green is now structurally impossible.
+- **4 (retention trims):** `_raw_text_evicted` counts FRAMES (one trim of 500 == 500 trims of one);
+  the new `_raw_text_trim_events` counts the **EVENT**, read-and-reset in one call at rotation and
+  written into the **segment record**. Threshold `RETENTION_TRIM_ABORT_THRESHOLD = 2`, proven able
+  to trip, with a dual.
+
+**BITE PROOF PASS** with the asymmetry that is the point: mutating NOT_APPLICABLE→CLEAN makes the
+third case FAIL while the fabrication bite and the correct-corpus dual **both still pass**. A scanner
+that only found violations would satisfy both and still report "PASS — zero fabricated prices" over
+a book-only corpus.
+
+**§6 conditions 3/5/6 re-verified, not inferred** — 3 is now reachable from the capture path (and
+the outage keeps its bounds rather than pretending the gap never happened); GAP_CAUSES still 5, not
+extended; the throughput instrument survives the second channel.
+
+558/2 both interpreters, both orders (525 + 33 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
+Report: `WO-057-REPORT.md`.
+
+**Also recommended:** `LoadRecord.memory_gb` is misleadingly named (it records host memory *used*);
+renaming it is small and outside scope.
+
+---
 ▶ **WO-056 — TRADE CHANNEL WIRED: the reachability cell is filled** (2026-08-08)
 
 **NO SOCKET OPENED.** Fixtures only. `trading.data.trade_channel` is now reached from
