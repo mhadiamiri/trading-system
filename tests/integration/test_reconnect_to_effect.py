@@ -99,8 +99,20 @@ async def test_five_real_failures_reconnect_and_emission_resumes():
     assert adapter._pending_reconnect is False, "the reconnect flag must have been consumed"
 
     # (4) The fresh socket carries a real subscription — the producer ran on it.
-    assert [m.get("method") for m in factory.sockets[1].sent] == ["unsubscribe", "subscribe"], (
-        f"the reopened socket must be resubscribed; sent={factory.sockets[1].sent}"
+    #
+    # ⚠ WO-056 §5.1 — EXPECTATION DELIBERATELY WIDENED, NOT WEAKENED. This asserted exactly
+    # ["unsubscribe", "subscribe"], which encoded the pre-WO-056 world where the socket carried
+    # ONE channel. A reconnect now resubscribes BOTH: the trade subscription does not survive the
+    # dead socket, and if only book came back the capture would keep writing `observable: true`
+    # frames with no trades — a lie of exactly the WO-055 §3.5 shape, and one that would read as a
+    # quiet market. The book half is unchanged and is still checked by channel below.
+    sent = factory.sockets[1].sent
+    assert [m.get("method") for m in sent] == ["unsubscribe", "subscribe", "subscribe"], (
+        f"the reopened socket must be resubscribed on BOTH channels; sent={sent}"
+    )
+    channels = [m.get("params", {}).get("channel") for m in sent]
+    assert channels == ["book", "book", "trade"], (
+        f"book unsubscribe+subscribe (the original assertion), then trade; got {channels}"
     )
 
 

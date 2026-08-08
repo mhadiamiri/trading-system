@@ -875,6 +875,24 @@ class CorpusCaptureRunner:
                     "ask_qty": str(market_state.best_ask_size),
                     "spread": str(market_state.spread),
                 }
+                # ── WO-056 §7 / §0.14 — THE PRODUCTION CALL SITE THAT REACHES trade_channel ──
+                #
+                # This line is the wire whose absence D55 ruled on. WO-054 built the merger, the
+                # schema, the availability ledger, 22 tests and a passing bite proof; NOTHING
+                # CALLED ANY OF IT, so a capture wrote the seven fields above and nothing else
+                # while the suite and CI both read healthy.
+                #
+                # §6.1 THE ROTATION RULE, DECLARED: the pending delta attaches to the frame it is
+                # written with, and this call CLOSES and RESETS the interval. Rotation happens
+                # between frames (just above), so a trade arriving between the last frame of
+                # segment N and the first of N+1 lands in exactly ONE delta — the first frame of
+                # N+1. Nothing is double-counted and nothing is dropped, because there is exactly
+                # one snapshot call per written frame and only that call advances the interval.
+                #
+                # The three states come from the merger per the WO-054 schema: `count: 0` is a
+                # positive claim (listening, nothing traded); `count: null` is the ABSENCE of a
+                # claim (channel unobservable); `last_price` is never fabricated.
+                frame["trades"] = adapter.trade_snapshot_for_frame(frame["timestamp"])
                 await self._write_frame(frame, utc_now)
 
                 # §3.3: the FIRST frame is the seam's measured right bound. This state is reached

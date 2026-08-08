@@ -3282,6 +3282,66 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-056 — TRADE CHANNEL WIRED: the reachability cell is filled** (2026-08-08)
+
+**NO SOCKET OPENED.** Fixtures only. `trading.data.trade_channel` is now reached from
+**`tools/live_corpus_capture.py:895`** — `frame["trades"] = adapter.trade_snapshot_for_frame(...)`.
+
+**THE ASYMMETRY IS THE FINDING.** Under the mutation that restores the WO-055 discard
+(`if channel != "book": return []`):
+
+```
+  reachability witness (enters at tools/live_corpus_capture.py) -> 6 FAILED
+  test_trade_channel.py (enters at TradeMerger/parse_*)         -> ALL 22 STILL PASS
+  book-path preservation dual                                   -> HOLDS
+```
+
+22 component tests, their own passing bite proof, and green CI on both legs in both orders were all
+**structurally incapable** of seeing that nothing called the component. If both suites failed the
+mutation would prove nothing about where the blindness lived; if both passed the witness would be
+decoration. Only the asymmetry demonstrates it. Bite proof **PASS**, sha256 exact-restore.
+
+**BUILT:** book+trade subscribe on one socket with per-channel ack tracking (ack shape CITED from
+docs.kraken.com, retrieved 2026-08-08); the demux placed in `process_raw_frame` — the SHARED
+live/fixture entry point, because anywhere else would be a live-only branch and a live-only branch
+is unreachable from a fixture, the exact defect class this closes; six socket-message kinds
+enumerated with unknowns COUNTED; reconnect resubscribes both and records `TRADE_CHANNEL_DROPPED`
+for the interval in between; the frame writer emits WO-054's three states.
+
+**ONE RULE COVERS THREE CASES:** the merger starts UNOBSERVABLE and becomes observable only on the
+ack — §3.3 (never acks → the corpus says "we could not see", `count: null`, not a `0` claiming
+nothing traded), §5.1 (reconnect → the interval is recorded unseen), §6.2 (seam → a fresh process
+cannot fabricate a delta across it, and no price carries over).
+
+**§6.1 ROTATION RULE:** the delta attaches to the frame it is written with and that call closes the
+interval; rotation happens between frames, so a trade at a segment boundary lands in exactly ONE
+delta. Not double-counted, not dropped.
+
+**MY OWN DEFECTS, CAUGHT AND FIXED:** (1) a **duplicate book subscription** on every reconnect —
+`_maybe_resubscribe` already re-sends book, so sending the full pair put two on one socket;
+`test_reconnect_to_effect` named it. (2) A **clock-mixing bug**: the ack deadline was set from the
+injected clock while the loop's liveness bounds use `time.monotonic()`, and the per-frame check read
+the clock *again* — the harness's AdvancingClock advances on every read, so the extra tick tripped a
+spurious reconnect and broke two existing tests. Fixed by putting the deadline on the loop's clock
+and passing the value it already read.
+
+**⚠ FINDING — TWO DISTINCT `Settings` CLASS OBJECTS EXIST UNDER THE FULL SUITE.**
+`config.settings.Settings is trading.data.adapters.factory.Settings` → **False**; the package is
+reachable by more than one sys.path route, and `DATA_SOURCE` is bound from `os.getenv` at import
+time. So neither an env var nor a patch on the locally-imported class reaches the copy production
+code reads — it **silently defeats configuration patching in any test that tries it**. Worked around
+by patching the object the factory actually holds. **Not fixed: repo-wide import hygiene, outside
+scope, follow-up recommended.**
+
+525/2 both interpreters, both orders (509 + 16 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
+Report: `WO-056-REPORT.md`.
+
+**Everything here is BUILT, not OPERATED — nothing has met Kraken.** Next: abort-condition detectors
+(1, 2, 4, incl. the committed corpus scanner), then WO-055 re-issued. Term 2 is still RED (5.07 GB
+free, swap 0.58 GB in use) and blocks any capture.
+
+---
 ▶ **WO-055 — LIVE VALIDATION: ⛔ NOT LAUNCHED. Two blockers. Grant unspent.** (2026-08-08)
 
 **THE SOCKET WAS NOT OPENED.** No corpus created, no grant spent, 14-day expiry intact.

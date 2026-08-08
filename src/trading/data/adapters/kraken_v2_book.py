@@ -34,6 +34,7 @@ import time   # WO-030: module-level, so the builder's declared default `monoton
 
 import websockets
 
+from trading.data import trade_channel
 from trading.data.market_state import MarketState
 from trading.logkit.redaction import redact
 # ^ WO-014c-2 §3: the MECHANICAL redaction module (WO-011 §6.2). data->logkit is an
@@ -1277,6 +1278,18 @@ class KrakenV2BookAdapter:
         self._heartbeat_absence_timeout = self.HEARTBEAT_ABSENCE_TIMEOUT_SECONDS
         self._app_ping_interval = self.APP_PING_INTERVAL_SECONDS
         self._ping_seq = 0                   # req_id for application pings
+        # ── WO-056: THE TRADE CHANNEL'S STATE ────────────────────────────────────────────────
+        # The merger starts UNOBSERVABLE and becomes observable only when the venue ACKS the
+        # trade subscription. That single rule covers three cases at once:
+        #   §3.3  a subscribe that never acks -> every frame carries `observable: false`, so the
+        #         corpus says "we could not see" instead of quietly omitting the question;
+        #   §5.1  a reconnect -> the new socket's subscription is unacked, so the interval before
+        #         the new ack is recorded as unseen rather than as zero trades;
+        #   §6.2  a SEAM -> a fresh process builds a fresh adapter and merger, so the first
+        #         interval of a resumed run cannot fabricate a delta over the seam.
+        self._trade_merger = trade_channel.TradeMerger(observable=False)
+        self._trade_ack_deadline = None      # monotonic; None = not awaiting an ack
+        self._unrecognised_channels = {}     # §4.1: socket traffic matching none of the five
         # WO-014c-1 §B.2: pong-observer config (instance-overridable for ms-scale tests).
         self._ping_sample_interval = self.PING_SAMPLE_INTERVAL_SECONDS
         self._pong_absent_timeout = self.PONG_ABSENT_SECONDS
@@ -2143,13 +2156,166 @@ class KrakenV2BookAdapter:
 
         This is the shared entry point A2's WebSocket transport will hand frames
         to. Non-book frames yield an empty list rather than an error.
+
+        WO-056 §4 — THE DEMUX LIVES HERE, deliberately. This is the one point every raw frame
+        passes through on BOTH the live and fixture paths ("LAYER 3: the SHARED entry point.
+        Identical to the fixture path"). Putting the trade routing anywhere else would create a
+        live-only branch — and a live-only branch is unreachable from a fixture, which is the
+        exact defect class (D55) this WO exists to close.
         """
+        self._demux_non_book(raw_frame)
         states = []
         for update in self._parse_book_frame(raw_frame):
             market_state = await self._process_quote_update(update)
             if market_state is not None:
                 states.append(market_state)
         return states
+
+    def _demux_non_book(self, raw_frame: dict) -> None:
+        """Route the non-book traffic on this socket. Book frames fall through untouched.
+
+        §4.1 — WHAT ELSE KRAKEN SENDS ON THIS SOCKET, enumerated rather than assumed (0.11).
+        Five kinds, each with declared handling:
+
+          1. `channel: "book"`     -> NOT handled here; falls through to `_parse_book_frame`.
+                                      The book path is byte-for-byte unchanged (§4.2's dual).
+          2. `channel: "trade"`    -> the TradeMerger. This is the wire D55 says was missing.
+          3. `channel: "heartbeat"`-> ignored. It refreshes `last_frame` in the transport loop
+                                      (liveness), which already happens before we are called.
+          4. `channel: "status"`   -> ignored. Venue/system status; carries no market data.
+          5. `method: "subscribe"` /
+             `method: "unsubscribe"` responses -> the ACK path (§3.2). These are how we learn the
+                                      trade subscription succeeded or failed, so they are the one
+                                      kind of "transport chatter" that must NOT be silently
+                                      dropped.
+
+        Anything else is ignored and counted, not guessed at — an unrecognised frame is a finding
+        for a future WO, not something for this method to interpret.
+        """
+        if not isinstance(raw_frame, dict):
+            return
+
+        channel = raw_frame.get("channel")
+
+        if channel == trade_channel.TRADE_CHANNEL:
+            # A trade arriving while we have recorded the channel as unobservable is a
+            # CONTRADICTION between the availability ledger and the frames. `observe()` refuses
+            # it. Here — in the transport, where a raised exception would kill the capture — we
+            # resolve it the honest way round: the evidence of our own eyes wins, so mark the
+            # channel observable (closing the outage) and then record the trade. The outage
+            # record keeps its opened/closed bounds, so the ledger still says we could not see
+            # for that interval; it does not pretend the gap never happened.
+            if not self._trade_merger.observable:
+                self._trade_merger.mark_observable(self._utc_now_iso())
+            for event in trade_channel.parse_trade_message(raw_frame):
+                self._trade_merger.observe(event)
+            return
+
+        if raw_frame.get("method") in ("subscribe", "unsubscribe"):
+            self._handle_subscription_response(raw_frame)
+            return
+
+        if channel in ("heartbeat", "status", "book"):
+            return
+
+        if channel is not None:
+            self._unrecognised_channels[channel] = (
+                self._unrecognised_channels.get(channel, 0) + 1
+            )
+
+    def _handle_subscription_response(self, raw_frame: dict) -> None:
+        """Process a subscribe/unsubscribe ack (§3.2).
+
+        Cited shape (https://docs.kraken.com/api/docs/websocket-v2/trade, retrieved 2026-08-08):
+
+            {"method": "subscribe",
+             "result": {"channel": "trade", "snapshot": true, "symbol": "MATIC/USD"},
+             "success": true, "time_in": "...", "time_out": "..."}
+
+        `error` is present only when `success` is false.
+        """
+        result = raw_frame.get("result") or {}
+        channel = result.get("channel") or raw_frame.get("channel")
+        if channel != trade_channel.TRADE_CHANNEL:
+            return                                  # the book ack; the book path owns its own
+
+        method = raw_frame.get("method")
+        success = raw_frame.get("success")
+        now = self._utc_now_iso()
+
+        if method == "subscribe" and success:
+            self._trade_ack_deadline = None
+            self._trade_merger.mark_observable(now)
+            logger.info("[kraken_v2_book] trade channel subscription ACKED")
+            return
+
+        if method == "subscribe" and success is False:
+            # §3.3: an explicit NACK. The corpus must say "we could not see", not omit the
+            # question — so the merger goes unobservable and the ledger records why.
+            self._trade_ack_deadline = None
+            self._record_trade_subscribe_failure(
+                now, detail=f"venue refused the trade subscription: {raw_frame.get('error')!r}")
+            return
+
+        if method == "unsubscribe":
+            # §5.2 / the partial-outage case: the trade subscription ended while the socket lives.
+            # The book keeps flowing; this is NOT a gap (there is no no-emission window), so it is
+            # recorded in the availability ledger and never in GAP_CAUSES.
+            self._trade_ack_deadline = None
+            if self._trade_merger.observable:
+                self._trade_merger.mark_unobservable(
+                    "TRADE_CHANNEL_DROPPED", now,
+                    detail="venue unsubscribed the trade channel while the socket stayed alive")
+                logger.warning("[kraken_v2_book] TRADE_CHANNEL_DROPPED — trades unobservable")
+
+    def _record_trade_subscribe_failure(self, utc: str, detail: str) -> None:
+        """Open a TRADE_CHANNEL_SUBSCRIBE_FAILED outage exactly once per subscription attempt."""
+        if self._trade_merger.observable or not self._trade_outage_open():
+            self._trade_merger.mark_unobservable(
+                "TRADE_CHANNEL_SUBSCRIBE_FAILED", utc, detail=detail)
+            logger.warning("[kraken_v2_book] TRADE_CHANNEL_SUBSCRIBE_FAILED — %s", detail)
+
+    def _trade_outage_open(self) -> bool:
+        return any(o.closed_utc is None for o in self._trade_merger.outages)
+
+    def _check_trade_ack_deadline(self, mono: float) -> None:
+        """§3.2/§3.3 — an unacked trade subscribe must be DETECTABLE, not merely logged.
+
+        Called from the transport loop. Abort condition 1's subject: if the ack never arrives,
+        the capture does NOT silently produce a book-only corpus — it records the failure and
+        every frame from that point carries `observable: false`, so the corpus says "we could not
+        see" rather than omitting the question.
+        """
+        if self._trade_ack_deadline is None:
+            return
+        # `mono` is the value the loop ALREADY read this iteration — passed in rather than read
+        # again, so this check costs no additional clock read (see _send_subscriptions).
+        if mono < self._trade_ack_deadline:
+            return
+        self._trade_ack_deadline = None
+        self._record_trade_subscribe_failure(
+            self._utc_now_iso(),
+            detail=(f"no subscription ack within "
+                    f"{trade_channel.SUBSCRIBE_ACK_TIMEOUT_SECONDS}s"))
+
+    # ── WO-056 §7: what the frame writer consumes ────────────────────────────────────────────
+
+    def trade_snapshot_for_frame(self, frame_utc: str) -> dict:
+        """The `trades` sub-object for one book frame, per the WO-054 schema. RESETS the interval.
+
+        Called by `tools/live_corpus_capture.py` once per written frame — the production call site
+        that makes `trade_channel` reachable (0.14).
+        """
+        return self._trade_merger.snapshot_for_frame(frame_utc)
+
+    def get_trade_outage_ledger(self) -> list:
+        """The trade-channel availability ledger. Separate from the GAP ledger, deliberately:
+        a trade outage produces no no-emission window, so it is not a gap (WO-054 §2.4)."""
+        return self._trade_merger.ledger()
+
+    def get_unrecognised_channels(self) -> dict:
+        """Counts of socket traffic matching none of the five enumerated kinds (§4.1)."""
+        return dict(self._unrecognised_channels)
 
     def _discard_book(self) -> None:
         """Discard local book state (for sequence gap recovery)."""
@@ -2264,6 +2430,79 @@ class KrakenV2BookAdapter:
             },
         }
 
+    # ── WO-056 §3: THE TRADE CHANNEL'S SUBSCRIBE, ON THE SAME SOCKET ─────────────────────────
+    #
+    # THE DEFECT THIS CLOSES (D55). `trade_channel.py` was built in WO-054 with 22 tests and a
+    # passing bite proof, and NOTHING CALLED IT. No trade subscribe was ever sent, and the parser
+    # discarded every non-book message, so a capture produced a book-only corpus while the suite
+    # and CI both read healthy. A component's behaviour being tested is not its reachability
+    # being proven.
+
+    def _utc_now_iso(self) -> str:
+        """Wall-clock now, ISO-8601 UTC, THROUGH THE INJECTED CLOCK.
+
+        The trade ledger's bounds are calendar timestamps (they locate an outage for a human and
+        for the corpus manifest), so they read `_wall_clock` — not `_monotonic_clock`, which
+        orders but does not locate (D25). Going through the injection seam rather than calling
+        `datetime.now()` directly is what keeps these records driveable from a fake clock; a
+        hardcoded now() here would be a clock-control hole in a record the reader trusts.
+        """
+        wall = self._wall_clock or time.time
+        return datetime.fromtimestamp(wall(), tz=UTC).isoformat()
+
+    def _build_trade_subscribe_message(self) -> dict:
+        """The cited trade subscription — built by `trade_channel`, not re-typed here.
+
+        `snapshot: false` is WO-054's deliberate decision: the snapshot delivers "the most recent
+        50 trades", i.e. activity from BEFORE capture began, which would fabricate the opening
+        frame's count and volume out of pre-capture trades.
+
+        Cite: https://docs.kraken.com/api/docs/websocket-v2/trade (retrieved 2026-08-08)
+        """
+        return trade_channel.build_subscribe_message(self.BOOK_SYMBOL)
+
+    def _build_trade_unsubscribe_message(self) -> dict:
+        """The cited trade unsubscribe. Cite: as above."""
+        return trade_channel.build_unsubscribe_message(self.BOOK_SYMBOL)
+
+    async def _send_subscriptions(self, websocket) -> None:
+        """Send BOTH channel subscriptions on the one socket, and arm the ack deadline.
+
+        §5.1 — this is the SINGLE place subscriptions are sent, so the connect path and every
+        reconnect path resubscribe both channels BY CONSTRUCTION rather than by two call sites
+        remembering to agree. If only book resubscribed, the trade channel would die silently and
+        the corpus would keep writing `observable: true` frames with no trades — a lie of exactly
+        the WO-055 §3.5 shape.
+        """
+        book = self._build_subscribe_message()
+        await websocket.send(json.dumps(book))
+        await self._send_trade_subscription(websocket)
+        logger.info("[kraken_v2_book] subscribed: %s", json.dumps(book))
+
+    async def _send_trade_subscription(self, websocket) -> None:
+        """Send the TRADE subscribe alone, and arm the ack deadline.
+
+        Separate from `_send_subscriptions` because the two paths need different halves. On a
+        RECONNECT the book half is already re-sent by `_maybe_resubscribe` (the committed resync
+        producer), so sending the full pair there would put TWO book subscriptions on one socket —
+        a duplicate subscription, caught by `test_reconnect_to_effect` when this WO's first draft
+        did exactly that.
+        """
+        trade = self._build_trade_subscribe_message()
+        await websocket.send(json.dumps(trade))
+        # THE ACK DEADLINE RIDES THE LOOP'S OWN CLOCK — `time.monotonic()`, the same source as
+        # `last_frame` / `last_ping` and the keepalive bounds, NOT `self._monotonic_clock()`.
+        #
+        # It is a TRANSPORT LIVENESS bound, exactly like heartbeat-absence and the app-ping
+        # interval, so it belongs on the clock those already use. Reading the injected clock here
+        # would mix two clocks in one bound — the defect this file already carries a warning about
+        # ("a deadline is coherent only when every consumer reads the SAME clock") — and it is not
+        # free either: the test harness's AdvancingClock advances on EVERY read, so an extra read
+        # is an extra tick of simulated time. That is how the first draft of this change tripped a
+        # spurious reconnect in two existing tests.
+        self._trade_ack_deadline = time.monotonic() + trade_channel.SUBSCRIBE_ACK_TIMEOUT_SECONDS
+        logger.info("[kraken_v2_book] subscribed: %s", json.dumps(trade))
+
     def _build_unsubscribe_message(self) -> dict:
         """
         Kraken v2 book unsubscribe (WO-014 §2.1).
@@ -2295,6 +2534,10 @@ class KrakenV2BookAdapter:
         self._pending_resubscribe = False
         await websocket.send(json.dumps(self._build_unsubscribe_message()))
         await websocket.send(json.dumps(self._build_subscribe_message()))
+        # WO-056 §5.1: the checksum resync unsubscribes and resubscribes the BOOK only — the
+        # trade subscription on this socket was never touched and is still live, so re-sending it
+        # would be a spurious duplicate subscription. Deliberately not re-sent here; the
+        # reconnect path (a NEW socket) is where both must go, and it uses _send_subscriptions.
         logger.info("[kraken_v2_book] resync: resubscribed on live socket for a fresh snapshot")
 
     async def _perform_reconnect(self, websocket, reason="5 consecutive checksum failures (FR-018)"):
@@ -2383,6 +2626,17 @@ class KrakenV2BookAdapter:
             # Reopen succeeded -> fresh subscription via the committed producer.
             self._pending_resubscribe = True
             await self._maybe_resubscribe(new_websocket)
+            # WO-056 §5.1 — THE SILENT-DEATH CASE. `_maybe_resubscribe` re-sends the BOOK only.
+            # On a FRESH socket the trade subscription from the dead socket is gone with it, so
+            # without this line the trade channel dies at the first reconnect and the corpus keeps
+            # writing `observable: true` frames with no trades — a lie of exactly the WO-055 §3.5
+            # shape, and one that would look like a quiet market. The merger goes unobservable
+            # until the new ack arrives, so the interval in between is recorded as unseen rather
+            # than as zero.
+            self._trade_merger.mark_unobservable(
+                "TRADE_CHANNEL_DROPPED", self._utc_now_iso(),
+                detail="socket reconnected; trade subscription does not survive the old socket")
+            await self._send_trade_subscription(new_websocket)
             logger.info(
                 "[kraken_v2_book] RECONNECT complete after %d failed attempt(s); "
                 "fresh socket subscribed; awaiting fresh snapshot",
@@ -2825,9 +3079,8 @@ class KrakenV2BookAdapter:
         )
 
         try:
-            subscribe = self._build_subscribe_message()
-            await websocket.send(json.dumps(subscribe))
-            logger.info("[kraken_v2_book] subscribed: %s", json.dumps(subscribe))
+            # WO-056 §3.1: BOTH channels, on the one socket, through the single send path.
+            await self._send_subscriptions(websocket)
             lag_task = asyncio.create_task(self._sample_event_loop_lag(self._lag_record))
             pong_task = asyncio.create_task(self._observe_protocol_pong(self._pong_record))
 
@@ -3106,6 +3359,12 @@ class KrakenV2BookAdapter:
 
                 # A frame arrived (book, heartbeat, or pong) -> the link is alive.
                 last_frame = time.monotonic()
+                # WO-056 §3.2: an unacked trade subscribe must be DETECTABLE. Checked on the
+                # frame path so it is evaluated by the real loop rather than by a timer nobody
+                # drives — abort condition 1's subject. `last_frame` is the monotonic value just
+                # read; reusing it adds NO clock read (see _send_subscriptions for why that
+                # matters).
+                self._check_trade_ack_deadline(last_frame)
                 # WO-038 §3: per-frame performance instrument — record frame start.
                 if self._per_frame_record.enabled:
                     self._per_frame_record.record_frame_start(_wall(), last_frame)
