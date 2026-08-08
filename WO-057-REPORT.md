@@ -302,9 +302,14 @@ The capture path changed materially since WO-055 (a second channel), so all thre
 | Python 3.14.6 | **558 passed, 2 skipped** (314.71s) | **558 passed, 2 skipped** (315.05s) |
 | Python 3.11.15 | **558 passed, 2 skipped** (313.84s) | **558 passed, 2 skipped** (314.36s) |
 
-### CI
+### CI — **run `31277333073`, GREEN both legs** (commit `fdc03b9`)
 
-_pending — filled in on the close commit_
+| Job | Deterministic | Randomised |
+|---|---|---|
+| `test (3.11)` — 93152958833, 10m46s | **558 passed, 2 skipped** (313.30s) | **558 passed, 2 skipped** (308.32s) |
+| `test (3.14)` — 93152958793, 10m55s | **558 passed, 2 skipped** (311.36s) | **558 passed, 2 skipped** (309.62s) |
+
+Eight independent runs (four local, four CI) all report 558/2.
 
 ---
 

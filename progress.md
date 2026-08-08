@@ -3337,7 +3337,8 @@ a book-only corpus.
 the outage keeps its bounds rather than pretending the gap never happened); GAP_CAUSES still 5, not
 extended; the throughput instrument survives the second channel.
 
-558/2 both interpreters, both orders (525 + 33 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+558/2 both interpreters, both orders (525 + 33 new); CI `31277333073` green both legs.
+Gates: lint 6/6 · contract 6/6 · ruff ·
 annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
 Report: `WO-057-REPORT.md`.
 
