@@ -289,6 +289,33 @@ VALID_REASON_CODES = {
         # to express; this refusal is what stops it being expressed SILENTLY, since arithmetic on
         # a timestamp never complains.
         "BAR_FRAME_OUTSIDE_SEGMENT",
+        # WO-054 §2.4 — TRADE-CHANNEL AVAILABILITY. Producible (raised on the real paths in
+        # trade_channel.py, driven in tests/test_trade_channel.py and the §2.5 bite proof) and
+        # prefix-free: TRADE_CHANNEL_ is a unique stem and neither of the three prefixes another.
+        #
+        # DELIBERATELY NOT ADDED TO kraken_v2_book.GAP_CAUSES. That set is RULED AND EXHAUSTIVE
+        # (evidence/WO-014c-2/gap_schema.txt §1.1) and its fifth member came from an explicit lead
+        # ruling. Extending it would also be semantically wrong: a gap is an interval during which
+        # NO validated MarketState is emitted, and during a trade-channel outage the book keeps
+        # flowing. Recording a gap would subtract book coverage that was never lost.
+        #
+        # TRADE_CHANNEL_SUBSCRIBE_FAILED — the subscribe was NACKed, errored, or never acked
+        # within the declared bound. The channel never became observable.
+        #
+        # TRADE_CHANNEL_DROPPED — an acknowledged subscription ended while the socket stayed
+        # alive. This is the partial outage: book data continues, trade data does not.
+        #
+        # TRADE_CHANNEL_CAUSE_UNDECLARED — an outage was offered under a cause outside the
+        # declared set, or a trade arrived while the channel was recorded as unobservable. The
+        # second is a contradiction between the availability ledger and the frames; refusing beats
+        # silently choosing which one to believe.
+        #
+        # ⚠ There is deliberately NO code for SILENCE. A subscribed channel that stops producing
+        # is indistinguishable from a market in which nothing traded. A silence timeout would
+        # fabricate outages on every quiet night — the same misattribution running backwards.
+        "TRADE_CHANNEL_SUBSCRIBE_FAILED",
+        "TRADE_CHANNEL_DROPPED",
+        "TRADE_CHANNEL_CAUSE_UNDECLARED",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

@@ -3282,6 +3282,70 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-054 — PHASE B BUILD: ⛔ a 24h horizon is UNREACHABLE at any capture length** (2026-08-08)
+
+**NO SOCKET OPENED.** Fixtures only, as instructed.
+
+**THE FINDING THAT OUTRANKS THE REST (§4).** The naive derivation 24h × 30 obs = 720 covered hours
+is not merely expensive — **it yields ZERO 24-hour observations.** A 24h window must lie inside one
+continuous segment. Measured: longest segment ever **7.733 h**, mean 1.757, median 0.866, **zero
+segments ≥ 12 h**. Gaps arrive at **0.515 per covered HOUR**, so capturing 30 days adds ~410 more
+segments of the same length, not longer ones. P(24h gap-free) ≈ e^(−0.515×24) ≈ 4×10⁻⁶.
+
+Empirical yield — covered hours needed for 30 non-overlapping observations:
+
+```
+  15m -> 8h      1h -> 46h      4h -> 553h (23d)      8h+ -> IMPOSSIBLE
+  30m -> 17h     2h -> 123h     6h -> 1,107h (46d)    24h -> IMPOSSIBLE
+```
+
+**Three options, lead's ruling required before the long capture's target can be set:** (1) a
+horizon-relative discontinuity policy — a gap shorter than X% of the horizon does not segment it;
+required for daily horizons, but it reintroduces the D20 splice in bounded form and the bound must
+be defended. (2) Cut the gap rate ~50× — not plausible alone. (3) Cap the horizon at what segments
+support: **4h at 553 covered hours (~23 days)** is the honest ceiling without (1). **I did not
+quietly pick a smaller number** (§4.5).
+
+**§2 TRADE CHANNEL** — cited (https://docs.kraken.com/api/docs/websocket-v2/trade, retrieved
+2026-08-08), not implemented from recall. Merge is **per book frame, as a delta**; schema declared in
+`evidence/WO-054/trade_merge_schema.md`. Snapshot declined on purpose — it delivers 50 PRE-capture
+trades that would fabricate the opening frame. **`count: 0` = a claim (listening, nothing traded);
+`count: null` = the absence of one (channel down).** `last_price` is NEVER fabricated. **GAP_CAUSES
+was NOT extended** — it is a ruled exhaustive set, and a trade outage produces no no-emission window,
+so recording a gap would subtract book coverage that was never lost; a separate `TradeChannelOutage`
+ledger instead. **Silence is deliberately not a cause** — indistinguishable from a quiet market.
+
+**§3 REGIME = THE 8TH DIMENSION.** Percentile distribution of absolute returns at 1/5/15/60m with
+counts at the cited cost thresholds, plus a declared `not_supported` list carried in the artifact.
+
+**§5 corpus_20260805 annotated OUTSIDE itself: QUIET.** 5m max **0.4076%** — matching WO-053 exactly
+via a different code path and a different window scheme (non-overlapping n=427 vs overlapping
+n=2,084), while the medians differ, confirming genuinely different samples. **60m max 0.5388% — still
+3× below the 1.6216% round trip**, so the death certificate covers everything up to an hour *in this
+regime*.
+
+**§6 CHECKLIST — 🔴 NO-GO.** TERM 2 **RED**: re-verifying fresh (not inheriting, per D24) found free
+memory **3.26 GB now vs 12.33 GB** at the WO-044 capture. D46: memory pressure → swap → event-loop
+starvation → HEARTBEAT_ABSENCE, i.e. a host problem recorded as a venue disconnect — over 30 days that
+compounds and would inflate the very gap count §4 rests on. Operator action. TERM 5 **AMBER**: raw
++ compressed both retained (27.7:1 duplication, ~17.4 GB at 30 days); 858 GB free so not a capacity
+risk, but deleting raw capture data needs the operator's word. Terms 1,3,4,6,7,8 GREEN.
+
+**GRANT SHAPE PROPOSED, not assumed (D24):** a **2-hour live validation run FIRST** — fixtures prove
+merge logic, not that the live channel behaves as documented — with six abort conditions, the
+sharpest being any frame written with a fabricated `last_price`. Then the long capture. **The
+WO-044 expiry anchor (2026-08-19) leaves 13 days and cannot cover a 30-day capture; a new expiry
+must be issued.**
+
+Budget MEASURED not estimated: compression **26.7:1** book-only, trade channel **×1.86 raw / ×1.50
+compressed** (compression improves to 33.2:1), **0.53 GB compressed at 720 covered hours**. WO-045
+retention caps confirmed to hold — they bound retained volume, not run length.
+
+509/2 both interpreters, both orders (475 + 22 + 12 new). Bite proof PASS, two discriminating
+mutations. Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31.
+Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes verify. Report: `WO-054-REPORT.md`.
+
+---
 ▶ **WO-053 — THE DEATH CERTIFICATE: 0 trades, and the cost bar is 4× the largest move that
 happened** (2026-08-08)
 
