@@ -3282,6 +3282,57 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-055 — LIVE VALIDATION: ⛔ NOT LAUNCHED. Two blockers. Grant unspent.** (2026-08-08)
+
+**THE SOCKET WAS NOT OPENED.** No corpus created, no grant spent, 14-day expiry intact.
+
+**STOP 1 — TERM 2, the named gate (§1.1).** Free memory **3.01 GB** vs the WO-044 reference
+**12.33 GB**; memory 82.2% used; **swap ALREADY IN USE at 0.96 GB** at idle. CPU recovered to 1.64%,
+isolating the problem to memory. The decisive fact is the swap, not the headline: §1.1 asks whether
+D46's chain (memory pressure → swap → event-loop starvation → HEARTBEAT_ABSENCE, a host problem
+wearing a venue cause code) is *implausible* — it cannot be, when the machine is already paging
+before the capture process starts. **~9.31 GB must be freed** (chrome.exe 6.16 GB). Operator action.
+
+**STOP 2 — THE TRADE CHANNEL IS NOT WIRED INTO THE CAPTURE PATH. This is a gap in my own WO-054
+delivery.** WO-054 §2.2 required merging trade events into the capture; I built the library, schema,
+ledger, tests and bite proof and **never connected it to `live_corpus_capture.py`**. Verified four
+ways: no import in the capture tool; zero `"trade"` channel occurrences in the adapter; the parser
+explicitly does `if raw_frame.get("channel") != "book": return []`; the subscribe builder sends book
+only. The frame writer emits exactly the `corpus_20260805` shape.
+
+**The run would have produced a BOOK-ONLY corpus and answered nothing:** 7 of 8 §3 items
+unestablishable, and **§3.5 would have returned a FALSE GREEN** — scanning a book-only corpus for
+frames with `observable: true` and a fabricated `last_price` yields zero because no frame has those
+fields at all. That is exactly the specimen ratified two WOs ago: **an empty result from a query that
+cannot fail is not evidence.** Rule 0.12 is what caught it.
+
+**§1.3's audit is what found STOP 2.** Restating the six abort conditions *with their detectors*
+showed **three cannot fire**: #1 (no trade subscribe is ever sent), #2 (no corpus scanner exists and
+no frame carries `last_price`), #4 (no per-segment trim counter is emitted). #5 and #6 would fire;
+#3 is armed in the library but unreachable from capture.
+
+**Eight terms re-verified fresh:** 1,3,4,5,6,7,8 GREEN, 2 RED. **Term 7 was EXECUTED, not printed**
+(the WO-044 §3.7 scar — a hardcoded string for four runs): kill switch engaged → order BLOCKED with
+`KillSwitchEngagedError`; disengaged → filled 0.1 @ 64001.0 (the dual, since a client refusing every
+order would satisfy the first line and be broken).
+
+**Not repaired inline** (0.13, and the WO's own SHIP IMPACT line): wiring a second channel through
+the adapter read loop, subscribe/ack, reconnect+resubscribe and the frame writer is substantial
+capture-path work needing its own WO and bite proofs.
+
+**§3.8 unchanged:** the live trade rate remains WO-054's *declared assumption* (1 trade / 8 book
+frames) and was **not** silently promoted to a measurement.
+
+No code changed. `corpus_20260805` untouched — v1 `e3ab1aec…`, 88 files, 38/38 capture hashes
+verified at open and close. Report: `WO-055-VALIDATION-REPORT.md`.
+
+**LEAD RULINGS NEEDED:** (1) Term 2 operator action — this blocks the long capture too, not just
+validation; (2) a WO to wire the trade channel into the capture path (SHIP IMPACT YES); (3) real
+detectors for abort conditions 1, 2 and 4, especially a committed corpus scanner for #2; (4) re-issue
+WO-055 after those — nothing about the 2-hour design is wrong, the machinery it tests just is not
+connected yet.
+
+---
 ▶ **WO-054 — PHASE B BUILD: ⛔ a 24h horizon is UNREACHABLE at any capture length** (2026-08-08)
 
 **NO SOCKET OPENED.** Fixtures only, as instructed.
