@@ -3335,7 +3335,8 @@ the wrong reason"** — WO-057 questioned the *derivation* and was right; nobody
 **compatibility alias carrying the same value**. Existing corpora unchanged on disk and readable;
 new corpora carry both; no declared break.
 
-563/2 both interpreters, both orders (558 + 5 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+563/2 both interpreters, both orders (558 + 5 new); CI `31280490647` green both legs.
+Gates: lint 6/6 · contract 6/6 · ruff ·
 annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
 Report: `WO-058-REPORT.md`.
 

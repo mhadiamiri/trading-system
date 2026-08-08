@@ -236,9 +236,16 @@ names (`swap_green`/`swap_samples_mib` → `flow_green`/`flow_samples`) broke th
 CONSTRUCT a green verdict to satisfy the preflight. Caught by the suite, fixed at both sites. A
 signature change is only as safe as the enumeration of its constructors.
 
-### CI
+### CI — **run `31280490647`, GREEN both legs** (commit `2861753`)
 
-_pending — filled in on the close commit_
+| Job | Deterministic | Randomised |
+|---|---|---|
+| `test (3.11)` — 93160870061, 10m50s | **563 passed, 2 skipped** (313.75s) | **563 passed, 2 skipped** (308.22s) |
+| `test (3.14)` — 93160870100, 10m57s | **563 passed, 2 skipped** (311.74s) | **563 passed, 2 skipped** (309.20s) |
+
+Eight independent runs (four local, four CI) all report 563/2. CI cannot see the Term 2 verdict —
+it is a host condition, and the gate is patched green in every fixture test so they can exercise
+other things. `test_a_red_gate_makes_the_preflight_refuse` is what proves it can still refuse.
 
 ---
 
