@@ -3282,6 +3282,60 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-053 — THE DEATH CERTIFICATE: 0 trades, and the cost bar is 4× the largest move that
+happened** (2026-08-08)
+
+**OUTCOME (ii) — INSUFFICIENT TO EVALUATE, exactly the registered prior.** 0 fills, 0 round trips
+against a floor of 30 declared BEFORE the run. Net P&L is exactly 0 and is **not a verdict in
+either direction** — the floor did real work: it stopped "P&L = 0" being read as break-even when it
+is absence of evidence.
+
+**THE FINDING IS SHARPER THAN THE REGISTERED EXPECTATION.** Measured after the run, over 2,084
+five-minute windows: median absolute move **0.0412%**, p99 0.2619%, **MAXIMUM 0.4076%** — against a
+**round-trip cost of 1.6216%** (2×0.80% cited taker + 2×1bp measured slippage + measured spread).
+
+```
+windows >= T (3.2432%)                    : 0
+windows >= round-trip cost alone (1.6216%): 0     <- the break-even bar, zero-expectancy
+windows >= 1.0%                           : 0
+windows >= 0.5%                           : 0
+```
+
+The obvious objection — "you set the threshold too high" — does not survive. **No threshold at any
+multiple ≥ 1.0 would have produced a single trade.** Cost is 4× the largest minutes-horizon move in
+the whole corpus and 39× the median. At Tier 1 taker, minutes-horizon taker strategy on BTC/USD is
+not unprofitable, it is **inoperable**: the moves it needs do not occur.
+
+**THE APPARATUS WORKED.** 2,187 complete bars over 21 segments; 21 partial bars discarded — exactly
+one per segment, as the registered rule predicts; 20/21 segments warmed (segment 2 had 3 bars);
+2,084 signal evaluations, all declining; coverage 1.0 over 3,847,530 frames, untruncated.
+
+**PRE-REGISTRATION `e7b33c8` — committed before the strategy file existed**, so "not revised after
+seeing a result" is checkable in git history, not asserted. T = 3.2432% was COMPUTED in code from
+named cost constants (2.0 × round-trip), pinned by test to that arithmetic and to
+`fee_schedule.taker_pct()`. Falsifier NOT triggered.
+
+**BAR LAYER** — buckets anchored to each segment's own start (a gap-spanning bucket is
+unrepresentable, not merely detectable) PLUS an enforced `BAR_FRAME_OUTSIDE_SEGMENT` refusal,
+because alignment is arithmetic on a timestamp and arithmetic never complains. Partial bars
+discarded, never marked complete. Bite proof **PASS**: mutation removes the check → both containment
+tests fail while the dual holds 5/5; artifact 4 demonstrates a real splice across the 2.1h seam
+being refused. U4 mapped to bar granularity and proved by forcing the only condition under which it
+can matter — the frame-level U4 skips 1 of ~1,500 frames inside bar 0 and suppresses nothing.
+
+**§1 housekeeping:** provenance line recorded verbatim outside the corpus; the empty-query specimen
+ratified (0.12); stale fee declarations annotated — **⚠ the count was 10 across 6 files, not the
+reported 4; `tasks.md` was missed entirely by the previous enumeration.**
+
+475/2 both interpreters, both orders (455 + 20 new); CI `31232684456` green both legs BEFORE the
+run. Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31. Corpus v1
+`e3ab1aec…` unchanged, 38/38 capture hashes verify. Report: `WO-053-REPORT.md`.
+
+**LIMITS, stated because the result is emphatic:** one instrument, one quiet regime, 36.9 hours;
+says nothing about maker economics (D51's parked track), longer horizons, or better tiers; the trade
+channel remains unevaluated.
+
+---
 ▶ **WO-052 — ⛔ THE GIT WITNESS DOES NOT EXIST; every fee site routed; documented path restored**
 (2026-08-07)
 
