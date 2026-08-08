@@ -304,9 +304,16 @@ Two existing tests were updated, not silently: `test_reconnect_to_effect` (expec
 both channels, book half unweakened and now checked *by channel*) and its neighbours listed under
 EVERY ATTEMPT. Net count is +16, all new.
 
-### CI
+### CI — **run `31264684723`, GREEN both legs** (commit `907e917`)
 
-_pending — filled in on the close commit_
+| Job | Deterministic | Randomised |
+|---|---|---|
+| `test (3.11)` — 93120813923, 10m46s | **525 passed, 2 skipped** (312.85s) | **525 passed, 2 skipped** (307.67s) |
+| `test (3.14)` — 93120813966, 10m49s | **525 passed, 2 skipped** (312.06s) | **525 passed, 2 skipped** (309.68s) |
+
+Eight independent runs (four local, four CI) all report 525/2. Note what CI *cannot* tell you on
+its own, and why this WO exists: a green suite is exactly what a well-tested but unreachable
+component produces. The witness is what closes that gap.
 
 ---
 

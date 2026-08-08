@@ -3333,7 +3333,8 @@ code reads — it **silently defeats configuration patching in any test that tri
 by patching the object the factory actually holds. **Not fixed: repo-wide import hygiene, outside
 scope, follow-up recommended.**
 
-525/2 both interpreters, both orders (509 + 16 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+525/2 both interpreters, both orders (509 + 16 new); CI `31264684723` green both legs.
+Gates: lint 6/6 · contract 6/6 · ruff ·
 annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
 Report: `WO-056-REPORT.md`.
 
