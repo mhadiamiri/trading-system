@@ -447,9 +447,14 @@ WO-044 grant expiry anchor (2026-08-19) leaves **13 days**, which does not cover
 | Python 3.14.6 | **509 passed, 2 skipped** (309.35s) | **509 passed, 2 skipped** (308.97s) |
 | Python 3.11.15 | **509 passed, 2 skipped** (308.06s) | **509 passed, 2 skipped** (307.92s) |
 
-### CI
+### CI — **run `31235288242`, GREEN both legs** (commit `743f18c`)
 
-_pending — filled in on the close commit_
+| Job | Deterministic | Randomised |
+|---|---|---|
+| `test (3.11)` — 93046497249, 10m39s | **509 passed, 2 skipped** (306.83s) | **509 passed, 2 skipped** (301.83s) |
+| `test (3.14)` — 93046497260, 10m37s | **509 passed, 2 skipped** (305.47s) | **509 passed, 2 skipped** (302.71s) |
+
+Eight independent runs (four local, four CI) all report 509/2.
 
 ---
 

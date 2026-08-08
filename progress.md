@@ -3341,7 +3341,8 @@ Budget MEASURED not estimated: compression **26.7:1** book-only, trade channel *
 compressed** (compression improves to 33.2:1), **0.53 GB compressed at 720 covered hours**. WO-045
 retention caps confirmed to hold — they bound retained volume, not run length.
 
-509/2 both interpreters, both orders (475 + 22 + 12 new). Bite proof PASS, two discriminating
+509/2 both interpreters, both orders (475 + 22 + 12 new); CI `31235288242` green both legs.
+Bite proof PASS, two discriminating
 mutations. Gates: lint 6/6 · contract 6/6 · ruff · annotation 0 · preflight · partition 31/31.
 Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes verify. Report: `WO-054-REPORT.md`.
 
