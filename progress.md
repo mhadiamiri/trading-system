@@ -3282,6 +3282,68 @@ This invariant is enforced through:
 ---
 Current Status:
 ---
+▶ **WO-058 — FLOW GATE + RETIREMENTS. ⛔ Term 2 = RED on FLOW. §4 did not run.** (2026-08-08)
+
+**NO SOCKET OPENED. The grant is unspent, 14-day expiry intact.**
+
+**§3 THE VERDICT, measured over the declared 60 s / 2 s / 30-sample window:**
+
+```
+  FLOW  (\Memory\Pages/sec)  max 991.90  mean 53.089 pages/sec   bounds 10.0 / 1.0   <- GATES  RED
+        19 of 30 samples read exactly 0.00; 11 did not, several in the hundreds.
+  STOCK (swap in use)        495 MiB                             (never gates)       <- CONTEXT
+  FREE  memory               3,956 MiB                           floor 512           <- GREEN
+```
+
+Per the pre-ruled fork: flow non-zero → RED → STOP. **The host is genuinely paging at idle** — not
+merely holding parked bytes. D46's mechanism, measured directly for the first time.
+
+**THE OPERATOR'S TARGET — the right phantom this time, with a mechanism behind it:**
+physical RAM **15.71 GB**, **committed 17.25 GB** — **committed exceeds physical by 1.54 GB, so
+Windows MUST page; it has no choice.** Top committers: chrome 3,042 MB · Code 1,275 MB ·
+claude 1,065 MB · dwm 882 MB. **Free ~1.6–2 GB of commit, then re-run the gate.**
+
+**§2.3 THE FLOW GATE** (`capture_gate.py`). Counters enumerated on this host, not assumed:
+`psutil.swap_memory().sin/sout` are 0 on Windows (unusable); `Page Faults/sec` reads 4,165–5,410 at
+idle because it counts **SOFT** faults satisfied from RAM — a gate on it would be **permanently
+RED**, the exact failure this WO ends. **`\Memory\Pages/sec`** (hard faults, disk I/O) is the gate.
+"~zero" declared as **every sample ≤ 10.0, mean ≤ 1.0 pages/sec**, derived from disk latency
+(~1 ms/s of wait at the bound vs a ~30 ms frame budget — three orders of magnitude of margin) and
+**rounded up, said so** (0.15). **Fails CLOSED** if the counter is unreadable: `None` is the absence
+of a reading, never `0.0`, which would be a claim the host is not paging.
+
+**BITE PROOF PASS** with the asymmetry: mutating the gate back to **STOCK** makes the pre-ruled
+**DUAL fail** (zero flow + 512 MiB stock now reads RED) while the **BITE still passes** — a
+genuinely paging host is RED under both criteria, so only the dual separates *paging* from *holding
+pagefile bytes it is not reading*.
+
+**⚠ MY FIRST FLOW SAMPLER MEASURED ITSELF.** It spawned one PowerShell per sample — 30 launches
+across the window — and PowerShell startup is itself a burst of hard page faults. Same window:
+**30 processes reported mean 859 pages/sec where one process reported 277.** A 3× inflation caused
+by the instrument. Fixed to take the whole window in one call. The verdict did not turn on it, but
+on a quieter host it would have been the difference between GREEN and RED.
+
+**§2.1 RETIREMENT — four sites, not three** (0.11 again): `evidence/WO-054/phase_b_preconditions.md`
+was outside the reported count, and it is the checklist the grant is issued against. All four
+annotated in D47 form. The corpus's own MANIFEST/PREFLIGHT records are **deliberately not** annotated
+— there the number is correct (it really is memory used), and editing them would change the v1
+digest. Decision doc ratified: **"a number can be wrong in a way that survives being questioned for
+the wrong reason"** — WO-057 questioned the *derivation* and was right; nobody asked about the
+*identity*.
+
+**§2.2 RENAME** `LoadRecord.memory_gb` → `memory_used_gb`, with `memory_gb` retained as a
+**compatibility alias carrying the same value**. Existing corpora unchanged on disk and readable;
+new corpora carry both; no declared break.
+
+563/2 both interpreters, both orders (558 + 5 new). Gates: lint 6/6 · contract 6/6 · ruff ·
+annotation 0 · preflight · partition 31/31. Corpus v1 `e3ab1aec…` unchanged, 38/38 capture hashes.
+Report: `WO-058-REPORT.md`.
+
+**Everything downstream is built, wired, bite-proved and waiting** — trade channel reachable
+(WO-056), all six abort detectors fire (WO-057), fabrication scanner gates the result. The only
+remaining blocker is the operator's ~1.6–2 GB of commit.
+
+---
 ▶ **WO-057 — ABORT DETECTORS 1/2/4 + the re-specified Term 2 gate. ⚠ "12.33 GB free" WAS NEVER
 FREE MEMORY** (2026-08-08)
 

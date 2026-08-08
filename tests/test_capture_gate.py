@@ -11,13 +11,17 @@ from trading.data import capture_gate
 MIB = 1024 ** 2
 
 
-def _sampler(free_mib, swap_mib_sequence):
-    """A scripted (free, swap) sampler. `swap_mib_sequence` is consumed one sample per call."""
-    seq = list(swap_mib_sequence)
+def _sampler(free_mib, flow_sequence, stock_mib=0):
+    """A scripted (free, stock, flow) sampler. `flow_sequence` is consumed one per call.
+
+    WO-058: FLOW gates, STOCK is context. Default stock 0 keeps the flow tests focused; the
+    flow-vs-stock tests set it deliberately.
+    """
+    seq = list(flow_sequence)
 
     def sample():
-        swap = seq.pop(0) if seq else 0
-        return int(free_mib * MIB), int(swap * MIB)
+        flow = seq.pop(0) if seq else 0.0
+        return int(free_mib * MIB), int(stock_mib * MIB), flow
 
     return sample
 
@@ -30,34 +34,72 @@ def _no_sleep(_seconds):
 # THE GATE CAN GO GREEN, AND IT CAN GO RED — BOTH HALVES, SEPARATELY
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-def test_green_when_swap_is_zero_throughout_and_memory_clears_the_floor():
-    v = capture_gate.evaluate(sampler=_sampler(2048, [0] * 5), sample_count=5, sleep_fn=_no_sleep)
-    assert v.green and v.swap_green and v.memory_green
-
-
-def test_red_on_any_single_non_zero_swap_sample():
-    """§2.2: EVERY sample must be zero, not the mean. One page-out in a minute is the host paging,
-    and D46's chain starts at exactly that."""
-    v = capture_gate.evaluate(sampler=_sampler(2048, [0, 0, 12, 0, 0]), sample_count=5,
+def test_green_when_paging_flow_is_zero_and_memory_clears_the_floor():
+    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0] * 5), sample_count=5,
                               sleep_fn=_no_sleep)
-    assert not v.green and not v.swap_green
+    assert v.green and v.flow_green and v.memory_green
+
+
+def test_BITE_red_when_the_host_is_actually_paging():
+    """THE BITE (2.3). Paging flow above the declared bound is RED — D46's chain runs through
+    exactly this."""
+    # STOCK is non-zero here ON PURPOSE. A host that is actively paging necessarily HAS pagefile
+    # bytes in use — a paging host with zero stock is not a real configuration. Modelling it with
+    # stock=0 would make this test fail under the stock-gating mutation too, and the proof's whole
+    # value is that the bite CANNOT distinguish the two criteria while the dual can.
+    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0, 0.0, 250.0, 0.0, 0.0], stock_mib=900),
+                              sample_count=5, sleep_fn=_no_sleep)
+    assert not v.green and not v.flow_green
     assert v.memory_green, "the memory half is independent and must not be dragged red"
-    assert "swap IN USE" in v.detail
+    assert "IS PAGING" in v.detail
+
+
+def test_DUAL_green_when_flow_is_zero_but_STOCK_is_large():
+    """THE PRE-RULED DUAL (2.3) — the whole point of D58 ruling 3.
+
+    A host can hold half a gigabyte of pagefile STOCK and read ZERO pages per second; Windows
+    retains those bytes proactively. WO-057 gated on the stock and made a capture the host was
+    always able to run look impossible for a second time.
+    """
+    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0] * 5, stock_mib=512), sample_count=5,
+                              sleep_fn=_no_sleep)
+    assert v.green, "zero flow with non-zero stock is GREEN"
+    assert v.stock_mib == 512.0, "and the stock is still REPORTED"
+    assert "CONTEXT" in v.detail
+
+
+def test_a_low_trickle_below_the_per_sample_bound_still_fails_on_the_mean():
+    """The second shape the bounds catch: a steady trickle that never trips the per-sample bound
+    but shows the host paging continuously."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [5.0] * 6), sample_count=6,
+                              sleep_fn=_no_sleep)
+    assert not v.flow_green, "max 5.0 <= 10.0 but the mean 5.0 exceeds 1.0"
+
+
+def test_the_gate_FAILS_CLOSED_when_the_counter_cannot_be_read():
+    """A gate that cannot measure must not pass. `None` is the ABSENCE of a reading and is
+    deliberately not treated as 0.0 — 0.0 would be a claim that the host is not paging."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [None] * 3), sample_count=3,
+                              sleep_fn=_no_sleep)
+    assert not v.green and not v.flow_green
+    assert v.flow_available is False
+    assert "FAILING CLOSED" in v.detail
 
 
 def test_red_when_free_memory_is_below_the_declared_floor():
-    v = capture_gate.evaluate(sampler=_sampler(100, [0] * 5), sample_count=5, sleep_fn=_no_sleep)
+    v = capture_gate.evaluate(sampler=_sampler(100, [0.0] * 5), sample_count=5, sleep_fn=_no_sleep)
     assert not v.green and not v.memory_green
-    assert v.swap_green, "the swap half is independent and must not be dragged red"
+    assert v.flow_green, "the flow half is independent and must not be dragged red"
 
 
 def test_the_two_halves_are_reported_separately():
     """A gate that collapsed both halves into one boolean could not tell an operator WHICH
     condition to fix — and the two need entirely different actions."""
-    v = capture_gate.evaluate(sampler=_sampler(100, [0, 9]), sample_count=2, sleep_fn=_no_sleep)
+    v = capture_gate.evaluate(sampler=_sampler(100, [0.0, 900.0]), sample_count=2,
+                              sleep_fn=_no_sleep)
     d = v.to_dict()
-    assert d["swap_green"] is False and d["memory_green"] is False
-    assert "swap IN USE" in d["detail"] and "declared floor" in d["detail"]
+    assert d["flow_green"] is False and d["memory_green"] is False
+    assert "IS PAGING" in d["detail"] and "declared floor" in d["detail"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -72,6 +114,21 @@ def test_the_derived_requirement_is_computed_from_its_declared_components():
                 + capture_gate.SEGMENT_CLOSE_TRANSIENT_MIB) * capture_gate.FRAGMENTATION_ALLOWANCE
     assert capture_gate.DERIVED_REQUIREMENT_MIB == expected
     assert abs(capture_gate.DERIVED_REQUIREMENT_MIB - 307.84) < 0.01
+
+
+def test_the_flow_bounds_are_declared_and_rounded_up_per_0_15():
+    """0.15: a margin-bearing figure rounds up and says so. Both bounds sit above the
+    order-of-magnitude derivation rather than being fitted to it."""
+    assert capture_gate.MAX_PAGING_FLOW_PER_SAMPLE == 10.0
+    assert capture_gate.MAX_PAGING_FLOW_MEAN == 1.0
+    assert "Pages/sec" in capture_gate.PAGING_FLOW_COUNTER
+
+
+def test_the_soft_fault_counter_is_deliberately_not_the_gate():
+    """`Page Faults/sec` reads thousands per second on any idle Windows box because it counts SOFT
+    faults, satisfied from RAM. A gate on it would be permanently RED — the exact failure this
+    WO ends."""
+    assert "Page Faults" not in capture_gate.PAGING_FLOW_COUNTER
 
 
 def test_the_declared_floor_is_above_the_derived_requirement():
@@ -105,7 +162,7 @@ def test_the_gate_actually_samples_the_declared_number_of_times():
 
     def counting_sampler():
         calls.append(1)
-        return 4096 * MIB, 0
+        return 4096 * MIB, 0, 0.0
 
     capture_gate.evaluate(sampler=counting_sampler, sample_count=7, sleep_fn=_no_sleep)
     assert len(calls) == 7
@@ -114,18 +171,21 @@ def test_the_gate_actually_samples_the_declared_number_of_times():
 def test_the_verdict_carries_its_falsifier():
     """0.12: an observation offered as corroboration states what would have falsified it — and it
     travels in the artifact, not only in a docstring."""
-    d = capture_gate.evaluate(sampler=_sampler(2048, [0]), sample_count=1,
+    d = capture_gate.evaluate(sampler=_sampler(2048, [0.0]), sample_count=1,
                               sleep_fn=_no_sleep).to_dict()
     assert "falsified" in d["falsifier"]
-    assert "non-zero swap" in d["falsifier"]
+    assert "pages/sec" in d["falsifier"]
+    assert "Swap STOCK cannot falsify it" in d["falsifier"], "stock is context, not a criterion"
     assert "consecutive windows" in d["falsifier"], "the WINDOW's own adequacy has a falsifier too"
 
 
 def test_the_verdict_records_the_evidence_not_just_the_answer():
-    d = capture_gate.evaluate(sampler=_sampler(2048, [0, 0, 3]), sample_count=3,
-                              sleep_fn=_no_sleep).to_dict()
-    assert d["swap_samples"] == 3
-    assert d["max_swap_in_use_mib"] == 3.0
+    d = capture_gate.evaluate(sampler=_sampler(2048, [0.0, 0.0, 3.0], stock_mib=77),
+                              sample_count=3, sleep_fn=_no_sleep).to_dict()
+    assert d["flow_samples"] == 3
+    assert d["max_flow_pages_per_sec"] == 3.0
+    assert d["stock_swap_in_use_mib_CONTEXT_ONLY"] == 77.0, "stock reported, never gating"
+    assert d["gated_on"].startswith("paging FLOW")
     assert d["observation_window_seconds"] == 60.0
 
 
@@ -164,8 +224,8 @@ def test_a_red_gate_makes_the_preflight_refuse(tmp_path, monkeypatch):
     monkeypatch.setattr(
         gate_mod, "evaluate",
         lambda *a, **k: gate_mod.GateVerdict(
-            green=False, swap_green=False, memory_green=True, free_mib=8192.0,
-            swap_samples_mib=[0.0, 41.0], detail="swap IN USE at idle (max 41.0 MiB)"))
+            green=False, flow_green=False, memory_green=True, free_mib=8192.0,
+            flow_samples=[0.0, 410.0], detail="host IS PAGING at idle (max 410.00 pages/sec)"))
     for key, value in {
         "CORPUS_AUTO_MODE_CONFIRMED": "true",
         "CORPUS_SHUTDOWN_POLICY_DISABLED": "true",

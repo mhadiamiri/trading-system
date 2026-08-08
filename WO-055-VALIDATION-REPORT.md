@@ -3,7 +3,7 @@
 > # ⛔ THE SOCKET WAS NOT OPENED. TWO INDEPENDENT BLOCKERS.
 >
 > **STOP 1 — TERM 2 (the named gate, §1.1).** Free memory **3.01 GB** against the WO-044 reference of
-> **12.33 GB**, and **swap is already in use (0.96 GB)**. Memory pressure is not hypothetical here;
+> **12.33 GB** ⚠ *[RETIRED 2026-08-08: that reference is memory USED, not free — see the note below]*, and **swap is already in use (0.96 GB)**. Memory pressure is not hypothetical here;
 > it is present before the capture process starts. §1.1 says stop, so I stopped.
 >
 > **STOP 2 — THE TRADE CHANNEL IS NOT WIRED INTO THE CAPTURE PATH.** This is mine, from WO-054.
@@ -31,6 +31,11 @@ Measured now, on this host, this session:
 | **swap in use** | — | — | **0.96 GB (8.1%)** |
 | idle CPU load | 1.0% | 4.1% | 1.64% |
 | total RAM | — | — | 16.87 GB |
+
+> ⚠ **RETIRED FIGURE — 2026-08-08 (WO-058 §2.1, D58 ruling 1, D47 form).** The `12.33 GB` above is **memory USED, misread as memory FREE**. `LoadRecord.capture()` computed it as `psutil.virtual_memory().used`. On this host (total 15.715 GiB) the WO-044 capture actually ran with **~3.381 GiB FREE** — *less* than the readings this table calls RED.
+> **Consequence: an unreachable gate demanding ~3.6× more headroom than the reference capture itself ever had, blocking a capture the host was always able to run.**
+> Superseded by the flow gate in `src/trading/data/capture_gate.py`. See `docs/decisions/2026-08-08-a-number-wrong-in-a-way-that-survives-being-questioned.md`. This annotates; the report is not rewritten.
+
 
 **Verdict: the gate fails.** Free memory has not been restored — it is **0.25 GB lower** than the
 figure that made WO-054 RED. CPU load has recovered (1.64%, essentially the reference), which

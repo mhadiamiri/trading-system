@@ -38,6 +38,11 @@ confirms the baseline; the guard passes 11/11 once both files landed. Sixth cons
 | **swap in use** | **0** | 0.96 GB | **0.58 GB** |
 | idle CPU | 1.0% | 1.64% | 2.78% |
 
+> ⚠ **RETIRED FIGURE — 2026-08-08 (WO-058 §2.1, D58 ruling 1, D47 form).** The `12.33 GB` above is **memory USED, misread as memory FREE**. `LoadRecord.capture()` computed it as `psutil.virtual_memory().used`. On this host (total 15.715 GiB) the WO-044 capture actually ran with **~3.381 GiB FREE** — *less* than the readings this table calls RED.
+> **Consequence: an unreachable gate demanding ~3.6× more headroom than the reference capture itself ever had, blocking a capture the host was always able to run.**
+> Superseded by the flow gate in `src/trading/data/capture_gate.py`. See `docs/decisions/2026-08-08-a-number-wrong-in-a-way-that-survives-being-questioned.md`. This annotates; the report is not rewritten.
+
+
 **The verdict I would return if this were a gate: still 🔴 RED.** The operator has acted and it is
 real progress — +2.06 GB free, swap down 40% — but **swap is still in use at idle**, so D46's first
 link (memory pressure → swap → event-loop starvation → `HEARTBEAT_ABSENCE`) is still present rather

@@ -50,8 +50,8 @@ def _term2_gate_satisfied(monkeypatch):
     monkeypatch.setattr(
         capture_gate, "evaluate",
         lambda *a, **k: capture_gate.GateVerdict(
-            green=True, swap_green=True, memory_green=True, free_mib=99999.0,
-            swap_samples_mib=[0.0], detail="fixture: gate satisfied, no socket opens"))
+            green=True, flow_green=True, memory_green=True, free_mib=99999.0,
+            flow_samples=[0.0], detail="fixture: gate satisfied, no socket opens"))
 
 
 @pytest.fixture
@@ -150,19 +150,19 @@ class TestLoadRecord:
         """Load record captures current conditions."""
         record = LoadRecord.capture()
         assert isinstance(record.cpu_percent, float)
-        assert isinstance(record.memory_gb, float)
+        assert isinstance(record.memory_used_gb, float)
         assert isinstance(record.background_quiet, bool)
 
     def test_load_record_fields(self):
         """Load record has required fields."""
         record = LoadRecord(
             cpu_percent=15.5,
-            memory_gb=8.2,
+            memory_used_gb=8.2,
             other_processes=["chrome.exe"],
             background_quiet=True,
         )
         assert record.cpu_percent == 15.5
-        assert record.memory_gb == 8.2
+        assert record.memory_used_gb == 8.2
         assert record.other_processes == ["chrome.exe"]
         assert record.background_quiet is True
 
@@ -195,7 +195,7 @@ class TestRunManifest:
 
     def test_run_manifest_to_dict(self, valid_config):
         """Run manifest serializes to dict correctly."""
-        load_record = LoadRecord(cpu_percent=10.0, memory_gb=8.0)
+        load_record = LoadRecord(cpu_percent=10.0, memory_used_gb=8.0)
         manifest = RunManifest(
             run_id="20260728T000000Z",
             host="TESTHOST",
@@ -207,7 +207,7 @@ class TestRunManifest:
         assert result["run_id"] == "20260728T000000Z"
         assert result["host"] == "TESTHOST"
         assert result["load_record"]["cpu_percent"] == 10.0
-        assert result["load_record"]["memory_gb"] == 8.0
+        assert result["load_record"]["memory_used_gb"] == 8.0
 
 
 # ─── PREFLIGHT TESTS ───────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ class TestCorpusCaptureRunnerPreflight:
         runner = CorpusCaptureRunner()
         assert runner._load_record is not None
         assert isinstance(runner._load_record.cpu_percent, float)
-        assert isinstance(runner._load_record.memory_gb, float)
+        assert isinstance(runner._load_record.memory_used_gb, float)
 
     def test_preflight_validates_rotation_config(self, mock_env_vars, monkeypatch):
         """Preflight validates rotation configuration."""

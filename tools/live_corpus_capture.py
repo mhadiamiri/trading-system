@@ -159,7 +159,11 @@ class LoadRecord:
     """Load conditions record (grant condition 1 / term-2 close)."""
 
     cpu_percent: float
-    memory_gb: float
+    # ⚠ WO-058 §2.2 (D58 ruling 2) — RENAMED from `memory_gb`. This is HOST MEMORY **USED**, not
+    # free and not this process's. The old name said neither, and three reports read it as free
+    # memory and built an unreachable gate on it (see the retirement note in capture_gate.py).
+    # Third document-vs-reality naming defect in this project; the name now states the quantity.
+    memory_used_gb: float
     other_processes: list[str] = field(default_factory=list)
     background_quiet: bool = True
 
@@ -180,11 +184,11 @@ class LoadRecord:
 
         cpu_percent = psutil.cpu_percent(interval=1.0)
         memory = psutil.virtual_memory()
-        memory_gb = memory.used / (1024 ** 3)
+        memory_used_gb = memory.used / (1024 ** 3)
 
         return cls(
             cpu_percent=cpu_percent,
-            memory_gb=memory_gb,
+            memory_used_gb=memory_used_gb,
             background_quiet=True,  # Operator confirms quiet
         )
 
@@ -248,7 +252,12 @@ class RunManifest:
             "crash_artifact_sha256": self.crash_artifact_sha256,
             "load_record": {
                 "cpu_percent": self.load_record.cpu_percent,
-                "memory_gb": self.load_record.memory_gb,
+                # WO-058 §2.2: BOTH keys are written. `memory_used_gb` is the correct name going
+                # forward; `memory_gb` is retained so a reader written against the existing
+                # corpora — corpus_20260805 among them — keeps working. The old key is a
+                # COMPATIBILITY ALIAS, not a second quantity: both carry memory USED.
+                "memory_used_gb": self.load_record.memory_used_gb,
+                "memory_gb": self.load_record.memory_used_gb,
                 "other_processes": self.load_record.other_processes,
                 "background_quiet": self.load_record.background_quiet,
             } if self.load_record else None,
@@ -429,12 +438,14 @@ class CorpusCaptureRunner:
         self._load_record = LoadRecord.capture()
         print(f"  ✅ GREEN: Load conditions captured:")
         print(f"           CPU: {self._load_record.cpu_percent}%")
-        print(f"           Memory: {self._load_record.memory_gb:.2f} GB")
+        print(f"           Memory USED: {self._load_record.memory_used_gb:.2f} GB "
+              f"(host-wide; NOT free, NOT this process)")
         print(f"           Background-quiet: {self._load_record.background_quiet}")
         record["conditions"]["load_recorded"] = {
             "green": True,
             "cpu_percent": self._load_record.cpu_percent,
-            "memory_gb": self._load_record.memory_gb,
+            "memory_used_gb": self._load_record.memory_used_gb,
+            "memory_gb": self._load_record.memory_used_gb,   # compatibility alias (WO-058 §2.2)
             "background_quiet": self._load_record.background_quiet,
         }
 
