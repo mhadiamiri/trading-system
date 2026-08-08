@@ -277,6 +277,18 @@ VALID_REASON_CODES = {
         "CORPUS_FRAMES_UNAPPROVED_WINDOW",
         "CORPUS_FRAMES_UNRESOLVED_RUN",
         "SEGMENT_BELOW_MIN_FRAMES",
+        # WO-053 §3.1 — THE BAR LAYER's one refusal. Producible (raised on the real path in
+        # SegmentBarBuilder.add, driven in tests/test_bars.py and the §3.1 bite proof) and
+        # prefix-free: BAR_ is a unique stem and no other declared code begins with it.
+        #
+        # BAR_FRAME_OUTSIDE_SEGMENT — a frame was offered to a bar builder that does not own it.
+        # A bar built from frames on both sides of a gap would average a price from before a hole
+        # with one from after it and report the result as a 60-second observation: the splice
+        # defect (D20) reappearing one layer ABOVE the default-deny reader, where the reader
+        # cannot see it. Bar buckets are already anchored per segment, which makes the state hard
+        # to express; this refusal is what stops it being expressed SILENTLY, since arithmetic on
+        # a timestamp never complains.
+        "BAR_FRAME_OUTSIDE_SEGMENT",
         # WITHDRAWN 2026-07-19 (WO-009b, ratified by project lead):
         #   "SEQUENCE_GAP_RESNAPSHOT"  # T018: Sequence gap detected, requesting fresh snapshot
         # The Kraken v2 PUBLIC book channel transmits no sequence number, so this

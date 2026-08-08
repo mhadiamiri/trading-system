@@ -152,7 +152,11 @@ class SegmentedBacktestRunner:
                     "frames": n_frames,
                     "reason": (
                         f"SEGMENT_BELOW_MIN_FRAMES: {n_frames} < {self._min_segment_frames} "
-                        f"(warm-up {self._strategy_factory().WINDOW_TICKS} x safety factor 10)"
+                        # WO-053: read off the FACTORY (a class attribute), not off a constructed
+                        # instance. A factory that needs constructor arguments — the bar layer's
+                        # does — cannot be called bare just to format an exclusion message.
+                        f"(warm-up {getattr(self._strategy_factory, 'WINDOW_TICKS', 'n/a')} "
+                        f"x safety factor 10)"
                     ),
                 })
                 continue
@@ -180,7 +184,16 @@ class SegmentedBacktestRunner:
         approved.
         """
         # U3: a FRESH INSTANCE. Not reset() — a new object, so stale state is unrepresentable.
-        strategy = self._strategy_factory()
+        #
+        # WO-053 §3.2: a factory may DECLARE that it needs to know which segment it is running on,
+        # by setting `wants_segment = True`. The bar layer needs this — a bar builder that does not
+        # know its own segment cannot refuse a foreign frame, and that refusal is the whole
+        # guarantee that a bar never spans a discontinuity. Factories that do not declare it are
+        # called exactly as before, so `BookImbalanceStrategy`'s path is unchanged.
+        if getattr(self._strategy_factory, "wants_segment", False):
+            strategy = self._strategy_factory(segment_index=index, segment=segment)
+        else:
+            strategy = self._strategy_factory()
 
         position = PositionState(
             symbol="BTC/USD", current_quantity=Decimal("0"), average_entry_price=Decimal("0"),
@@ -251,6 +264,12 @@ class SegmentedBacktestRunner:
                 first_trade_frame_index = frames_processed
             position = self._apply_fill(position, fill)
 
+        # WO-053 §2.2: a strategy that aggregates frames must be told the segment ended, so its
+        # trailing PARTIAL unit is DISCARDED rather than emitted as a complete one. Optional —
+        # tick-level strategies have no such state and define no `finish()`.
+        if hasattr(strategy, "finish"):
+            strategy.finish()
+
         # ── U2 + WO-050 §2 (R1): FORCE-FLAT EXECUTES A REAL ECONOMIC CLOSE ────────────────────
         #
         # THE DEFECT THIS CLOSES. This previously did `dataclasses.replace(position,
@@ -306,6 +325,12 @@ class SegmentedBacktestRunner:
             "first_frame_utc": first_frame_utc.isoformat() if first_frame_utc else None,
             "last_frame_utc": last_frame_utc.isoformat() if last_frame_utc else None,
             "frames_processed": frames_processed,
+            # WO-053: how many complete bars this segment produced, and how many trailing partials
+            # were discarded. Reported because a segment too short to warm the bar strategy is
+            # STRUCTURALLY unable to trade, and "0 trades" would otherwise be indistinguishable
+            # from "the signal never fired". Absent (None) for tick-level strategies.
+            "bars_built": getattr(strategy, "bars_built", None),
+            "discarded_partial_bars": getattr(strategy, "discarded_partial_bars", None),
             "trades": len(trades),
             # WO-050 §3.2 (R3): with R1's real close, the segment MUST end flat and its unrealised
             # P&L MUST be exactly zero. A non-zero residual means the close did not execute — this
