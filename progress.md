@@ -3324,7 +3324,8 @@ capture-path work needing its own WO and bite proofs.
 frames) and was **not** silently promoted to a measurement.
 
 No code changed. `corpus_20260805` untouched — v1 `e3ab1aec…`, 88 files, 38/38 capture hashes
-verified at open and close. Report: `WO-055-VALIDATION-REPORT.md`.
+verified at open and close. CI `31240124483` green both legs (509/2, unchanged — no code
+changed). Report: `WO-055-VALIDATION-REPORT.md`.
 
 **LEAD RULINGS NEEDED:** (1) Term 2 operator action — this blocks the long capture too, not just
 validation; (2) a WO to wire the trade channel into the capture path (SHIP IMPACT YES); (3) real

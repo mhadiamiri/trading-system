@@ -218,6 +218,10 @@ measurement.
       and close
 - [x] No throwaway corpus created (none was allocated)
 - [x] Gates green; no code changed
+- [x] **CI green both legs — run `31240124483`** (commit `e60c4ac`), counts from the job logs:
+      `test (3.11)` 93059577360 → **509 passed, 2 skipped** both orders;
+      `test (3.14)` 93059577366 → **509 passed, 2 skipped** both orders. Unchanged from WO-054, as
+      expected for a WO that changed no code.
 
 ---
 
