@@ -45,26 +45,27 @@ ARTIFACT_DIR = os.path.join(REPO, ".artifacts", "wo058_flow_gate_bite_proof")
 
 # ── THE MUTATION: gate on STOCK instead of FLOW (WO-057's criterion, restored) ────────────────
 ANCHOR = [
-    "        mean_flow = sum(flow_samples) / len(flow_samples)",
-    "        flow_green = (max(flow_samples) <= MAX_PAGING_FLOW_PER_SAMPLE",
-    "                      and mean_flow <= MAX_PAGING_FLOW_MEAN)",
+    "        flow_green = (v.max_move_pp <= MAX_PAGEFILE_MOVE_PP",
+    "                      and abs(v.drift_pp) <= MAX_PAGEFILE_DRIFT_PP)",
 ]
 MUTANT = [
-    "        # MUTATED: gate on STOCK, not FLOW — WO-057's criterion restored.",
-    "        flow_green = (stock_bytes == 0)",
+    "        # MUTATED: gate on RAW Pages/sec — the RETIRED counter, which measures file-backed",
+    "        # I/O as well as pagefile I/O.",
+    "        flow_green = (max(pages or [0.0]) <= 10.0)",
 ]
 
 # SINGLE-PURPOSE sets (§0.10).
-DUAL = {"test_DUAL_green_when_flow_is_zero_but_STOCK_is_large"}
+DUAL = {"test_DUAL_RULED_heavy_file_reads_with_a_static_pagefile_read_GREEN",
+        "test_DUAL_green_when_occupancy_is_static_but_STOCK_is_large"}
 BITE = {"test_BITE_red_when_the_host_is_actually_paging"}
 FAIL_CLOSED = {"test_the_gate_FAILS_CLOSED_when_the_counter_cannot_be_read"}
 # BROAD — excluded from the discrimination sets and reported for visibility (§0.10). These read
 # several fields of the verdict at once and attribute nothing on their own.
 BROAD = {
-    "test_green_when_paging_flow_is_zero_and_memory_clears_the_floor",
+    "test_green_when_pagefile_occupancy_is_static_and_memory_clears_the_floor",
     "test_the_two_halves_are_reported_separately",
     "test_the_verdict_records_the_evidence_not_just_the_answer",
-    "test_a_low_trickle_below_the_per_sample_bound_still_fails_on_the_mean",
+    "test_a_slow_creep_below_the_per_sample_bound_still_fails_on_DRIFT",
     "test_red_when_free_memory_is_below_the_declared_floor",
 }
 
@@ -133,11 +134,11 @@ def main():
 
     original = _mutate(GATE, ANCHOR, MUTANT)
     try:
-        out += ["  MUTATION: flow_green = (stock_bytes == 0)  — the STOCK criterion", ""]
+        out += ["  MUTATION: flow_green = max(pages) <= 10.0  — the RETIRED Pages/sec criterion", ""]
         d2 = digest(*run_tests())
     finally:
         open(GATE, "wb").write(original)
-    out += block("ARTIFACT 2 — MUTATION (gating on STOCK)", d2,
+    out += block("ARTIFACT 2 — MUTATION (gating on the RETIRED Pages/sec)", d2,
                  "the pre-ruled DUAL fails (zero flow + large stock now reads RED) while the BITE "
                  "still passes — both criteria reject a genuinely paging host, so only the dual "
                  "tells them apart")
@@ -154,12 +155,12 @@ def main():
     live = _live_reading()
     out += ["-- ARTIFACT 4 — THIS HOST, MEASURED (the pre-ruled case, live) --"]
     out += [f"  {line}" for line in live["lines"]]
-    out += ["  EXPECT: the very configuration the dual describes — zero flow, non-zero stock", ""]
+    out += ["  EXPECT: a STATIC pagefile — whatever raw Pages/sec happens to be", ""]
 
     dual_ok = bool(d2["dual_failed"])
     bite_holds = not d2["bite_failed"]
-    out += [f"  DUAL fails under stock-gating (the pre-ruled case) : {dual_ok}",
-            f"  BITE still passes under stock-gating              : {bite_holds}",
+    out += [f"  DUAL fails under Pages/sec-gating (the ruled case) : {dual_ok}",
+            f"  BITE still passes under Pages/sec-gating           : {bite_holds}",
             "",
             "  ── WHY THE ASYMMETRY IS THE PROOF ───────────────────────────────────────────────",
             "  A genuinely paging host is RED under BOTH criteria, so the bite cannot distinguish",
@@ -189,21 +190,27 @@ def main():
 
 
 def _live_reading():
-    """One real reading of both quantities on this host. No socket; performance counter + psutil."""
+    """One real reading of every relevant quantity on this host. No socket."""
     sys.path.insert(0, os.path.join(REPO, "src"))
     import psutil
 
     from trading.data import capture_gate
 
-    flow = capture_gate.read_paging_flow()
-    stock_mib = psutil.swap_memory().used / (1024 ** 2)
+    w = capture_gate.read_pagefile_window(3, 1)
     free_mib = psutil.virtual_memory().available / (1024 ** 2)
+    stock_mib = psutil.swap_memory().used / (1024 ** 2)
+    if not w:
+        return {"lines": ["pagefile counter unreadable"], "ok": False}
+    usage = w["usage"]
+    move = max((abs(usage[i] - usage[i - 1]) for i in range(1, len(usage))), default=0.0)
     return {
         "lines": [
-            f"FLOW  ({capture_gate.PAGING_FLOW_COUNTER}) : "
-            f"{'unreadable' if flow is None else f'{flow:.2f} pages/sec'}   <- GATES",
-            f"STOCK (swap bytes in use)          : {stock_mib:.0f} MiB          <- CONTEXT ONLY",
-            f"FREE  memory                       : {free_mib:.0f} MiB "
+            f"PAGEFILE occupancy : {[round(u, 3) for u in usage]}  "
+            f"max move {move:.4f} pp   <- GATES",
+            f"RAW Pages/sec      : {[round(p, 1) for p in w['pages']]}   <- RETIRED, never gates",
+            f"residual (P-Cache) : {[round(r, 1) for r in w['residual']]}   <- declared fallback",
+            f"STOCK swap in use  : {stock_mib:.0f} MiB   <- CONTEXT ONLY",
+            f"FREE memory        : {free_mib:.0f} MiB "
             f"(floor {capture_gate.MIN_FREE_MEMORY_MIB:.0f})",
         ],
         "ok": True,

@@ -11,17 +11,19 @@ from trading.data import capture_gate
 MIB = 1024 ** 2
 
 
-def _sampler(free_mib, flow_sequence, stock_mib=0):
-    """A scripted (free, stock, flow) sampler. `flow_sequence` is consumed one per call.
+def _sampler(free_mib, usage_sequence, stock_mib=0, pages=None):
+    """A scripted (free, stock, pagefile_pct) sampler, one reading per call.
 
-    WO-058: FLOW gates, STOCK is context. Default stock 0 keeps the flow tests focused; the
-    flow-vs-stock tests set it deliberately.
+    WO-059: the gate reads the MOVEMENT of pagefile occupancy. STOCK is context; file-backed disk
+    activity is not represented here at all, because it is not swapping.
     """
-    seq = list(flow_sequence)
+    seq = list(usage_sequence)
 
     def sample():
-        flow = seq.pop(0) if seq else 0.0
-        return int(free_mib * MIB), int(stock_mib * MIB), flow
+        pct = seq.pop(0) if seq else 0.0
+        # The optional 4th element is RAW Pages/sec — the RETIRED counter. Supplied only by the
+        # fixtures that must exercise it; it never affects the verdict.
+        return int(free_mib * MIB), int(stock_mib * MIB), pct, pages
 
     return sample
 
@@ -34,8 +36,9 @@ def _no_sleep(_seconds):
 # THE GATE CAN GO GREEN, AND IT CAN GO RED — BOTH HALVES, SEPARATELY
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-def test_green_when_paging_flow_is_zero_and_memory_clears_the_floor():
-    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0] * 5), sample_count=5,
+def test_green_when_pagefile_occupancy_is_static_and_memory_clears_the_floor():
+    """Static occupancy — whatever its level — means the OS is not swapping."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [2.791] * 5), sample_count=5,
                               sleep_fn=_no_sleep)
     assert v.green and v.flow_green and v.memory_green
 
@@ -43,42 +46,62 @@ def test_green_when_paging_flow_is_zero_and_memory_clears_the_floor():
 def test_BITE_red_when_the_host_is_actually_paging():
     """THE BITE (2.3). Paging flow above the declared bound is RED — D46's chain runs through
     exactly this."""
-    # STOCK is non-zero here ON PURPOSE. A host that is actively paging necessarily HAS pagefile
-    # bytes in use — a paging host with zero stock is not a real configuration. Modelling it with
-    # stock=0 would make this test fail under the stock-gating mutation too, and the proof's whole
-    # value is that the bite CANNOT distinguish the two criteria while the dual can.
-    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0, 0.0, 250.0, 0.0, 0.0], stock_mib=900),
-                              sample_count=5, sleep_fn=_no_sleep)
+    # Occupancy CLIMBING is the observable: the OS is moving pages out. Stock is non-zero on
+    # purpose — a host that is actively swapping necessarily has pagefile bytes in use.
+    v = capture_gate.evaluate(
+        sampler=_sampler(2048, [2.80, 3.10, 3.55, 4.02, 4.60], stock_mib=900, pages=8200.0),
+        sample_count=5, sleep_fn=_no_sleep)
     assert not v.green and not v.flow_green
     assert v.memory_green, "the memory half is independent and must not be dragged red"
-    assert "IS PAGING" in v.detail
+    assert "PAGEFILE IS MOVING" in v.detail
 
 
-def test_DUAL_green_when_flow_is_zero_but_STOCK_is_large():
-    """THE PRE-RULED DUAL (2.3) — the whole point of D58 ruling 3.
-
-    A host can hold half a gigabyte of pagefile STOCK and read ZERO pages per second; Windows
-    retains those bytes proactively. WO-057 gated on the stock and made a capture the host was
-    always able to run look impossible for a second time.
-    """
-    v = capture_gate.evaluate(sampler=_sampler(2048, [0.0] * 5, stock_mib=512), sample_count=5,
+def test_DUAL_green_when_occupancy_is_static_but_STOCK_is_large():
+    """THE D58 DUAL. A host can hold half a gigabyte of pagefile STOCK and never touch it; Windows
+    retains those bytes proactively. WO-057 gated on the stock and made a runnable capture look
+    impossible."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [2.79] * 5, stock_mib=512), sample_count=5,
                               sleep_fn=_no_sleep)
-    assert v.green, "zero flow with non-zero stock is GREEN"
+    assert v.green, "static occupancy with non-zero stock is GREEN"
     assert v.stock_mib == 512.0, "and the stock is still REPORTED"
     assert "CONTEXT" in v.detail
 
 
-def test_a_low_trickle_below_the_per_sample_bound_still_fails_on_the_mean():
-    """The second shape the bounds catch: a steady trickle that never trips the per-sample bound
-    but shows the host paging continuously."""
-    v = capture_gate.evaluate(sampler=_sampler(2048, [5.0] * 6), sample_count=6,
-                              sleep_fn=_no_sleep)
-    assert not v.flow_green, "max 5.0 <= 10.0 but the mean 5.0 exceeds 1.0"
+def test_DUAL_RULED_heavy_file_reads_with_a_static_pagefile_read_GREEN():
+    r"""THE RULED DUAL (WO-059) — THE CASE `\Memory\Pages/sec` FAILED, AND THE ONE THE CAPTURE
+    ITSELF GENERATES EVERY HOUR.
+
+    Measured on this host with NO memory pressure (commit 8.40 of 15.71 GB, 7.8 GB free):
+
+        idle                        pages/sec =      0.0   cache faults/sec =     0.0
+        reading 60 ordinary files   pages/sec = 44,751.1   cache faults/sec = 93,032.5
+        PAGING FILE % USAGE         2.791 -> 2.791 -> 2.791 -> 2.791   (FLAT THROUGHOUT)
+
+    The old gate read that as a paging host and went RED. It is not swapping — it is reading
+    files, which is exactly what the capture does when it writes and gzips a ~17 MiB segment. A
+    gate tripped by the process it protects is no gate.
+    """
+    v = capture_gate.evaluate(
+        sampler=_sampler(2048, [2.791] * 5, stock_mib=319, pages=44751.1),
+        sample_count=5, sleep_fn=_no_sleep)
+    assert v.green, (
+        "heavy file-backed I/O with a static pagefile is NOT swapping and must read GREEN"
+    )
+    assert v.max_move_pp == 0.0
+
+
+def test_a_slow_creep_below_the_per_sample_bound_still_fails_on_DRIFT():
+    """The second shape the bounds catch: occupancy creeping upward in steps too small to trip the
+    per-sample bound individually, which is what a slowly-leaking host looks like."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [2.80, 2.84, 2.88, 2.92, 2.96, 3.00]),
+                              sample_count=6, sleep_fn=_no_sleep)
+    assert v.max_move_pp <= capture_gate.MAX_PAGEFILE_MOVE_PP, "each step is under the bound"
+    assert not v.flow_green, "but the 0.20 pp drift is over"
 
 
 def test_the_gate_FAILS_CLOSED_when_the_counter_cannot_be_read():
     """A gate that cannot measure must not pass. `None` is the ABSENCE of a reading and is
-    deliberately not treated as 0.0 — 0.0 would be a claim that the host is not paging."""
+    deliberately not treated as 0.0 — 0.0 would be a claim about the host."""
     v = capture_gate.evaluate(sampler=_sampler(2048, [None] * 3), sample_count=3,
                               sleep_fn=_no_sleep)
     assert not v.green and not v.flow_green
@@ -86,8 +109,16 @@ def test_the_gate_FAILS_CLOSED_when_the_counter_cannot_be_read():
     assert "FAILING CLOSED" in v.detail
 
 
+def test_a_single_sample_cannot_express_movement_and_fails_closed():
+    """Movement needs two readings. One sample is not a small amount of evidence about movement —
+    it is none, and the gate says so rather than reporting 0.0 movement."""
+    v = capture_gate.evaluate(sampler=_sampler(2048, [2.79]), sample_count=1, sleep_fn=_no_sleep)
+    assert not v.flow_green
+
+
 def test_red_when_free_memory_is_below_the_declared_floor():
-    v = capture_gate.evaluate(sampler=_sampler(100, [0.0] * 5), sample_count=5, sleep_fn=_no_sleep)
+    v = capture_gate.evaluate(sampler=_sampler(100, [2.79] * 5), sample_count=5,
+                              sleep_fn=_no_sleep)
     assert not v.green and not v.memory_green
     assert v.flow_green, "the flow half is independent and must not be dragged red"
 
@@ -95,11 +126,11 @@ def test_red_when_free_memory_is_below_the_declared_floor():
 def test_the_two_halves_are_reported_separately():
     """A gate that collapsed both halves into one boolean could not tell an operator WHICH
     condition to fix — and the two need entirely different actions."""
-    v = capture_gate.evaluate(sampler=_sampler(100, [0.0, 900.0]), sample_count=2,
+    v = capture_gate.evaluate(sampler=_sampler(100, [2.0, 9.0]), sample_count=2,
                               sleep_fn=_no_sleep)
     d = v.to_dict()
     assert d["flow_green"] is False and d["memory_green"] is False
-    assert "IS PAGING" in d["detail"] and "declared floor" in d["detail"]
+    assert "PAGEFILE IS MOVING" in d["detail"] and "declared floor" in d["detail"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -116,19 +147,21 @@ def test_the_derived_requirement_is_computed_from_its_declared_components():
     assert abs(capture_gate.DERIVED_REQUIREMENT_MIB - 307.84) < 0.01
 
 
-def test_the_flow_bounds_are_declared_and_rounded_up_per_0_15():
+def test_the_movement_bounds_are_declared_and_rounded_up_per_0_15():
     """0.15: a margin-bearing figure rounds up and says so. Both bounds sit above the
     order-of-magnitude derivation rather than being fitted to it."""
-    assert capture_gate.MAX_PAGING_FLOW_PER_SAMPLE == 10.0
-    assert capture_gate.MAX_PAGING_FLOW_MEAN == 1.0
-    assert "Pages/sec" in capture_gate.PAGING_FLOW_COUNTER
+    assert capture_gate.MAX_PAGEFILE_MOVE_PP == 0.05
+    assert capture_gate.MAX_PAGEFILE_DRIFT_PP == 0.10
 
 
-def test_the_soft_fault_counter_is_deliberately_not_the_gate():
-    """`Page Faults/sec` reads thousands per second on any idle Windows box because it counts SOFT
-    faults, satisfied from RAM. A gate on it would be permanently RED — the exact failure this
-    WO ends."""
-    assert "Page Faults" not in capture_gate.PAGING_FLOW_COUNTER
+def test_the_gate_reads_the_PAGEFILE_and_not_general_disk_activity():
+    r"""RETIRED BY NAME: `\Memory\Pages/sec` measures file-backed I/O as well as pagefile I/O, so
+    a gate on it is tripped by any disk read — including the capture writing and gzipping its own
+    segments. The gate must name the pagefile."""
+    assert "Paging File" in capture_gate.PAGEFILE_USAGE_COUNTER
+    assert "% Usage" in capture_gate.PAGEFILE_USAGE_COUNTER
+    # Pages/sec survives ONLY as an input to the declared fallback, never as the gate itself.
+    assert capture_gate.PAGEFILE_USAGE_COUNTER != capture_gate.PAGES_COUNTER
 
 
 def test_the_declared_floor_is_above_the_derived_requirement():
@@ -162,7 +195,7 @@ def test_the_gate_actually_samples_the_declared_number_of_times():
 
     def counting_sampler():
         calls.append(1)
-        return 4096 * MIB, 0, 0.0
+        return 4096 * MIB, 0, 2.79
 
     capture_gate.evaluate(sampler=counting_sampler, sample_count=7, sleep_fn=_no_sleep)
     assert len(calls) == 7
@@ -171,21 +204,21 @@ def test_the_gate_actually_samples_the_declared_number_of_times():
 def test_the_verdict_carries_its_falsifier():
     """0.12: an observation offered as corroboration states what would have falsified it — and it
     travels in the artifact, not only in a docstring."""
-    d = capture_gate.evaluate(sampler=_sampler(2048, [0.0]), sample_count=1,
+    d = capture_gate.evaluate(sampler=_sampler(2048, [2.79, 2.79]), sample_count=2,
                               sleep_fn=_no_sleep).to_dict()
     assert "falsified" in d["falsifier"]
-    assert "pages/sec" in d["falsifier"]
-    assert "Swap STOCK cannot falsify it" in d["falsifier"], "stock is context, not a criterion"
+    assert "pp between consecutive samples" in d["falsifier"]
+    assert "reading a file is not" in d["falsifier"], "file I/O is not a criterion"
     assert "consecutive windows" in d["falsifier"], "the WINDOW's own adequacy has a falsifier too"
 
 
 def test_the_verdict_records_the_evidence_not_just_the_answer():
-    d = capture_gate.evaluate(sampler=_sampler(2048, [0.0, 0.0, 3.0], stock_mib=77),
+    d = capture_gate.evaluate(sampler=_sampler(2048, [2.79, 2.79, 3.09], stock_mib=77),
                               sample_count=3, sleep_fn=_no_sleep).to_dict()
-    assert d["flow_samples"] == 3
-    assert d["max_flow_pages_per_sec"] == 3.0
+    assert d["occupancy_samples"] == 3
+    assert abs(d["max_move_pp"] - 0.30) < 1e-6
     assert d["stock_swap_in_use_mib_CONTEXT_ONLY"] == 77.0, "stock reported, never gating"
-    assert d["gated_on"].startswith("paging FLOW")
+    assert d["gated_on"].startswith("PAGEFILE OCCUPANCY MOVEMENT")
     assert d["observation_window_seconds"] == 60.0
 
 
