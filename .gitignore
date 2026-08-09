@@ -62,5 +62,12 @@ Thumbs.db
 # `git add -A` would have committed the whole corpus wholesale.
 /captures/
 
+# WO-061: EXTERNAL BULK SNAPSHOTS. Same reasoning as /captures/ — these are acquired archives, not
+# source. The Kraken bulk archives are ~19.3 GB and nothing committed here could later be removed
+# from git history. The PROVENANCE (PROVENANCE.json, the committed-code digest, and the publisher's
+# own .CHECKSUM files) lives alongside the data and is what a future WO checks, exactly as for the
+# corpus. Untracked AND unignored, a plain `git add -A` would commit the archives wholesale.
+/external/
+
 # A zero-byte file produced by a Windows shell redirection typo. Not an artifact of anything.
 /nul
