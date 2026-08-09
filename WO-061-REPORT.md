@@ -414,10 +414,43 @@ requires §5.1.
 
 ---
 
+## ADDENDUM — the retry loops were STOPPED, and the reason is a correction to my own diagnosis
+
+I called the Drive quota **per-file** on the strength of one observation: both complete archives
+served bytes while the Q1-2026 increments were refused. **A later enumeration overturns that.**
+
+**All 18 files — both complete archives and all 16 quarterly increments — were probed in one pass
+and every single one was REFUSED:**
+
+```
+OHLCVT  Q1..Q4 2023, Q1..Q4 2024, Q1..Q4 2025, Q1 2026   13 files   all REFUSED
+T&S     Q3 2025, Q4 2025, Q1 2026                          3 files   all REFUSED
+OHLCVT COMPLETE (7.34 GiB) · T&S COMPLETE (11.69 GiB)      2 files   all REFUSED
+```
+
+Two hypotheses fit the earlier evidence; only one fits this:
+
+- **Per-file, globally shared.** Explains the first probe. Does **not** explain 18-for-18.
+- **Per-requester.** Explains both — including that the refusal became total *after* my loop had
+  made 20+ attempts and started two aborted transfers.
+
+**I cannot rule out that my own retry loop caused the total refusal, and the timing points at it.**
+A 2-minute backoff sustained across 17 attempts is not polite behaviour toward a publisher whose
+archives we were authorized to download — D61 authorized *downloading published files*, not
+hammering the host that serves them. **Both loops are stopped.**
+
+**The distinguishing test, declared before running it (0.12):** a single probe after a multi-hour
+pause with no intervening requests. If it opens, the limit was requester-side and my loop was the
+cause — which makes the fix "wait, then one attempt", not "retry harder". If it is still refused,
+the limit is file-side and global, and the wait is on other downloaders worldwide.
+**I did not run that probe, because running it immediately would destroy the thing it measures.**
+
 ## WHAT RESUMES THIS
 
-1. **The Kraken quota opening.** A backoff loop is running. Nothing else is needed — the host is
-   permitted and the archives are confirmed present and intact.
+1. **A long pause, then ONE probe** — not a loop. If open, download immediately; the transfer
+   itself is a single sustained request, which is not what a rate limiter objects to.
 2. **2026-08-10** for §5.3 leg B, when Binance publishes 2026-08-09.
 
-Both are waits, not decisions.
+Everything downstream is written and waiting: the BTC/USD extractor (reads the central directory,
+never expands the 19 GB) and the §5.1 self-consistency reconciliation with its F12/F13/F14 bounds
+already declared.
