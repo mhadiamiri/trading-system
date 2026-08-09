@@ -1,4 +1,14 @@
 """
+WO-060 NOTE — THE RELOADS ARE GONE, AND THAT IS THE POINT.
+
+This file reloaded the settings module TWELVE times to make an environment change
+visible, because `Settings.DATA_SOURCE` was bound at import. Each reload built a SECOND `Settings`
+class object while modules that had already done `from config.settings import Settings` kept the
+first — two live classes, one sys.modules entry, and patches that reached only one of them.
+
+`Settings` now reads `os.environ` at ACCESS time (config/settings.py), so setting the variable is
+enough and there is nothing to reload.
+
 Live Loop Integration Test
 
 End-to-end integration test for live paper trading loop.
@@ -58,10 +68,6 @@ class TestLiveLoopIntegration:
         os.environ["DATA_SOURCE"] = "simulated"
 
         try:
-            # Reload settings to pick up the change
-            import importlib
-            import config.settings
-            importlib.reload(config.settings)
 
             loop = LiveTradingLoop()
 
@@ -78,8 +84,6 @@ class TestLiveLoopIntegration:
                 os.environ["DATA_SOURCE"] = original_data_source
             else:
                 os.environ.pop("DATA_SOURCE", None)
-            # Reload settings to restore
-            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_every_decision_logged(self):
@@ -99,10 +103,6 @@ class TestLiveLoopIntegration:
         os.environ["DATA_SOURCE"] = "simulated"
 
         try:
-            # Reload settings to pick up the change
-            import importlib
-            import config.settings
-            importlib.reload(config.settings)
 
             loop = LiveTradingLoop()
 
@@ -133,8 +133,6 @@ class TestLiveLoopIntegration:
                 os.environ["DATA_SOURCE"] = original_data_source
             else:
                 os.environ.pop("DATA_SOURCE", None)
-            # Reload settings to restore
-            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_simulated_fills_recorded(self):
@@ -150,10 +148,6 @@ class TestLiveLoopIntegration:
         os.environ["DATA_SOURCE"] = "simulated"
 
         try:
-            # Reload settings to pick up the change
-            import importlib
-            import config.settings
-            importlib.reload(config.settings)
 
             loop = LiveTradingLoop()
 
@@ -168,8 +162,6 @@ class TestLiveLoopIntegration:
                 os.environ["DATA_SOURCE"] = original_data_source
             else:
                 os.environ.pop("DATA_SOURCE", None)
-            # Reload settings to restore
-            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_kill_switch_blocks_orders(self):
@@ -184,10 +176,6 @@ class TestLiveLoopIntegration:
         os.environ["DATA_SOURCE"] = "simulated"
 
         try:
-            # Reload settings to pick up the change
-            import importlib
-            import config.settings
-            importlib.reload(config.settings)
 
             loop = LiveTradingLoop()
 
@@ -205,8 +193,6 @@ class TestLiveLoopIntegration:
                 os.environ["DATA_SOURCE"] = original_data_source
             else:
                 os.environ.pop("DATA_SOURCE", None)
-            # Reload settings to restore
-            importlib.reload(config.settings)
 
     @pytest.mark.asyncio
     async def test_clamp_fires_during_loop(self):
@@ -221,10 +207,6 @@ class TestLiveLoopIntegration:
         os.environ["DATA_SOURCE"] = "simulated"
 
         try:
-            # Reload settings to pick up the change
-            import importlib
-            import config.settings
-            importlib.reload(config.settings)
 
             # Create loop with risk engine that has small limit
             from trading.risk.engine import DeterministicRiskEngine
@@ -245,8 +227,6 @@ class TestLiveLoopIntegration:
                 os.environ["DATA_SOURCE"] = original_data_source
             else:
                 os.environ.pop("DATA_SOURCE", None)
-            # Reload settings to restore
-            importlib.reload(config.settings)
 
 
 class TestLiveLoopPauseHandling:
@@ -1104,7 +1084,6 @@ class TestPaperModeGuardRealBiteProof:
         """
         import os
         import sys
-        import importlib
         from trading.execution.paper import PaperExecutionClient
 
         original_env = os.environ.get("TRADING_ENV")
@@ -1114,17 +1093,16 @@ class TestPaperModeGuardRealBiteProof:
             # is_paper_trading() returns True only for "paper"
             os.environ["TRADING_ENV"] = "test"
 
-            # Clear settings from cache to pick up new environment
-            if 'config.settings' in sys.modules:
-                del sys.modules['config.settings']
+            # WO-060: no cache clearing — Settings reads os.environ at access time.
             if 'trading.execution.paper' in sys.modules:
                 del sys.modules['trading.execution.paper']
 
-            # Reload settings
-            import config.settings
-            importlib.reload(config.settings)
 
-            # Reload paper module to pick up new settings
+            # Reload the PAPER module (not config.settings) to pick up new settings.
+            # WO-060: this reload is UNRELATED to the Settings-duplication defect and is left in
+            # place; only the twelve settings-module reloads were removed. The
+            # import below was stripped with them in error and is restored.
+            import importlib
             import trading.execution.paper
             importlib.reload(trading.execution.paper)
             from trading.execution.paper import PaperExecutionClient
@@ -1142,8 +1120,7 @@ class TestPaperModeGuardRealBiteProof:
                 os.environ.pop("TRADING_ENV", None)
 
             # Clear settings from cache
-            if 'config.settings' in sys.modules:
-                del sys.modules['config.settings']
+            # WO-060: no cache clearing — Settings reads os.environ at access time.
             if 'trading.execution.paper' in sys.modules:
                 del sys.modules['trading.execution.paper']
 
@@ -1170,7 +1147,6 @@ class TestMainnetGuardRealBiteProof:
         """
         import os
         import sys
-        import importlib
 
         original_env = os.environ.get("TRADING_ENV")
 
@@ -1178,15 +1154,18 @@ class TestMainnetGuardRealBiteProof:
             # Set TRADING_ENV to "mainnet"
             os.environ["TRADING_ENV"] = "mainnet"
 
-            # Clear settings from cache to pick up new environment
-            if 'config.settings' in sys.modules:
-                del sys.modules['config.settings']
+            # WO-060: no cache clearing — Settings reads os.environ at access time.
 
             # With guard PRESENT: ValueError is raised on import → test PASSES
             # With guard REMOVED: No error → test FAILS
+            # WO-060: call the guard DIRECTLY. `Settings.validate()` IS the constitutional guard
+            # and now reads os.environ at access time. Re-importing the module after deleting it
+            # from sys.modules ALSO mints a second Settings class object — the same defect as a
+            # reload, by a different route. Import-time invocation is covered in a subprocess in
+            # tests/test_settings_identity.py.
+            from config.settings import Settings
             with pytest.raises(ValueError, match="TRADING_ENV=mainnet is BLOCKED"):
-                import config.settings
-                importlib.reload(config.settings)
+                Settings.validate()
 
         finally:
             # Restore original environment
@@ -1196,8 +1175,7 @@ class TestMainnetGuardRealBiteProof:
                 os.environ.pop("TRADING_ENV", None)
 
             # Clear settings from cache
-            if 'config.settings' in sys.modules:
-                del sys.modules['config.settings']
+            # WO-060: no cache clearing — Settings reads os.environ at access time.
 
 
 if __name__ == "__main__":

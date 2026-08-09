@@ -178,10 +178,14 @@ class TestImportBoundaries:
                 os.environ["TRADING_ENV"] = "mainnet"
                 os.environ["DATA_SOURCE"] = data_source
 
-                # Reloading settings should trigger validate() which raises ValueError
+                # WO-060: call the guard DIRECTLY. Settings.validate() is the guard, and it now
+                # reads os.environ at access time, so this exercises the same code path without a
+                # reload — a reload minted a second Settings class object, which is the defect
+                # that made a patch reach one class and not the other. The import-time INVOCATION
+                # of this guard is covered in tests/test_settings_identity.py, in a subprocess.
+                from config.settings import Settings
                 with pytest.raises(ValueError, match="BLOCKED by constitutional guard"):
-                    import config.settings
-                    importlib.reload(config.settings)
+                    Settings.validate()
 
             # Test 2: PaperExecutionClient CAN be used when TRADING_ENV=paper
             # This is the CORRECT behavior - verify it works for all DATA_SOURCE values
@@ -189,9 +193,7 @@ class TestImportBoundaries:
                 os.environ["TRADING_ENV"] = "paper"
                 os.environ["DATA_SOURCE"] = data_source
 
-                # Reload settings to apply new environment
-                import config.settings
-                importlib.reload(config.settings)
+                # WO-060: no reload needed — Settings reads os.environ at access time.
                 from config.settings import Settings as FreshSettings
 
                 # Verify settings loaded correctly
@@ -211,9 +213,7 @@ class TestImportBoundaries:
                 os.environ["TRADING_ENV"] = "test"
                 os.environ["DATA_SOURCE"] = data_source
 
-                # Reload settings to apply new environment
-                import config.settings
-                importlib.reload(config.settings)
+                # WO-060: no reload needed — Settings reads os.environ at access time.
                 from config.settings import Settings as FreshSettings
 
                 # Verify settings loaded correctly
@@ -237,9 +237,7 @@ class TestImportBoundaries:
                 os.environ["TRADING_ENV"] = "test"
                 os.environ["DATA_SOURCE"] = data_source
 
-                # Reload settings
-                import config.settings
-                importlib.reload(config.settings)
+                # WO-060: no reload needed — Settings reads os.environ at access time.
 
                 # Verify real-order path is blocked: only PaperExecutionClient exists
                 # in Phase 1, and it refuses to instantiate under test
@@ -258,9 +256,7 @@ class TestImportBoundaries:
             else:
                 os.environ.pop("DATA_SOURCE", None)
 
-            # Reload settings to restore original state
-            import config.settings
-            importlib.reload(config.settings)
+            # WO-060: nothing to restore — Settings reads os.environ at access time.
 
 
 if __name__ == "__main__":

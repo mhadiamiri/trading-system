@@ -16,7 +16,104 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-class Settings:
+class _SettingsMeta(type):
+    # ── WO-060: READ AT ACCESS TIME, NOT AT IMPORT TIME ──────────────────────────────────────
+    #
+    # THE DEFECT THIS CLOSES. These four were bound once, at import:
+    #
+    #     DATA_SOURCE = os.getenv("DATA_SOURCE", "simulated")     # evaluated at import
+    #
+    # So a test that needed a different value could not simply set the environment — the class
+    # attribute was already frozen. `tests/integration/test_live_loop.py` worked around it with
+    # `importlib.reload(config.settings)`, TWELVE times. Reload re-executes the module and builds a
+    # NEW `Settings` class object, while every module that had done `from config.settings import
+    # Settings` — `trading.data.adapters.factory` among them — kept a reference to the OLD one.
+    #
+    # The result was TWO LIVE `Settings` CLASSES with one entry in `sys.modules`:
+    #
+    #     factory.Settings is config.settings.Settings   ->   False
+    #
+    # and therefore a patch applied to one that never reached the code reading the other. That is
+    # what made WO-056's reachability witness pass alone and fail in the full suite.
+    #
+    # Reading `os.environ` at ACCESS time removes the reason to reload, which removes the second
+    # class object, which removes the whole failure mode. The environment becomes the single source
+    # of truth rather than a value copied once and diverged from thereafter.
+    #
+    # ⚠ FOUR ATTRIBUTES WERE BOUND THIS WAY, NOT ONE (0.11). `TRADING_ENV` is among them, and it
+    # is the RED-LINE surface: it gates the mainnet order path. A stale `TRADING_ENV` on a class
+    # object that production code still holds is the most consequential form of this defect, not
+    # the least.
+
+    @property
+    def DATA_SOURCE(cls) -> str:
+        """Selects the market data feed (independent of execution)."""
+        return os.getenv("DATA_SOURCE", "simulated")
+
+    @DATA_SOURCE.deleter
+    def DATA_SOURCE(cls) -> None:
+        # `patch.object` sees no entry in Settings.__dict__ (the property lives on the metaclass),
+        # treats the attribute as created, and DELETES it on exit. Without a deleter that is an
+        # AttributeError at teardown. Deleting restores the declared default.
+        os.environ.pop("DATA_SOURCE", None)
+
+    @DATA_SOURCE.setter
+    def DATA_SOURCE(cls, value: str) -> None:
+        # A SETTER, deliberately. `patch.object(Settings, "DATA_SOURCE", ...)` is how several
+        # tests express "run this with a different source", and without a setter that raises
+        # AttributeError. Writing through to the environment means such a patch reaches the
+        # production code path instead of decorating a class attribute nothing reads — which is
+        # the property the WO-060 enumeration exists to check.
+        os.environ["DATA_SOURCE"] = str(value)
+
+    @property
+    def TRADING_ENV(cls) -> str:
+        """Gates EXECUTION only, never data access. Defaults to paper."""
+        return os.getenv("TRADING_ENV", "paper")
+
+    @TRADING_ENV.deleter
+    def TRADING_ENV(cls) -> None:
+        # `patch.object` sees no entry in Settings.__dict__ (the property lives on the metaclass),
+        # treats the attribute as created, and DELETES it on exit. Without a deleter that is an
+        # AttributeError at teardown. Deleting restores the declared default.
+        os.environ.pop("TRADING_ENV", None)
+
+    @TRADING_ENV.setter
+    def TRADING_ENV(cls, value: str) -> None:
+        os.environ["TRADING_ENV"] = str(value)
+
+    @property
+    def DATA_DIR(cls) -> str:
+        return os.getenv("DATA_DIR", "data")
+
+    @DATA_DIR.deleter
+    def DATA_DIR(cls) -> None:
+        # `patch.object` sees no entry in Settings.__dict__ (the property lives on the metaclass),
+        # treats the attribute as created, and DELETES it on exit. Without a deleter that is an
+        # AttributeError at teardown. Deleting restores the declared default.
+        os.environ.pop("DATA_DIR", None)
+
+    @DATA_DIR.setter
+    def DATA_DIR(cls, value: str) -> None:
+        os.environ["DATA_DIR"] = str(value)
+
+    @property
+    def LOG_DIR(cls) -> str:
+        return os.getenv("LOG_DIR", "logs")
+
+    @LOG_DIR.deleter
+    def LOG_DIR(cls) -> None:
+        # `patch.object` sees no entry in Settings.__dict__ (the property lives on the metaclass),
+        # treats the attribute as created, and DELETES it on exit. Without a deleter that is an
+        # AttributeError at teardown. Deleting restores the declared default.
+        os.environ.pop("LOG_DIR", None)
+
+    @LOG_DIR.setter
+    def LOG_DIR(cls, value: str) -> None:
+        os.environ["LOG_DIR"] = str(value)
+
+
+class Settings(metaclass=_SettingsMeta):
     """
     Application settings loaded from environment.
 
@@ -27,23 +124,6 @@ class Settings:
     - No code path can place real orders while TRADING_ENV=paper
     """
 
-    # Data source: selects market data feed (independent of execution)
-    # Options: simulated, kraken_public, kraken_v2 (Sprint 2: T004 prepared, raises NotImplementedError until T009-T019)
-    DATA_SOURCE: Literal["simulated", "kraken_public", "kraken_v2"] = os.getenv(
-        "DATA_SOURCE", "simulated"
-    )
-
-    # Trading environment: gates execution only (not data access)
-    # Options: paper, mainnet, test
-    # Default to paper for safety - requires explicit override for mainnet
-    # test: paper-equivalent mode for testing suspenders guard only
-    TRADING_ENV: Literal["paper", "mainnet", "test"] = os.getenv(
-        "TRADING_ENV", "paper"
-    )
-
-    # Data persistence
-    DATA_DIR: str = os.getenv("DATA_DIR", "data")
-    LOG_DIR: str = os.getenv("LOG_DIR", "logs")
 
     @classmethod
     def validate(cls) -> None:

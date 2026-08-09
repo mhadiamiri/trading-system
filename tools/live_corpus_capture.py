@@ -243,6 +243,12 @@ class RunManifest:
                     "compressed": s.compressed,
                     "start_utc": s.start_utc,
                     "end_utc": s.end_utc,
+                    # WO-059 FIX: WO-057 added this field to SegmentManifest and populated it at
+                    # segment close, but NEVER ADDED IT HERE — so the counter reached the object
+                    # and never the record. Abort condition 4 was unmeasurable in the WO-058
+                    # validation run for exactly that reason. The record is the deliverable, not
+                    # the attribute (0.9).
+                    "raw_text_trim_events": s.raw_text_trim_events,
                 }
                 for s in self.segments
             ],

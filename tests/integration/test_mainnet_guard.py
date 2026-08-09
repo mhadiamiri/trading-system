@@ -98,15 +98,24 @@ class TestSettingsMainnetGuard:
 
     @staticmethod
     def _reload_settings_with_env(value):
-        """Reload config.settings under a given TRADING_ENV. Returns the exception or None."""
+        """Run the constitutional guard under a given TRADING_ENV. Returns the exception or None.
+
+        WO-060: this RELOADED `config.settings` to make the env change visible, because
+        `TRADING_ENV` was bound at import. Every reload minted a SECOND `Settings` class object
+        while modules holding `from config.settings import Settings` kept the first — the
+        duplication that made a patch reach one class and not the other.
+
+        `Settings.validate()` IS the guard, and it now reads `os.environ` at access time, so
+        calling it directly tests the same code path with no reload and no duplicate. The
+        import-time INVOCATION of that guard is covered separately, in a subprocess, so it cannot
+        pollute this process's module table.
+        """
         original = os.environ.get("TRADING_ENV")
         try:
             os.environ["TRADING_ENV"] = value
-            if "config.settings" in sys.modules:
-                del sys.modules["config.settings"]
+            from config.settings import Settings
             try:
-                import config.settings
-                importlib.reload(config.settings)
+                Settings.validate()
                 return None
             except ValueError as exc:
                 return exc
@@ -115,10 +124,6 @@ class TestSettingsMainnetGuard:
                 os.environ["TRADING_ENV"] = original
             else:
                 os.environ.pop("TRADING_ENV", None)
-            if "config.settings" in sys.modules:
-                del sys.modules["config.settings"]
-            import config.settings
-            importlib.reload(config.settings)
 
     def test_paper_env_is_accepted(self):
         """Baseline: paper must load cleanly."""
