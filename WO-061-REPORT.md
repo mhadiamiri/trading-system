@@ -454,3 +454,174 @@ the limit is file-side and global, and the wait is on other downloaders worldwid
 Everything downstream is written and waiting: the BTC/USD extractor (reads the central directory,
 never expands the 19 GB) and the §5.1 self-consistency reconciliation with its F12/F13/F14 bounds
 already declared.
+
+---
+
+# ADDENDUM — KRAKEN ARCHIVES ACQUIRED (manual download). §5.1 AND §5.2 RUN.
+
+The Drive route never opened; the operator downloaded both master archives by hand. §3.1 is
+satisfied from `Kraken_OHLCVT.zip` (7,885,068,519 B) and `Kraken_Trading_History.zip`
+(12,554,214,086 B) — both byte-sizes match what was probed from Kraken's own links.
+
+## §3.3 ENUMERATION — three things the description did not say (0.11)
+
+| | OHLCVT | time-and-sales |
+|---|---|---|
+| files / pairs | 12,027 files, **1,522 pairs** | 1,119 files, **1,119 pairs** |
+| bytes extracted | 25.69 GiB | 45.26 GiB |
+| BTC/USD series | `XBTUSD` (Kraken's ticker is **XBT**) | `XBTUSD`, 2.58 GiB, **92,716,525 trades** |
+| tape columns | — | `ts, price, volume` — **no trade id, no side** |
+
+**1. The archive ends 2025-12-31, not 2026-03-31.** Measured: last trade `2025-12-31 23:59:54`.
+This is the **Q4-2025 master**. The gap to our capture windows is **~217 days**, not the 127
+WO-061 §3.1 assumed.
+
+**2. Interval coverage is inconsistent, and the ops-directed primary interval is the truncated one.**
+
+```
+1, 5, 15, 60, 720, 1440 : 2013-10-06 .. 2025-12-31
+240                     : 2024-01-01 .. 2025-12-31    <- 2 years only
+ 30                     : 2024-01-01 .. 2025-09-30    <- and ends a quarter early
+```
+
+Not XBTUSD-specific (`ETHUSD_240` starts 2024-01-01 too). **§5.2's "≥3 widely separated eras" is
+impossible at 240m.**
+
+**3. A correction to my own first reading.** I reported `BTCUSD_1.csv` and `BTCUSD_Daily_OHLC.csv`
+as **foreign**, inferring it from their header rows when every other file is headerless. **They are
+in Kraken's master zip** (`master_q4/`, 56.24 and 0.22 MiB). The observation stands — they are
+formatted inconsistently with the rest of the archive — but **the attribution was mine and it was
+wrong.** They remain excluded as a different, partial series, not on provenance grounds.
+
+## §4 PROVENANCE
+
+Snapshot extracted **member-by-member from the master zips**: nothing combined, nothing edited.
+`XBTUSD_{1,5,15,30,60,240,720,1440}.csv` + `XBTUSD.csv` (2,702,663,341 B).
+**Discarded 1,521 of 1,522 OHLCVT pairs and 1,118 of 1,119 tape pairs.**
+
+**Digest by committed code (D51):**
+`385f6e0a4c6833f9831609a410029e126500a7f645b9ed8a0bbeacda705ac7f7`
+
+## §5.1 — THE PUBLISHER DISAGREES WITH ITSELF, IN TWO REGIONS, WITH OPPOSITE SIGNATURES
+
+Per §5.1 this is a finding about the publisher and **outranks the rest of the WO**.
+
+| | **REGION A — DUPLICATION** | **REGION B — OMISSION** |
+|---|---|---|
+| window (UTC) | **2024-03-21 05:00 → 03-31 22:00** | **2025-07-01 → 09-30 (Q3)** |
+| signature | trades appear **twice** | trades are **missing** |
+| count vs Kraken's own bars | **exactly 2.0× in 172 of 258 hours** | **always negative: −1 to −11**, ratio 0.9970–0.9995 |
+| extent | 258 contiguous hours | **2,037 of 2,208 hours (92.3%)**; at 240m **all 552** Q3 bars |
+| volume effect | max **855.92 BTC** per hour | max **6.06 BTC** per 4h — the deficit is in *count*, not size |
+
+The 60m and 240m passes agree exactly on Region B: 92 days × 6 = **552**, and 552 four-hour bars
+mismatched.
+
+**Attribution — verified, and it reverses my own earlier claim.** I first reported the duplication
+as *ours*, reasoning from the directory name `TimeAndSales_Combined`. **That name is Kraken's own,
+inside their zip.** Re-extracting `XBTUSD.csv` straight from the master gave byte-identical results
+— 1,734,934 rows, 1,358,870 distinct, 340,196 duplicated triples. **Both defects are Kraken's.**
+
+**Kraken's OHLCVT bars are treated as correct in both regions** — the halved count in A, the larger
+count in B. The tape is the file that disagrees.
+
+**Clean regions verified:** 2015, 2019 and 2022 show **zero** count mismatches and no volume
+disagreement beyond `1E-10` floating-point dust in the published file (4 bars of 8,757 in 2019, 1
+of 8,760 in 2022).
+
+**Observation with its falsifier (0.12):** Region B aligns exactly with a calendar quarter, and this
+Q4 master's own 30-minute series also ends 2025-09-30 — consistent with an imperfect assembly of
+the Q3-2025 increment. *An observation, not a claim; falsified by the same deficit in a
+non-quarter-aligned window, or by a later master reproducing it.*
+
+**NOT REPAIRED.** The defect is the publisher's and the record says so. A snapshot whose provenance
+reads *"publisher's file, edited by us"* is the weaker artifact — this project has retired two
+figures for exactly that reason.
+
+### F12 FAILED, AND THE FAILURE IS MINE — reported, not retuned
+
+F12 bounded O, H, L and C under one rule: *"selection among already-printed values introduces no
+arithmetic, so tolerance is zero."* **True of the values, false of the selection.**
+
+```
+2015/2019/2022/2024, 30,702 bars:   HIGH mismatches 0      LOW mismatches 0
+                                    OPEN 3,271             CLOSE 3,306
+```
+
+`max`/`min` are **order-independent** — zero is correct and it holds perfectly. First/last are
+**order-dependent**, and the tape's timestamps are integer seconds (100% in every era; **63% of
+2024 trades share a second with their predecessor**). O and C are **not resolvable from this tape
+at all**, and no bound on them was ever legitimate.
+
+**Third time I have bounded a quantity by its name rather than by what generates it** — after F6
+(`sup(mid)` vs `sup(trade)`) and `\Memory\Pages/sec`. The correct decomposition: zero tolerance
+for H and L; **O and C unbounded by this tape.**
+
+## §5.2 — CROSS-VENUE HISTORICAL: three eras pass, **2018 fails**
+
+**Mechanism (0.16):** both sides are **last-trade prints from a tape** — unlike §5.3, the
+mid-vs-trade term is absent. What remains is non-identical trade populations (different trades, not
+simultaneous) and a **multiplicative** USD-vs-USDT basis.
+
+| interval | era | shared bars | **F15 r** | | basis | disp p95 | max |
+|---|---|---|---|---|---|---|---|
+| 60m | **2018** | 8,605 | **0.954000** | **FALSIFIED** | +5.3 bps | **277.95 bps** | **1122.17 bps** |
+| 60m | 2021 | 8,741 | 0.991118 | PASS | −4.8 bps | 14.58 | 522.33 |
+| 60m | 2024 | 8,772 | 0.995874 | PASS | +0.3 bps | 14.57 | 46.49 |
+| 60m | 2025 | 8,751 | 0.995737 | PASS | −0.2 bps | 10.53 | 62.03 |
+| 240m | 2024 | 2,194 | 0.998692 | PASS | +0.2 bps | 15.08 | 46.53 |
+| 240m | 2025 | 2,189 | 0.998572 | PASS | −0.4 bps | 10.61 | 61.87 |
+
+**F15 falsified in 2018 — reported, not retuned.** r = 0.954 with p95 dispersion of 278 bps and a
+maximum of **11.2%**. Early Binance and a USDT peg under stress is the honest explanation, not an
+excuse: **the bridge does not carry 2018, and any suite evaluated across it says so.**
+
+§5.2 is **unaffected by both tape defects** — it compares published *bars* on both sides, and
+Kraken's bars are the file that is correct.
+
+### What §5.2 delivered beyond its brief
+
+These eras end **2025-12-31**; §5.3's window is **2026-08-05..09**. **No overlap.** So the basis
+measured here is genuinely **out-of-sample** against §5.3 — and **§5.3's +8.7/+9.2 bps sits inside
+the historical p95 dispersion band of 10–15 bps.** That is the corroboration WO-061 declined to
+manufacture when it refused to bound F11.
+
+**F16 remains UNBOUNDED**, deliberately: a bound declared and tested in the same pass is not a
+check. A future WO may bound it against the distribution measured here.
+
+## §5.3 LEG B — NOT COMPUTABLE, and that is arithmetic
+
+Binance published 2026-08-09 (3 files + 1m, **all checksum-verified**). But `validation_20260809`
+is **two hours**, and a 4-hour bar cannot fit inside it:
+
+```
+240m : 0 fully-covered bars
+ 60m : 1 fully-covered bar  ->  0 return pairs
+```
+
+**My harness printed FALSIFIED for that, and it was wrong** — a correlation over zero pairs is
+undefined, not failed. D52/0.12 committed by my own tooling; it would have recorded a venue defect
+where the only defect is the window's length. **Fixed to distinguish NOT COMPUTABLE from
+FALSIFIED.**
+
+**A labelled adaptation, not the ordered check:** at 1-minute the window gives 121 bars and
+**r = 0.7926**. Not reported as a failed bound — F10 was declared for **≥1h**, and at 1m the median
+genuine move is **0.39 bps** against comparable noise. The attenuation signature confirms it:
+**1m → 0.79, 60m → 0.9971, 240m → 0.9991.** Correlation *rising* with interval is what tracking
+looks like; divergence would fall.
+
+## §6 VERDICT — REVISED
+
+**BINANCE: ADMITTED as the bridge**, residuals unchanged **plus one added**: **the bridge does not
+carry 2018** (F15 falsified, r = 0.954).
+
+**KRAKEN OHLCVT BARS: ADMITTED.** Self-consistent against the tape in every clean era; the sole
+source reaching 2013; unaffected by both tape defects.
+**MAY**: bar-horizon (≥1h) signal evaluation, costs from the validated model.
+**MAY NOT**: anything finer than its bars — no spread, no depth, no microstructure.
+**Residuals**: ends **2025-12-31**; **240m covers only 2024–2025**; pre-2026 is unreconcilable
+against our apparatus by construction.
+
+**KRAKEN TIME-AND-SALES: REFUSED AS A PRIMARY BASIS** until Regions A and B are excluded by
+declaration. It remains usable *outside* them — the clean eras verify exactly — but a tape that
+doubles one window and thins another is not a basis, it is a source with two named holes.
