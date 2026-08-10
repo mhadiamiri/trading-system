@@ -1,153 +1,181 @@
-# WO-062 — VENUE COMPARISON (expanded) + DEX FEASIBILITY SPIKE. Report-only. No code, no socket.
+# WO-063 — VENUE RE-SCORE: three order-book DEXs, SPOT AND PERPS. Technical dimensions only.
 #
-# The fee lever is the largest the death-certificate arithmetic identified. Kraken Tier 1 round trip
-# 1.6216%; Hyperliquid spot taker ~0.070% => ~0.14% round trip, ~11.6x. Against the MEASURED moves
-# (max 5-min 0.4076%, max 60-min 0.5388%, corpus_20260805), that regime CLEARS the bar Tier 1 did
-# not. **The death certificate is regime-scoped and this is outside its scope — it is not
-# contradicted, and nothing here re-opens it retroactively.**
+# SUPERSEDES WO-062's SCOPE ON TWO POINTS, by operator direction:
+#   1. **PERPETUALS ARE IN SCOPE.** WO-062's spot-only gate was a self-imposed narrowing, not a
+#      requirement. dYdX was disqualified under it and is REINSTATED.
+#   2. **JURISDICTION IS NEVER A GATE.** Record availability restrictions as FACTS where they exist,
+#      and score nothing on them. Deployment location is an operator matter, not a design constraint.
+# Do not re-derive either constraint. Do not narrow scope on any assumption not stated here.
 
-BASE: current HEAD — **§1 reports actual HEAD; the WO does not pin a SHA** (three consecutive WOs
-had a stale base by one report commit).
-SCOPE: Track 1 venue comparison; Track 2 feasibility spike. **REPORT ONLY.**
-SHIP IMPACT: **NO.** `git diff -- src/` must be empty (paste). No code. **NO SOCKET, no RPC, no
-wallet, no key, no account creation anywhere.** Docs and published schedules only.
-PARALLEL: does not block or delay the historical-data WO or hours-horizon prep.
-
-**STANDING CONSTRAINTS (restated, not negotiable here):** spot only; **no live execution anywhere in
-this phase**; no account-sharing or borrowed credentials in any system path; TRADING_ENV guard
-semantics unchanged.
+BASE: current HEAD (§1 reports actual — do not pin a SHA).
+SCOPE: report only. **NO socket, NO RPC, NO wallet, NO key, NO account, NO code.** Docs and
+published schedules only. `git diff -- src/` empty (paste).
+SHIP IMPACT: **NO.**
+PARALLEL: does not block the hours-horizon suite pre-registration against the d54-approved basis.
 
 ---
 
 ## §0 RULES OF ENGAGEMENT
 0.1 No discretion. Code wins: STOP and report.
-0.1e **Cite or declare-with-derivation, every figure.** The fee lesson: recall was 3.08x wrong and
-     three parties shared it. Vendor fee schedules move.
+0.1e Cite or declare-with-derivation, every figure. A figure that cannot be obtained is **DECLARED
+     UNKNOWN**, never estimated.
 0.5 Report every attempt.
 0.6 AUTO MODE OFF.
 0.11 Enumerate, do not assume the count.
 0.12 Every observation offered as corroboration states its falsifier.
 0.15 Margin-bearing declarations round up and say so.
-0.16 **Any bound or comparison across two quantities states, at declaration, what mechanism generates
-     each and whether they are simultaneous.** Cross-venue cost comparison is exactly this shape.
-0.17 No basis, venue, or verdict enters the tree as a decision — this WO produces a comparison and a
-     gap list, not an adoption.
+0.16 Any comparison across two quantities states, at declaration, what mechanism generates each and
+     whether they are simultaneous. **Cross-venue cost comparison is exactly this shape, and perps
+     vs spot is a second instance of it inside the same table.**
+0.17 No venue is adopted here. This produces a comparison; the decision is the lead's.
+0.18 **DO NOT DISQUALIFY ON JURISDICTION OR ON INSTRUMENT TYPE.** Both are recorded as facts.
+     WO-062 lost dYdX to a scope assumption; that is the error being corrected.
 
 ---
 
 ## §1 CONFIRM STATE
-Actual HEAD, `git diff -- src/` empty, gates green, both corpora verify. `phaseb_20260809` status
+Actual HEAD, `git diff -- src/` empty, gates green, corpora verify. `phaseb_20260809` status
 (informational — do not disturb).
 
 ---
 
-# TRACK 1 — VENUE COMPARISON (report-only, cited)
+## §2 THE CANDIDATE SET — three venues, two instrument classes each
 
-## §2 THE CANDIDATE SET
-**(a) Canada-registered CEXs**: Kraken (all tiers, our cited 17-tier table is already in the tree),
-Coinbase, and **enumerate the others actually registered with the CSA/OSC — do not assume a list**
-(0.11). State the registration status source and date.
-**(b) ORDER-BOOK DEXs ONLY**: Hyperliquid (spot), dYdX, Injective/Helix. **AMMs and aggregators are
-OUT OF SCOPE AS VENUES** — their fill model is incompatible with our CLOB apparatus (no resting
-book to capture, no L2 depth, no maker/taker distinction in our sense). Record that exclusion and
-its reason; it is a separate research track, not pursued.
+| venue | spot | perps |
+|---|---|---|
+| **Hyperliquid** | UBTC (bridged), quoted USDC/USDH/USDT | BTC-PERP |
+| **dYdX v4** | none (verified WO-062) | BTC-USD perp — **REINSTATED** |
+| **Injective / Helix** | yes | yes |
 
-**FIRST, A DISQUALIFIER TO CHECK, NOT ASSUME (0.11/0.1e):** the research doc lists dYdX under
-"perpetual-futures". **Verify whether dYdX v4 offers SPOT at all.** If it is perps-only, spot-only
-disqualifies it and the candidate set is smaller than the brief's three. Same check for each
-candidate: **spot availability is a gate, not a score.** Perps are excluded on both constitutional
-scope and Canadian retail restriction.
-
-## §3 SCORING — five dimensions, each cited or derived
-
-### 3.1 ALL-IN COST AT OUR TRADE SIZE — from actual quotes where obtainable
-**Headline fees are insufficient**, per the research doc's own model:
-`all-in = platform fee + pool fee + gas + price impact + failed-tx cost`.
-- Use **0.1 BTC (~$6,460)** — the size every prior figure in this project uses, so the comparison is
-  commensurable (0.16: same quantity, same size, or the comparison is meaningless).
-- **Fees**: cited schedules, per tier, maker and taker, with the tier a $0-volume account can
-  actually claim (the Tier 1 lesson — an optimistic tier is a cost assumption wearing a fact).
-- **Gas**: **STRUCTURAL FINDING TO REPORT, not just a number.** Gas is **per-transaction**, our cost
-  model is **percentage-of-notional**. At 0.1 BTC a $0.50 gas is 0.008%; at 0.001 BTC it is 0.8%.
-  **Our cost model's SHAPE may need to change (proportional + fixed), not merely its parameters.**
-  State this explicitly as an input to any future adoption WO.
-- **Price impact**: from **published L2 depth at the touch** where obtainable, against 0.1 BTC.
-  Cite the depth observation with its timestamp. If depth cannot be obtained without an account or a
-  socket, **say so — do not estimate it** (this project's rule: a declared unknown beats a guessed
-  figure).
-- **Failed-transaction cost**: on-chain venues can charge for a reverted transaction. State whether
-  each does, and at what.
-
-### 3.2 L2 DATA QUALITY AND CAPTURE-ABILITY — **the sharpest dimension for us**
-For each: is there a **public WebSocket L2 order-book feed**? At what depth and update cadence?
-**And the question that decides everything: WHAT IS THIS VENUE'S INTEGRITY MECHANISM — its CRC32
-checksum equivalent?** Kraken's book checksum is what makes our corpus trustworthy; a feed with no
-integrity mechanism cannot support an equivalent corpus, and that is a **corpus-integrity concern,
-not a convenience one**. If a venue has none, say so plainly and state what could substitute
-(sequence numbers, snapshot cadence, independent re-derivation) and what it would NOT cover.
-
-### 3.3 API MATURITY AGAINST OUR EXECUTION ABSTRACTION
-Our execution layer is venue-abstracted — a swap should be a one-module change. Assess each against
-that: order placement/cancel semantics, auth model, rate limits (cited), SDK availability, and
-**whether execution requires local transaction signing** (on-chain venues do). Note that signing is
-a materially different execution path from an API key — flag it as an architecture question, do not
-resolve it here.
-
-### 3.4 SPOT AVAILABILITY — a gate (§2). Record pass/fail and the cited source.
-
-### 3.5 REGULATORY POSTURE — plain-language note, not legal advice
-For **a Canadian resident using the protocol directly via a self-custody wallet**: what is the
-venue's stated availability, and does it restrict Canadian users? **No VPN-dependent access paths.
-A geo-blocked frontend is recorded as a SCORING FACT, not routed around.** State plainly where a
-venue is unavailable, and note that protocol-level access via self-custody may differ from frontend
-access — **record the distinction, do not adjudicate it.** Recommend qualified advice for anything
-load-bearing.
-
-## §4 TRACK 1 OUTPUT
-A scored table plus a short narrative per venue. **No adoption recommendation is required** — the
-brief says the output feeds the Sprint 3 venue decision, which is the lead's. If one venue clearly
-dominates, say so and why; if the answer is "depends on X", name X.
+**Injective was unscoreable in WO-062** — `docs.ts.injective.network` 301'd and the landing page
+carried no schema, no integrity mechanism, no fees. **Try alternative routes** (0.11): the Injective
+GitHub org, the Python/TypeScript SDK repos and their docstrings, the indexer/gRPC API reference,
+Helix's own docs, and any published protocol spec. **If it remains unobtainable after an enumerated
+search, declare that — do not score it from search snippets.**
 
 ---
 
-# TRACK 2 — FEASIBILITY SPIKE (report-only, NO CODE)
+## §3 THE FOUR TECHNICAL DIMENSIONS
 
-## §5 For the top-scoring ORDER-BOOK DEX from Track 1
-Question: **can our existing capture pipeline and cost model point at its WebSocket feed under the
-venue abstraction's one-module swap?** Answer from **published schemas and docs only — no socket.**
+### 3.1 ALL-IN COST AT 0.1 BTC (~$6,460), SPOT AND PERPS SEPARATELY
+Cited fee tables, the tier a **zero-volume account can actually claim** (the Tier 1 lesson: an
+optimistic tier is a cost assumption wearing a fact's clothing). Maker and taker. Plus gas, price
+impact from published depth where obtainable, and failed-transaction cost.
 
-Produce **the gap list**, in two explicit columns:
+**AND THE NEW COST STRUCTURE THIS WO EXISTS TO SURFACE — FUNDING.**
+Perpetuals charge **funding**: a periodic payment between longs and shorts, typically hourly or
+8-hourly. **This is a THIRD cost shape our model does not have:**
+```
+  fee      = proportional to NOTIONAL, per trade        (we model this)
+  gas      = FIXED per transaction                       (WO-062 flagged this)
+  funding  = proportional to NOTIONAL x TIME HELD        (NOTHING in our model has a time dimension)
+```
+**For an hours-horizon strategy this may dominate.** A 4-hour hold pays funding; a 4-hour spot hold
+does not. Report, per venue: the funding interval, how the rate is determined, and **published
+historical funding rates for BTC** if obtainable — the *distribution*, not a single figure, since a
+mean funding rate says nothing about what a 4-hour hold costs on a bad day.
+State plainly: **is funding large or small relative to the 0.14%-ish round-trip fee advantage?**
+If it is comparable or larger, the fee lever is smaller than it appears for held positions, and that
+is the finding. **Declare it unknown rather than estimating it.**
 
-**WHAT CHANGES** — at minimum: message schema (subscribe shape, book update format, snapshot vs
-delta); **integrity mechanism** (their equivalent of CRC32, or its absence — and if absent, what our
-`checksum_failures_total` and the FR-018a resync semantics would even mean); symbol mapping;
-timestamp semantics and resolution; sequence/gap detection primitives.
+Also record, not scored: **leverage and liquidation.** Perps permit leverage; liquidation is a
+risk-layer concern with no counterpart in spot. Note maintenance margin and liquidation mechanics
+per venue as facts for a future risk-layer WO. **Do not model them here.**
 
-**WHAT TRANSFERS UNCHANGED** — assess honestly, do not assume: the gap ledger and its five ruled
-causes, corpus discipline (segments, manifests, capture-time hashes), the default-deny reader,
-force-flat/U2-U6 semantics, the cost model's **structure** (§3.1 flags that its SHAPE may need a
-fixed-per-transaction term — say whether that is a structural change or a parameter).
+### 3.2 FEED INTEGRITY — the dimension that decides feasibility
+For each venue and instrument: is there a public WebSocket L2 book feed, at what depth and cadence,
+and **what is its integrity mechanism?**
+- Kraken gives CRC32 book checksums. Hyperliquid publishes **none** (WO-062: snapshots only, no
+  checksum, no sequence — `checksum_failures_total` could never move, and *a metric that cannot move
+  is not a metric*).
+- **dYdX v4 is a Cosmos chain and this is genuinely unexplored.** Block heights, indexer sequence
+  numbers, and on-chain state commitments may provide an integrity primitive **stronger** than a
+  checksum — a book derivable from committed chain state is verifiable in a way a broadcast snapshot
+  is not. **Nobody has checked. Check it.** If it exists, say what it guarantees and what it does not.
+- Injective: same question, same unknown.
+For any venue with no mechanism, state what could substitute (sequence numbers, snapshot cadence,
+independent re-derivation from chain state) and **what that substitute would NOT cover.**
 
-**COST ESTIMATE for a capture-adapter WO**: rough, honest, with its basis stated. Compare against
-the known cost of the Kraken adapter (which took most of Sprint 2).
+### 3.3 DEPTH AND CADENCE
+Levels published, update frequency, whether full-depth is available on any channel. Hyperliquid is
+5 or 20 levels at ≥0.5s. **Depth-dependent quantities in our apparatus (spread, touch depth, the
+measured slippage) do not port below some level count — state the threshold you would need.**
 
-## §6 WHAT THIS WO DOES NOT DO
-No socket, no RPC call, no wallet, no key, no account. No code. No adoption. No re-opening of the
-death certificate — its scoping is noted, and a new fee regime is a **new pre-registered question**
-for a future WO, not a re-run of a closed one (0.8's shape: changing a cost assumption after a
-verdict is the hazard; declaring a NEW question in a NEW regime, before any run, is not).
+### 3.4 API AND SIGNING MATURITY
+Order lifecycle, auth model, rate limits (cited), SDKs. **Whether execution requires local
+transaction signing** — a materially different path from an API key, and note that our
+`no_credential` preflight scans `.env` for API credentials and **would not see a signing key**
+(WO-062's finding). Flag as an architecture question; do not resolve here.
 
 ---
 
-## §7 ACCEPTANCE
-Candidate set enumerated with spot-availability gate applied and dYdX's spot status verified;
-all-in cost per venue at 0.1 BTC with every component cited or declared-unknown; the gas
-structural finding stated; integrity-mechanism answered per venue; API/signing assessment;
-regulatory note with geo-blocks recorded as facts; Track 2 gap list in both columns with a costed
-estimate; `git diff -- src/` empty; no socket/RPC/wallet/key/account; corpora untouched; gates green.
+## §3.5 — ADDED SCOPE: THE 14-PLATFORM CANADIAN CEX FEE SWEEP
+WO-062's closeout obtained the authoritative Ontario enumeration from the OSC page
+(`osc.ca/en/industry/registration-and-compliance/crypto-businesses`, HTTP 200, self-dated
+2026-07-30, retrieved 2026-08-10): **14 registered crypto asset trading platforms.**
 
-## §8 REPORT — `WO-062-REPORT.md`
-Track 1 scored table + per-venue narrative, every figure cited with retrieval date; the gas
-cost-model-shape finding; Track 2's gap list and estimate; every attempt; any STOP.
+**This is a lever available TODAY with zero integration work**, and it has never been checked.
+Kraken's 0.80% Tier 1 taker is the number that killed the minutes-horizon class. If any registered
+Canadian CEX is materially cheaper at zero volume, that changes the arithmetic without a single line
+of DEX adapter code.
 
-**THEN STOP.** Output feeds the Sprint 3 venue decision (the lead's).
+For **each of the 14**, report from its **published fee schedule** (0.1e — cited, with URL and
+retrieval date; **DECLARED UNKNOWN** where no public schedule exists, never estimated):
+- **Taker and maker at the ZERO-VOLUME / entry tier** — the tier an account with no history can
+  actually claim. **Not the best advertised tier** (the Tier 1 lesson: an optimistic tier is a cost
+  assumption wearing a fact's clothing).
+- **BTC/CAD and BTC/USD availability**, and which pairs are quoted — a venue offering only CAD
+  introduces an FX leg, which is a **different quantity** and must be flagged under 0.16, not folded
+  into the fee comparison.
+- **Spread or markup practices**, if published — several retail Canadian platforms embed cost in the
+  spread rather than charging a visible fee, and **a 0% fee with an embedded 1% spread is more
+  expensive than Kraken.** Report the published mechanism; if a platform's real cost is not
+  determinable from published documents, **say so** — that is itself a finding about the venue.
+- **Whether a public market-data API and WebSocket L2 book feed exist at all.** A cheap venue we
+  cannot capture from is not a candidate for this apparatus; note it as a fact per venue.
+- **VirgoCX is SUSPENDED** (effective 2025-11-24, per the same OSC table) — exclude it and say why.
+
+**The deliverable:** a 14-row table sorted by entry-tier taker fee, with Kraken's 0.80% marked as the
+incumbent, and a one-line statement of **which platforms (if any) are materially cheaper AND have a
+capturable feed.** If none are, that is a clean finding and it strengthens the DEX case.
+
+**Scope limit to restate in the report:** the OSC table is **Ontario-scoped**, so a platform
+registered elsewhere in Canada but not in Ontario would not appear. Authoritative for Ontario, not
+established Canada-wide. Per 0.18 this is recorded, not scored.
+
+---
+
+## §4 JURISDICTION — RECORDED, NEVER SCORED (0.18)
+One short factual line per venue on stated availability restrictions. **No venue is penalised,
+ranked down, or excluded for it.** No VPN paths are proposed or evaluated; a restriction is simply
+noted where the venue publishes one.
+
+---
+
+## §5 OUTPUT
+A scored table across the four technical dimensions, spot and perps as separate rows, plus a short
+narrative per venue. **State which venue wins on which dimension and where the trade-offs sit.**
+If funding materially erodes the perps fee advantage, say so — that is the most likely finding and
+it should be stated plainly rather than buried.
+
+**And the one comparison that matters:** against Kraken Tier 1's **1.6216% round trip**, what is
+each venue's all-in round-trip cost at 0.1 BTC **including funding for a 4-hour hold** on the perps
+rows? That single number is what decides whether the hour-scale horizon class reopens in a new fee
+regime — a **new pre-registered question for a future WO**, not a re-run of the death certificate.
+
+## §6 ACCEPTANCE
+Three DEXs attempted, Injective's docs sought via enumerated alternative routes; spot and perps both
+scored where they exist; funding characterised or declared unknown, with its time-dimension
+implication for the cost model stated; feed integrity answered per venue including dYdX's Cosmos
+primitives; depth threshold stated; signing/preflight gap noted; **all 14 OSC-registered platforms
+swept with entry-tier fees cited or declared unknown, spread-embedding practices reported, feed
+availability noted per venue, VirgoCX excluded as suspended**; jurisdiction recorded and not scored;
+`git diff -- src/` empty; no socket/RPC/wallet/key/account; corpora untouched; gates green.
+
+## §7 REPORT — `WO-063-REPORT.md`
+The DEX scored table with every figure cited or declared unknown; the funding finding and its
+cost-model implication; per-venue integrity verdicts; the 4-hour-hold all-in comparison against
+1.6216%; **the 14-row Canadian CEX table sorted by entry-tier taker fee with the cheaper-AND-
+capturable statement**; every attempt; any STOP.
+
+**THEN STOP.** Output feeds the Sprint 3 venue decision.
