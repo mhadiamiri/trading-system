@@ -1,457 +1,233 @@
-# WO-062 — VENUE COMPARISON + DEX FEASIBILITY SPIKE
+# WO-063 — VENUE RE-SCORE: three order-book DEXs, SPOT AND PERPS. Technical dimensions only.
+#
+# SUPERSEDES WO-062's SCOPE ON TWO POINTS, by operator direction:
+#   1. **PERPETUALS ARE IN SCOPE.** WO-062's spot-only gate was a self-imposed narrowing, not a
+#      requirement. dYdX was disqualified under it and is REINSTATED.
+#   2. **JURISDICTION IS NEVER A GATE.** Record availability restrictions as FACTS where they exist,
+#      and score nothing on them. Deployment location is an operator matter, not a design constraint.
+# Do not re-derive either constraint. Do not narrow scope on any assumption not stated here.
 
-**Report only. No socket, no RPC, no wallet, no key, no account, no code.** Every figure below came
-from a published document, and every figure that could not be obtained from one is marked
-**DECLARED UNKNOWN** rather than estimated.
-
-**The headline is not the fee.** The fee lever is real and large — Hyperliquid spot base taker is
-**11.6× cheaper** round-trip than the Kraken tier we can actually claim. But three gates that are
-**not scores** fire before that lever can be pulled, and two of them were not in the brief:
-
-1. **dYdX v4 is perps-only.** Disqualified on spot. The candidate set was three; it is two.
-2. **Hyperliquid's "BTC" spot market is `UBTC`** — bridged Bitcoin, not native BTC — quoted in
-   USDC/USDH/USDT, not USD. That is **a different quantity from what we capture and would trade**,
-   and it stacks two bases on top of each other.
-3. **Hyperliquid's own Terms of Use name Ontario, Canada as a Restricted Territory** and forbid
-   disguising location. Recorded as a scoring fact, not routed around.
+BASE: current HEAD (§1 reports actual — do not pin a SHA).
+SCOPE: report only. **NO socket, NO RPC, NO wallet, NO key, NO account, NO code.** Docs and
+published schedules only. `git diff -- src/` empty (paste).
+SHIP IMPACT: **NO.**
+PARALLEL: does not block the hours-horizon suite pre-registration against the d54-approved basis.
 
 ---
 
-## §1 STATE CONFIRMED
-
-| | |
-|---|---|
-| HEAD | `d2c971c` — actual, not pinned (the WO stopped pinning a SHA; three consecutive WOs had a stale base) |
-| `git diff -- src/` | **empty** |
-| pytest 3.14.6 | **572 passed, 2 skipped** (315.60 s) |
-| pytest 3.11.15 | **572 passed, 2 skipped** (314.36 s) |
-| import-linter | **6 kept, 0 broken** |
-| `corpus_20260805` | v1 `e3ab1aec…` · **38/38** verified, 0 mismatched |
-| `validation_20260809` | v1 `884f9f00…` · **3/3** verified, 0 mismatched |
-
-### A file-crossing that had to be fixed before this WO could start (0.1 / 0.5)
-
-`instructions.md` still contained **WO-061**, and **WO-062's text had been written into
-`WO-061-REPORT.md`**, overwriting a committed deliverable — 540 lines deleted, 231 inserted. On the
-reaffirmed instruction I treated WO-062 as live and repaired it non-destructively:
-`WO-061-REPORT.md` was restored from commit `d2c971c` (456 lines, byte-identical — it no longer
-shows as modified) and WO-062 was moved into `instructions.md`. **Nothing was discarded**; the
-report had been committed, so only the working copy was ever at risk.
-
-### `phaseb_20260809` — informational, not disturbed, and NOT presently capturing
-
-| run | state |
-|---|---|
-| `20260809063113` | complete, **12.000 covered h**, 13/13 segments verified |
-| seam 0 | `PROCESS_RESTART`, resolved, width **6.076 h** — measured |
-| `20260810003542` | **killed at 2.780 covered h** — 381,816 frames, 4 segments, **no `MANIFEST.json`, no `run_end`** |
-
-**The leg I opened on instruction was killed when its harness task was stopped.** It is unfinalized
-and **no capture is running now**. Two questions I raised remain unanswered and are restated at the
-end of this report, because one of them is a corpus-integrity defect and the other is costing
-covered hours every hour it stands.
+## §0 RULES OF ENGAGEMENT
+0.1 No discretion. Code wins: STOP and report.
+0.1e Cite or declare-with-derivation, every figure. A figure that cannot be obtained is **DECLARED
+     UNKNOWN**, never estimated.
+0.5 Report every attempt.
+0.6 AUTO MODE OFF.
+0.11 Enumerate, do not assume the count.
+0.12 Every observation offered as corroboration states its falsifier.
+0.15 Margin-bearing declarations round up and say so.
+0.16 Any comparison across two quantities states, at declaration, what mechanism generates each and
+     whether they are simultaneous. **Cross-venue cost comparison is exactly this shape, and perps
+     vs spot is a second instance of it inside the same table.**
+0.17 No venue is adopted here. This produces a comparison; the decision is the lead's.
+0.18 **DO NOT DISQUALIFY ON JURISDICTION OR ON INSTRUMENT TYPE.** Both are recorded as facts.
+     WO-062 lost dYdX to a scope assumption; that is the error being corrected.
 
 ---
 
-# TRACK 1 — VENUE COMPARISON
+## §1 CONFIRM STATE
+Actual HEAD, `git diff -- src/` empty, gates green, corpora verify. `phaseb_20260809` status
+(informational — do not disturb).
 
-## §2 THE CANDIDATE SET
+---
 
-### (a) Canada-registered CEXs — enumeration ATTEMPTED, and it is INCOMPLETE (0.11)
+## §2 THE CANDIDATE SET — three venues, two instrument classes each
 
-**The authoritative page could not be retrieved.** `securities-administrators.ca`'s
-*Crypto Platforms Authorized to Do Business with Canadians* returns **HTTP 307** to both the fetch
-tool and a direct request — twice, with a browser user-agent. **So I do not have a certified
-enumeration, and I will not present a partial list as a complete one.** What follows is
-search-surfaced and is labelled as such:
-
-> Newton Crypto Ltd. · Shakepay Inc. · Shakepay Credit Inc. (crypto-backed lending, not a trading
-> platform) · VirgoCX · Wealthsimple Investments Inc. · APX Inc. · Coinbase Canada Inc. ·
-> Coinsquare Capital Markets Limited
-
-**Status: PARTIAL, UNVERIFIED. The count is not known.** *Falsifier: any authorized platform absent
-from that list — and I have positive evidence of exactly that, below.*
-
-**The incumbent is the proof that the list is incomplete.** **Kraken is registered** — Payward
-Canada Inc. holds a **Restricted Dealer registration** with the OSC as principal regulator,
-obtained **April 2025**, and is a FINTRAC MSB (**M19343731**). It does not appear in the
-search-surfaced list. That is the falsifier firing on the first check, and it is why the list above
-is not offered as the candidate set.
-
-**Consequence for §3:** a scored comparison across Canadian CEXs cannot be completed from an
-enumeration I cannot obtain. **Kraken (incumbent, cited in-tree) and Coinbase Canada (confirmed
-registered) are the two I can speak to; the rest of the CEX field is a declared gap.**
-
-**One cited fact worth carrying forward:** Kraken has **delisted USDT, DAI, WETH, WBTC and WAXL in
-Canada**. Wrapped and value-referenced assets are being removed from the Canadian venue — directly
-relevant, because the DEX alternative's BTC market *is* a wrapped asset.
-
-### (b) Order-book DEXs — the spot gate applied first
-
-| venue | spot? | verdict |
+| venue | spot | perps |
 |---|---|---|
-| **dYdX v4** | **NO — perpetual futures only** | **DISQUALIFIED** |
-| **Hyperliquid** | Yes, but the BTC market is **UBTC** (bridged) | proceeds, with a declared quantity difference |
-| **Injective / Helix** | Yes — "premier decentralized spot and derivatives exchange" | proceeds |
+| **Hyperliquid** | UBTC (bridged), quoted USDC/USDH/USDT | BTC-PERP |
+| **dYdX v4** | none (verified WO-062) | BTC-USD perp — **REINSTATED** |
+| **Injective / Helix** | yes | yes |
 
-**The dYdX disqualifier, verified rather than assumed** (§2's explicit instruction): dYdX's own
-material describes the platform as *"Trade Perpetuals"* and *"Leading Decentralized Platform for
-Crypto Perpetual Trading"*; its help material states dYdX Chain **may** support spot in future but
-that there are **no current plans**, perpetuals being the focus. **Spot is a gate, not a score, so
-dYdX is out** — and perps are independently excluded on constitutional scope and Canadian retail
-restriction. *Falsifier: a dYdX v4 spot market existing today would overturn this; I found none,
-and their own product pages say perpetuals.*
-
-**AMMs and aggregators — EXCLUDED AS VENUES, with the reason recorded** (§2(b)): their fill model
-is incompatible with the CLOB apparatus. There is no resting book to capture, no L2 depth to
-record, and no maker/taker distinction in our sense. The entire corpus discipline — book snapshots,
-checksummed deltas, spread and depth at the touch — has no referent against a constant-product
-pool. **A separate research track, not pursued here.**
+**Injective was unscoreable in WO-062** — `docs.ts.injective.network` 301'd and the landing page
+carried no schema, no integrity mechanism, no fees. **Try alternative routes** (0.11): the Injective
+GitHub org, the Python/TypeScript SDK repos and their docstrings, the indexer/gRPC API reference,
+Helix's own docs, and any published protocol spec. **If it remains unobtainable after an enumerated
+search, declare that — do not score it from search snippets.**
 
 ---
 
-## §3 SCORING
+## §3 THE FOUR TECHNICAL DIMENSIONS
 
-### 3.1 ALL-IN COST AT 0.1 BTC (~$6,460) — the same size every prior figure in this project uses
+### 3.1 ALL-IN COST AT 0.1 BTC (~$6,460), SPOT AND PERPS SEPARATELY
+Cited fee tables, the tier a **zero-volume account can actually claim** (the Tier 1 lesson: an
+optimistic tier is a cost assumption wearing a fact's clothing). Maker and taker. Plus gas, price
+impact from published depth where obtainable, and failed-transaction cost.
 
-**0.16 statement.** Kraken's rate is a **percentage of notional** charged by a custodial venue on a
-fiat-quoted pair. Hyperliquid's is a **percentage of notional** charged by a protocol on a
-crypto-quoted pair in a bridged asset. Same *shape*, so the percentages are commensurable — **but
-they are not the same quantity**, because the assets differ (BTC vs UBTC) and the quote differs
-(USD vs USDC/USDH/USDT). The percentage comparison below is valid; the **basis** difference is a
-separate term and is declared, not folded in.
-
-| component | **Kraken Tier 1** (committed, in-tree) | **Hyperliquid spot Tier 0** |
-|---|---|---|
-| taker, one side | **0.80%** | **0.070%** |
-| maker, one side | 0.40% | 0.040% |
-| **round trip, taker/taker** | **1.6216%** (incl. 2×1bp measured slip + 0.0016% measured spread) | **0.140%** (fees only) |
-| at 0.1 BTC | **~$104.76** | **~$9.04** |
-| **gas** | n/a | **ZERO — "Trading on Hyperliquid is gas-free"** |
-| failed-transaction cost | n/a | **DECLARED UNKNOWN** — not stated in the docs read |
-| price impact at 0.1 BTC | **DECLARED UNKNOWN** | **DECLARED UNKNOWN** |
-
-**Ratio: 1.6216 / 0.140 = 11.58× — round UP to 11.6× per 0.15.** This confirms the brief's
-arithmetic from the committed schedule rather than from recall.
-
-**The tier a $0-volume account can actually claim** — the Tier 1 lesson, applied to both sides.
-Kraken's committed table has **17 tiers**, `ASSUMED_TIER = "Tier 1"` (taker 0.80%), source
-`kraken.com/features/fee-schedule`, retrieved **2026-08-07**. Kraken's *best* tier (Pro 5) is
-0.05%/0.00% but requires **$500M** 30-day volume and **$100M** assets on platform — unclaimable.
-Hyperliquid's base spot tier is likewise **Tier 0, $0 volume: taker 0.070%, maker 0.040%**, and its
-best tier (>$7B) is 0.025%/0.000% — equally unclaimable. **Both figures above are the tiers a new
-account genuinely gets.** Hyperliquid additionally publishes staking discounts (5–40% by HYPE
-staked) and referral discounts on the first $25M of volume — **not claimed here**, because a
-discount requiring us to hold a venue token is a cost assumption wearing a fact.
-
-**PRICE IMPACT IS A DECLARED UNKNOWN, deliberately.** §3.1 asks for it from published L2 depth at
-the touch. Obtaining depth requires calling `l2Book` — an **RPC/API request this WO forbids**. So I
-did not obtain it. **A declared unknown beats a guessed figure**, and this one is material: at
-0.1 BTC against a book whose *published* depth is only **5 levels (fast) or 20 levels (slow)**,
-impact could plausibly exceed the entire fee saving. **It is the single largest open term in the
-comparison.**
-
-### THE GAS FINDING — a change to the cost model's SHAPE, not its parameters
-
-**Reported as §3.1 requires, and it stands even though Hyperliquid's own trading gas is zero.**
-
-Our cost model is **proportional**: cost = notional × rate. Gas is **per-transaction**. Those are
-different functional forms, and mixing them silently is a units error:
-
+**AND THE NEW COST STRUCTURE THIS WO EXISTS TO SURFACE — FUNDING.**
+Perpetuals charge **funding**: a periodic payment between longs and shorts, typically hourly or
+8-hourly. **This is a THIRD cost shape our model does not have:**
 ```
-$0.50 gas at 0.1 BTC ($6,460)  = 0.008% of notional
-$0.50 gas at 0.001 BTC ($64.6) = 0.774% of notional     — 97x the same fee, same dollar
+  fee      = proportional to NOTIONAL, per trade        (we model this)
+  gas      = FIXED per transaction                       (WO-062 flagged this)
+  funding  = proportional to NOTIONAL x TIME HELD        (NOTHING in our model has a time dimension)
 ```
+**For an hours-horizon strategy this may dominate.** A 4-hour hold pays funding; a 4-hour spot hold
+does not. Report, per venue: the funding interval, how the rate is determined, and **published
+historical funding rates for BTC** if obtainable — the *distribution*, not a single figure, since a
+mean funding rate says nothing about what a 4-hour hold costs on a bad day.
+State plainly: **is funding large or small relative to the 0.14%-ish round-trip fee advantage?**
+If it is comparable or larger, the fee lever is smaller than it appears for held positions, and that
+is the finding. **Declare it unknown rather than estimating it.**
 
-**A percentage-only cost model cannot express a fixed cost.** It is not that the parameter is
-wrong — the model has no term to put it in. Any adoption WO for an on-chain venue must change the
-model to `proportional + fixed`, and **that is a structural change, not a re-parameterisation.**
-It also silently makes small orders uneconomic in a way a percentage model will never show.
+Also record, not scored: **leverage and liquidation.** Perps permit leverage; liquidation is a
+risk-layer concern with no counterpart in spot. Note maintenance margin and liquidation mechanics
+per venue as facts for a future risk-layer WO. **Do not model them here.**
 
-**This applies even to Hyperliquid.** Trading is gas-free, but **deposits and withdrawals are not**
-— *"Depending on the withdrawal chain and method, there may be small gas fees to process the
-withdrawal"* — and bridging into UBTC has its own cost. Those are fixed per-event costs sitting
-outside a percentage model. **DECLARED UNKNOWN: the exact deposit/withdrawal/bridge amounts are not
-published in the pages read.**
+### 3.2 FEED INTEGRITY — the dimension that decides feasibility
+For each venue and instrument: is there a public WebSocket L2 book feed, at what depth and cadence,
+and **what is its integrity mechanism?**
+- Kraken gives CRC32 book checksums. Hyperliquid publishes **none** (WO-062: snapshots only, no
+  checksum, no sequence — `checksum_failures_total` could never move, and *a metric that cannot move
+  is not a metric*).
+- **dYdX v4 is a Cosmos chain and this is genuinely unexplored.** Block heights, indexer sequence
+  numbers, and on-chain state commitments may provide an integrity primitive **stronger** than a
+  checksum — a book derivable from committed chain state is verifiable in a way a broadcast snapshot
+  is not. **Nobody has checked. Check it.** If it exists, say what it guarantees and what it does not.
+- Injective: same question, same unknown.
+For any venue with no mechanism, state what could substitute (sequence numbers, snapshot cadence,
+independent re-derivation from chain state) and **what that substitute would NOT cover.**
 
-### 3.2 L2 DATA QUALITY AND CAPTURE-ABILITY — **the sharpest dimension, and it is where the DEX case weakens**
+### 3.3 DEPTH AND CADENCE
+Levels published, update frequency, whether full-depth is available on any channel. Hyperliquid is
+5 or 20 levels at ≥0.5s. **Depth-dependent quantities in our apparatus (spread, touch depth, the
+measured slippage) do not port below some level count — state the threshold you would need.**
 
-**Hyperliquid's `l2Book` WebSocket feed, from its published schema:**
-
-```
-subscribe : { "type": "l2Book", "coin": "<coin>" }   (+ nSigFigs, mantissa, fast)
-payload   : WsBook { coin, levels: [ [WsLevel], [WsLevel] ], time }
-            WsLevel { px, sz, n }
-depth     : "5 levels if fast, 20 levels if slow"
-cadence   : "Snapshot feed, pushed on each block that is at least 0.5 since last push"
-```
-
-**INTEGRITY MECHANISM: NONE.** The documentation contains **no checksum, no CRC, no sequence
-number, and no verification mechanism** for order-book data. Stated plainly, as §3.2 requires.
-
-**What that does and does not mean — the honest reading, not the alarming one.** Kraken's CRC32
-exists because Kraken sends **deltas** and we reconstruct the book locally; the checksum catches
-reconstruction drift. Hyperliquid sends **snapshots**, so there is no accumulated local state to
-drift — the failure mode CRC32 guards against largely does not arise. **The absence is less severe
-than it first appears.**
-
-**But three things are genuinely lost, and one of them is worse than the missing checksum:**
-
-- **Depth truncation is the real problem.** 5 or 20 levels is not a book. Our corpus records the
-  touch *and* the depth behind it; price-impact modelling at 0.1 BTC needs the depth. A 20-level
-  snapshot may not even span our order size — **and we cannot know without calling the endpoint,
-  which this WO forbids.**
-- **Cadence is ~5× coarser.** ≥0.5 s per push against our measured Kraken capture cadence of
-  **106.3 ms**. Every microstructure quantity we have measured would be observed at a fifth of the
-  resolution.
-- **No sequence number means no gap detection primitive.** With deltas you detect a hole; with
-  unsequenced snapshots you cannot distinguish "no update" from "update lost". Our gap ledger's
-  causes are about the *connection*, so they survive — but `checksum_failures_total` and the
-  FR-018a resync semantics would have **no referent at all**.
-
-**What could substitute, and what it would not cover:** the snapshot cadence itself is a weak
-liveness check (a stalled feed shows as a frozen `time` field), and an independent re-derivation
-against `recentTrades` could corroborate the touch. **Neither substitutes for depth.** No mechanism
-recovers levels the venue never published.
-
-**Injective / Helix: DECLARED UNKNOWN.** The docs index confirms *"a fully on-chain orderbook
-exchange"* but the pages retrieved contained **no order-book streaming schema, no depth, no
-cadence, and no integrity statement**. `docs.ts.injective.network` 301-redirects to
-`docs.injective.network`, whose landing page carries none of it. **I am not going to characterise a
-feed I did not read.** This is the largest documentation gap in Track 1 and it is why Injective is
-unscored below rather than scored low.
-
-### 3.3 API MATURITY AGAINST OUR EXECUTION ABSTRACTION
-
-**Hyperliquid — published rate limits, cited exactly:**
-
-| limit | value |
-|---|---|
-| REST aggregate, per IP | **1200 / minute** |
-| `l2Book` info request | weight **2** |
-| most other info requests | weight **20** |
-| WebSocket connections, per IP | **10** |
-| new WS connections | **30 / minute** |
-| WS subscriptions | **1000** |
-| messages to Hyperliquid | **2000 / minute** |
-| open orders per address | **1000**, +1 per $5M volume, capped **5000** |
-
-Documented SDKs exist; mainnet `api.hyperliquid.xyz`, testnet `api.hyperliquid-testnet.xyz` — **a
-real testnet, which matters for a TRADING_ENV-guarded apparatus.**
-
-**LOCAL TRANSACTION SIGNING — flagged as an architecture question, not resolved here (§3.3's
-instruction).** An on-chain venue authenticates by signing, not by an API key. **DECLARED UNKNOWN:
-the specific scheme** — the API landing page I read did not state it, and I did not chase it
-further because the finding does not depend on the details. What matters architecturally:
-
-- **A key that signs is not a key that authenticates.** Our secrets discipline, kill-switch, and
-  TRADING_ENV guard are built around a credential that a venue can revoke. **A signing key cannot
-  be revoked by anyone but us**, and a compromised one is not a compromised session — it is a
-  compromised wallet.
-- **`no_credential` preflight has no referent.** Its check is *"No credentials in .env"*. A signing
-  key held for an on-chain venue is exactly the thing that check exists to prevent, and it would
-  need rebuilding, not re-pointing.
-- **The one-module swap assumption is where this bites.** Reading is venue-abstracted; *signing* is
-  not an adapter concern in our current architecture.
-
-### 3.4 SPOT AVAILABILITY — the gate
-
-| venue | spot | source |
-|---|---|---|
-| Kraken | **PASS** | in-tree committed schedule, spot crypto |
-| Coinbase Canada | **PASS** | registered CATP |
-| **dYdX v4** | **FAIL** | perpetuals only — **disqualified** |
-| Hyperliquid | **PASS with a caveat** | spot exists; **the BTC market is UBTC**, bridged |
-| Injective / Helix | **PASS** | "decentralized spot and derivatives exchange" |
-
-**The UBTC caveat is a §0.16 quantity difference and belongs here, not in a footnote.**
-`BTC/USDC` on the Hyperliquid frontend **is `UBTC/USDC` on mainnet HyperCore** — L1 name `UBTC`,
-token index 197, "Unit Bitcoin". So a strategy validated on Kraken BTC/USD and run on Hyperliquid
-would be trading **a bridged claim on Bitcoin quoted in a stablecoin**, carrying:
-
-- **bridge/custody risk** in the Unit protocol — a failure mode with no analogue on a CEX spot pair;
-- a **UBTC/BTC basis** and a **USDC-or-USDH/USD basis**, compounding — and we already measured the
-  USDT/USD basis at **~+9 bps** with <4 bps dispersion in WO-061, so these terms are not zero;
-- **the pointed irony that Kraken has delisted WBTC in Canada** — the incumbent venue's regulator
-  is removing wrapped assets while the alternative's only BTC market is one.
-
-### 3.5 REGULATORY POSTURE — plain-language, not legal advice
-
-**Kraken**: Restricted Dealer registration, OSC principal regulator, **April 2025**; FINTRAC MSB
-`M19343731`. Payward Canada states an intent to seek investment-dealer registration, CIRO
-membership, and ATS approval. **Registered and operating.**
-
-**Hyperliquid — a recorded scoring fact.** Its Terms of Use define **Restricted Persons** to
-include persons resident, located, or incorporated in **the United States of America or Ontario,
-Canada**, and state Restricted Persons are prohibited from accessing the Interface. The Terms
-further prohibit *"using any technology or method to disguise their location or otherwise evade
-access restrictions."*
-
-**Recorded, not routed around** (§3.5's explicit instruction). **No VPN-dependent path is
-considered.** I do not know which province applies here and **will not infer a jurisdiction from a
-timezone** — the host clock is UTC−04:00, which covers Ontario and several non-Ontario zones alike.
-If Ontario applies, the frontend is closed by the venue's own terms.
-
-**The distinction §3.5 asks me to record and not adjudicate:** the Terms restrict *the Interface*.
-The chain is permissionless, so protocol-level access via self-custody is a **different question
-from frontend access**. I record that they are different and **do not adjudicate whether the
-restriction reaches protocol access.** That needs qualified advice, and anything load-bearing here
-should get it.
-
-**Injective / Helix**: **DECLARED UNKNOWN** — I did not retrieve its terms.
+### 3.4 API AND SIGNING MATURITY
+Order lifecycle, auth model, rate limits (cited), SDKs. **Whether execution requires local
+transaction signing** — a materially different path from an API key, and note that our
+`no_credential` preflight scans `.env` for API credentials and **would not see a signing key**
+(WO-062's finding). Flag as an architecture question; do not resolve here.
 
 ---
 
-## §4 TRACK 1 OUTPUT
-
-| dimension | **Kraken** (incumbent) | **Hyperliquid** | **Injective/Helix** | **dYdX v4** |
-|---|---|---|---|---|
-| **spot gate** | PASS | PASS (**UBTC**, not BTC) | PASS | **FAIL — out** |
-| round-trip cost, claimable tier | **1.6216%** | **0.140%** — **11.6× cheaper** | ~0.1% taker / −0.01% maker *(varies by pair)* | — |
-| gas | n/a | **zero for trading**; nonzero deposit/withdraw | UNKNOWN | — |
-| price impact @0.1 BTC | UNKNOWN | UNKNOWN | UNKNOWN | — |
-| **book integrity mechanism** | **CRC32** | **NONE** (snapshot feed mitigates) | **UNKNOWN** | — |
-| **published depth** | full book | **5 or 20 levels** | UNKNOWN | — |
-| **cadence** | **106.3 ms** measured | **≥0.5 s** | UNKNOWN | — |
-| auth model | API key (revocable) | **local signing** | signing (assumed, unverified) | — |
-| testnet | yes | **yes** | UNKNOWN | — |
-| Canada posture | **Restricted Dealer, OSC** | **Ontario is a Restricted Territory** | UNKNOWN | — |
-
-**No venue dominates, and the answer is "depends on X" — so, per §4, X is named.**
-
-**X₁ — price impact at 0.1 BTC against a 20-level book.** The fee saving is **$95.72 per round
-trip** at our size. If impact on a shallow book exceeds that, the entire case inverts. **This is
-one measurement, and it requires exactly the socket call this WO forbids.** It should be the first
-thing any follow-on WO obtains.
-
-**X₂ — jurisdiction.** If Ontario applies, Hyperliquid's frontend is closed by its own terms and
-no amount of fee advantage changes that.
-
-**X₃ — whether UBTC is an acceptable instrument.** Not a cost question. A strategy validated on
-BTC/USD trading UBTC/USDC is trading a different thing, and Kraken's Canadian delisting of wrapped
-assets suggests the regulator has a view.
-
-**What I will say plainly:** the fee lever is real, confirmed from the committed schedule, and
-**11.6×** is the correct order of magnitude. But it is the *only* dimension on which the DEX wins.
-It loses on depth, cadence, integrity, instrument identity, and jurisdiction — and **three of those
-five are corpus-integrity concerns, not conveniences.**
+## §4 JURISDICTION — RECORDED, NEVER SCORED (0.18)
+One short factual line per venue on stated availability restrictions. **No venue is penalised,
+ranked down, or excluded for it.** No VPN paths are proposed or evaluated; a restriction is simply
+noted where the venue publishes one.
 
 ---
 
-# TRACK 2 — FEASIBILITY SPIKE
+## §5 OUTPUT
+A scored table across the four technical dimensions, spot and perps as separate rows, plus a short
+narrative per venue. **State which venue wins on which dimension and where the trade-offs sit.**
+If funding materially erodes the perps fee advantage, say so — that is the most likely finding and
+it should be stated plainly rather than buried.
 
-## §5 Top-scoring order-book DEX: **Hyperliquid** — from published schemas only, no socket
+**And the one comparison that matters:** against Kraken Tier 1's **1.6216% round trip**, what is
+each venue's all-in round-trip cost at 0.1 BTC **including funding for a 4-hour hold** on the perps
+rows? That single number is what decides whether the hour-scale horizon class reopens in a new fee
+regime — a **new pre-registered question for a future WO**, not a re-run of the death certificate.
 
-Injective could not be scored (§3.2), so Hyperliquid takes this by default rather than on merit.
+## §6 ACCEPTANCE
+Three venues attempted, Injective's docs sought via enumerated alternative routes; spot and perps
+both scored where they exist; funding characterised or declared unknown, with its time-dimension
+implication for the cost model stated; feed integrity answered per venue including dYdX's Cosmos
+primitives; depth threshold stated; signing/preflight gap noted; jurisdiction recorded and not
+scored; `git diff -- src/` empty; no socket/RPC/wallet/key/account; corpora untouched; gates green.
 
-### WHAT CHANGES
+## §7 REPORT — `WO-063-REPORT.md`
+The scored table with every figure cited or declared unknown; the funding finding and its cost-model
+implication; per-venue integrity verdicts; the 4-hour-hold all-in comparison against 1.6216%; every
+attempt; any STOP.
 
-| area | change |
-|---|---|
-| **subscribe shape** | `{"type":"l2Book","coin":"UBTC"}` vs Kraken's `{"method":"subscribe","params":{"channel":"book",...}}` — trivial |
-| **book update format** | `WsBook{coin, levels:[bids,asks], time}`, `WsLevel{px,sz,n}`. **`n` (order count per level) is new information Kraken's book does not carry** |
-| **snapshot vs delta** | **THE STRUCTURAL ONE.** Kraken = snapshot + deltas + CRC32. Hyperliquid = **snapshots only**. `kraken_v2_book`'s entire delta-application and resync path has **no counterpart** |
-| **integrity** | **none published.** `checksum_failures_total` would always be 0 — **and a metric that cannot move is not a metric.** FR-018a's resync semantics would have **no trigger**. Both must be either removed or explicitly redefined; **leaving them wired and always-zero is the worst option**, because it reads as "integrity verified" |
-| **depth** | full book → **5 or 20 levels**. Depth-dependent measurements do not port |
-| **symbol mapping** | `BTC/USD` → `UBTC` (index 197), quote USDC/USDH/USDT. **Not a rename — a different instrument** |
-| **timestamps** | `time` field, resolution not stated in the schema read — **DECLARED UNKNOWN** |
-| **gap detection** | no sequence number. Detection must fall back to connection state and `time` monotonicity |
-
-### WHAT TRANSFERS UNCHANGED — assessed, not assumed
-
-| component | verdict |
-|---|---|
-| **corpus discipline** — segments, manifests, capture-time SHA-256, rotation, digests | **TRANSFERS FULLY.** Venue-agnostic by construction; it hashes bytes |
-| **gap ledger, five ruled causes** | **FOUR of five transfer.** `KEEPALIVE_RECONNECT`, `BREAKER_RETRY_LADDER`, `VENUE_DISCONNECT`, `HOST_SUSPEND` are about the connection and the host. **`CHECKSUM_RESYNC` has no referent** — 0.11 applies: the count is 4, not 5 |
-| **default-deny reader** | **TRANSFERS.** Operates on the ledger, not the venue |
-| **seam machinery** | **TRANSFERS.** Process-level |
-| **force-flat / U2–U6** | **TRANSFERS in principle**, but **U-semantics assume an order lifecycle with a revocable session.** Signing changes the failure mode, not the state machine |
-| **cost model** | **STRUCTURE CHANGES.** Per §3.1, it needs a `proportional + fixed` form. **Structural, not a parameter** |
-| **`fee_schedule.py`** | **PATTERN TRANSFERS, CONTENT DOES NOT.** Named-tier-with-citation is exactly right; a whole new cited table is needed |
-| **TRADING_ENV guard** | **TRANSFERS**, and a real testnet exists |
-| **`no_credential` preflight** | **DOES NOT TRANSFER.** Scans `.env` for API credentials; a signing key is a different artifact. **Needs rebuilding** |
-
-### COST ESTIMATE for a capture-adapter WO
-
-**Basis, stated:** the Kraken v2 adapter consumed most of Sprint 2, and its expensive parts were
-**not** the message plumbing — they were CRC32 validation, delta-application correctness, resync
-semantics, and the harness (`ScriptedConnectionFactory`, `FakeWebSocket`, `AdvancingClock`) that
-made all of it testable without a socket. **That harness already exists and is venue-agnostic.**
-
-**Estimate: 40–60% of the Kraken adapter's cost**, and the split is informative:
-
-- **Cheaper**: no checksum validation, no delta application, no resync ladder — a snapshot feed is
-  markedly simpler. The test harness is built. The corpus layer is untouched.
-- **Not cheaper**: symbol/instrument mapping for a bridged asset; the cost-model shape change;
-  rebuilding `no_credential`; deciding what `checksum_failures_total` and FR-018a *mean* — a
-  **semantic** question, and this project's evidence is that semantic questions cost more than
-  plumbing (WO-054's `count: 0` vs `count: null` was one line of code and most of a work order).
-- **The unknown that could dominate**: whether 20 levels suffices. If not, this is not an adapter
-  WO at all — it is a re-derivation of every depth-dependent quantity in the apparatus.
-
-**Rounded up per 0.15, and stated honestly: 40–60%, with a named tail risk that could exceed 100%.**
-
-## §6 WHAT THIS WO DID NOT DO
-
-No socket, no RPC, no wallet, no key, no account, no code, no adoption. **The death certificate is
-not re-opened** — its scoping is noted, and a new fee regime is a **new pre-registered question for
-a future WO**, not a re-run of a closed one.
-
+**THEN STOP.** Output feeds the Sprint 3 venue decision.
 ---
 
-## §0.5 — EVERY ATTEMPT
+# ADDENDUM — §2(a) ENUMERATION COMPLETED, and it corrects the partial list in BOTH directions
 
-| # | attempt | outcome |
-|---|---|---|
-| 1 | Read `instructions.md` | **Contained WO-061, not WO-062** |
-| 2 | Locate WO-062 | Found in `WO-061-REPORT.md`, having overwritten it (540 deleted / 231 inserted) |
-| 3 | Repair | Report restored from `d2c971c` (456 lines, no longer modified); WO-062 moved to `instructions.md` |
-| 4 | dYdX v4 spot check | **Perps only — DISQUALIFIED** |
-| 5 | Hyperliquid fee schedule | Spot Tier 0 **0.070% / 0.040%**; perp Tier 0 0.045%/0.015% |
-| 6 | Hyperliquid `l2Book` schema | Snapshot feed, **5 or 20 levels**, ≥0.5 s, **no checksum/sequence** |
-| 7 | Hyperliquid BTC spot | **It is `UBTC`** (index 197), quoted USDC/USDH/USDT |
-| 8 | Hyperliquid rate limits | Full cited table above |
-| 9 | Hyperliquid API auth page | **Signing scheme NOT stated** on the page read — declared unknown |
-| 10 | Hyperliquid gas | **"Trading on Hyperliquid is gas-free"**; withdrawal gas exists, amount unstated |
-| 11 | Hyperliquid Terms | **Ontario, Canada is a Restricted Territory**; no-VPN clause |
-| 12 | Injective docs (`docs.ts.` → `docs.`) | 301 redirect; landing page has **no book schema, no integrity, no fees** |
-| 13 | Injective/Helix fees via search | ~0.1% taker / −0.01% maker on some pairs; protocol minimums 0.1%/0.2%; **varies by pair** |
-| 14 | CSA authorized-platforms page | **HTTP 307 twice** — authoritative enumeration **NOT OBTAINED** |
-| 15 | Kraken Canada status | **Restricted Dealer, OSC, April 2025**; FINTRAC MSB M19343731 — **absent from the search list, proving it partial** |
-| 16 | Kraken committed fee schedule | 17 tiers, Tier 1 0.80%/0.40%, retrieved 2026-08-07; best tier unclaimable |
-| 17 | Price impact at 0.1 BTC | **NOT ATTEMPTED** — requires an RPC call this WO forbids. Declared unknown |
+The original pass left exactly one §7 acceptance item unmet: the Canadian CEX enumeration. The CSA's
+*Crypto Platforms Authorized to Do Business with Canadians* page returns **HTTP 307** to every route
+tried, on two separate days. **It still does.**
 
----
+**A different authoritative source serves it: the OSC.** `osc.ca/en/industry/registration-and-compliance/crypto-businesses`
+returned HTTP 200 and carries the registrant tables directly. **The page states its own last-updated
+date: 2026-07-30.** Retrieved 2026-08-10.
 
-## §7 ACCEPTANCE
+## REGISTERED crypto asset trading platforms — 14, enumerated (0.11)
+
+> *"The following crypto asset trading platforms have received exemptive relief to offer crypto
+> products to investors in Ontario"*
+
+| # | platform | category | most recent decision |
+|---|---|---|---|
+| 1 | Coinsquare Capital Markets Ltd. (dba **Bitbuy**) | Investment Dealer (Dealer and Marketplace) | 2024-10-11 |
+| 2 | **Coinbase Canada Inc.** | Restricted Dealer (Dealer and Marketplace) | amended 2026-04-01 |
+| 3 | Cybrid Canada Inc. | Restricted Dealer (Dealer – **Ontario only**) | 2025-01-17 |
+| 4 | Fidelity Clearing Canada ULC (Fidelity Digital Assets) | Investment Dealer (Dealer) | 2026-04-14 |
+| 5 | Fidelity Digital Asset Services, LLC | Exempt Marketplace and Clearing Agency | 2023-01-18 |
+| 6 | Foris DAX CAN ULC et al (**Crypto.com**) | Restricted Dealer (Dealer and Marketplace) | — |
+| 7 | Ndax Canada Inc. | Investment Dealer (Dealer and Marketplace) | 2024-12-19 |
+| 8 | Netcoins Inc. | Restricted Dealer (Dealer) | amended 2025-09-29 |
+| 9 | Newton Crypto Ltd. | Investment Dealer (Dealer) | amended 2026-03-25 |
+| 10 | **Payward Canada Inc. and Payward, Inc. (operating as KRAKEN)** | **Restricted Dealer (Dealer and Marketplace)** | **2025-04-01** |
+| 11 | Satstreet Inc. | Restricted Dealer (Dealer) | 2026-07-06 |
+| 12 | Shakepay Inc. | Investment Dealer (Dealer) | 2025-01-08 |
+| 13 | Wealthsimple Investments Inc. | Investment Dealer (Dealer) | amended 2025-12-22 |
+| 14 | Webull Canada Crypto Limited | Investment Dealer (Dealer) | 2026-06-17 |
+
+Separately listed and **not trading platforms**: APX Inc. and Shakepay Credit Inc. (crypto-backed
+*lending*), zerohash llc (immediate-delivery VRCA platform), and two VRCA issuer undertakings
+(Circle/USDC, QCAD Digital Trust).
+
+## The earlier partial list was wrong in BOTH directions — 0.11 vindicated again
+
+My first pass offered a search-surfaced list of 8 names, labelled PARTIAL and UNVERIFIED. Against
+the authoritative table it was wrong twice over:
+
+**IT OMITTED 8 REGISTERED PLATFORMS** — Coinsquare/Bitbuy, Cybrid, both Fidelity entities,
+Crypto.com, Ndax, Netcoins, Satstreet, Webull.
+
+**IT INCLUDED ENTRIES THAT DO NOT BELONG:**
+
+- **VirgoCX — registration SUSPENDED effective 2025-11-24.** It appears in the OSC's
+  *not currently registered* table, not the registered one. I listed it as authorized.
+- **APX Inc.** and **Shakepay Credit Inc.** are crypto-backed **lending** platforms, not trading
+  platforms.
+
+**And the falsifier I declared fired exactly as predicted**: I wrote *"any authorized platform
+absent from that list"* would overturn it, and named Kraken as positive evidence it was incomplete.
+Confirmed — Kraken is #10, **Restricted Dealer (Dealer and Marketplace), decision 2025-04-01**.
+
+## Also enumerated: NOT currently registered (12)
+
+Bitbuy Technologies (expired, acquired by Coinsquare) · Bitvo (expired, acquired by Bitbuy) · ByteX
+(PRU expired) · CatalX (PRU withdrawn, subject to an Alberta cease-trade order) · Coinberry
+(expired, acquired by Bitbuy) · DigiFinex (PRU) · **Gemini (PRU expired; no longer offers services
+to retail clients)** · Hibit (expired) · CoinSmart (expired, acquired) · Uphold (PRU withdrawn) ·
+**VirgoCX (suspended 2025-11-24)** · Wealthsimple Digital Assets (expired 2024-01-01).
+
+Context the OSC states directly: as announced **2024-08-06**, the CSA **no longer accepts new
+pre-registration undertakings**; new CTPs apply directly to **CIRO**.
+
+## SCOPE LIMIT, declared (0.1e)
+
+**This table is the OSC's, and it is scoped to Ontario** — *"exemptive relief to offer crypto
+products to investors in Ontario."* The CSA maintains the multi-jurisdiction list and **that page
+remains unobtainable (HTTP 307)**. So the enumeration is **authoritative for Ontario and not
+established Canada-wide.** A platform registered in another province and not in Ontario would not
+appear above. *Falsifier: the CSA list, when reachable, showing a registered CTP absent from this
+table.*
+
+This scope limit is not incidental to this WO: **WO-062's own regulatory finding is that
+Hyperliquid's Terms name Ontario as a Restricted Territory.** Ontario is the jurisdiction the
+comparison turns on either way.
+
+## §7 ACCEPTANCE — the outstanding item
 
 | requirement | status |
 |---|---|
-| Candidate set enumerated, spot gate applied | **PARTIAL** — DEX side complete; **Canadian CEX enumeration NOT obtainable (307)**, declared |
-| dYdX spot status verified | **met — perps only, disqualified** |
-| All-in cost at 0.1 BTC, every component cited or declared-unknown | **met** |
-| Gas structural finding stated | **met** |
-| Integrity mechanism answered per venue | **met for Kraken and Hyperliquid; UNKNOWN for Injective**, declared |
-| API / signing assessment | **met**, with the scheme itself declared unknown |
-| Regulatory note, geo-blocks as facts | **met** — Ontario recorded, not routed around |
-| Track 2 gap list both columns + costed estimate | **met** |
-| `git diff -- src/` empty | **met** |
-| no socket / RPC / wallet / key / account | **met** |
-| corpora untouched | **met** |
-| gates green | **met** — 572/2 both interpreters (574 collected, unchanged), 6/6 contracts, both corpora verify |
+| Candidate set enumerated, spot gate applied | **NOW MET for Ontario** — 14 registered CTPs enumerated from the OSC with decision dates; DEX side unchanged (dYdX disqualified perps-only) |
+| all other items | unchanged from the original pass |
 
----
-
-## THE TWO OPEN QUESTIONS, RESTATED — they are not part of this WO but they are still costing
-
-1. **The coverage-query defect.** A run killed before writing `run_end` contributes **zero** covered
-   hours and is reported as `incomplete_runs: []`. Leg 2's 2.780 hours and 381,816 frames are on
-   disk and invisible to the accounting, with nothing saying so. Over ~46 legs to 556 hours, every
-   interrupted leg silently under-counts. **My recommendation remains a WO of its own** — it is a
-   corpus-integrity bug in the metric the whole phase-B plan is measured by.
-2. **The 2.780 hours.** Reconcile them in, or discard the unfinalized run? They are real and
-   readable but have **no capture-time manifest**, so they cannot be hash-verified the way every
-   other segment can — which may itself be reason to drop them rather than admit an unverifiable
-   run into a corpus whose value is that every segment is provable.
-
-**And no phase-B capture is currently running.**
+**Nothing else in WO-062 changes.** The scored table, the three gates (dYdX perps-only, UBTC≠BTC,
+Ontario restricted), the gas cost-model-shape finding, the integrity assessment, and the Track 2 gap
+list at 40–60% of the Kraken adapter all stand as reported.
