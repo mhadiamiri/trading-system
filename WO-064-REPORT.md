@@ -394,3 +394,187 @@ prevented me from taking. **Two read-only API calls would settle it.**
 | `git diff -- src/` empty | **met** |
 | No socket/RPC/wallet/key/account | **met** |
 | Gates green | **met** |
+
+---
+
+# ADDENDUM — §3.2 MEASURED under the narrow scope amendment; Binance withdrawn
+
+**Two changes from the lead/operator, both applied:**
+
+1. **Scope amendment (granted):** read-only public retrieval permitted **for historical funding
+   rates only** — `POST api.hyperliquid.xyz/info {"type":"fundingHistory"}` and dYdX's indexer
+   equivalent. **Nothing else changed.** No socket, wallet, key, account, order-path call, or code.
+   **The permission was not extended** to price impact, depth, or anything else; those remain
+   DECLARED UNKNOWN exactly as reported.
+2. **Binance withdrawn as a venue candidate**, by **operator decision**.
+
+**API calls made: 19 to Hyperliquid, 18 to dYdX. All `fundingHistory` / `historicalFunding`. Nothing
+else was called.**
+
+---
+
+## BINANCE — WITHDRAWN, and the record must say by whom
+
+**The exclusion is OPERATOR-DIRECTED, not a technical finding.** It is recorded as such so a future
+reader does not mistake it for evidence. Binance was not measured and found wanting on the
+dimensions that removed it; it was withdrawn as a candidate.
+
+**Two things survive the withdrawal and are unaffected:**
+
+- **The perps disqualifier on arithmetic stands independently.** Binance raised the BTCUSDT
+  perpetual minimum notional from 5 to 100 USDT (2023-11-02), which permits exactly one position at
+  $100 capital. That finding was reached on cited numbers before the withdrawal and **remains in the
+  record on its own merits.** It would disqualify Binance perps at this capital regardless of the
+  operator's decision.
+- **Binance's historical data remains ADMITTED as the bridge basis. WO-061's verdict is untouched.**
+  229/229 files checksum-verified, nine years of BTCUSDT, bridged to our own capture at r = 0.999103
+  (240m). **Venue candidacy and data admissibility are different questions**, and only the former is
+  withdrawn.
+
+---
+
+## §3.2 THE FUNDING DISTRIBUTION — MEASURED
+
+**One year, 8,760 hourly observations per venue — complete coverage, no gaps.** Thresholds and the
+mechanism were declared before the data was fetched (see `funding_dist.py` header).
+
+| | **Hyperliquid BTC perp** | **dYdX v4 BTC-USD perp** |
+|---|---|---|
+| n | **8,760** | **8,760** |
+| cap | 4.00%/h | 1.50%/h |
+| signed min | −0.006939%/h | **−0.024337%/h** |
+| signed median | **+0.001250%/h** | +0.000150%/h |
+| signed p95 / p99 | +0.001250% / +0.002469% | +0.003063% / +0.005588% |
+| signed max | +0.023266%/h | +0.011325%/h |
+| **\|rate\| median** | **0.001250%/h** | **0.000987%/h** |
+| **\|rate\| p95** | **0.001363%/h** | **0.005250%/h** |
+| **\|rate\| p99** | **0.003003%/h** | **0.008988%/h** |
+| **\|rate\| max** | **0.023266%/h** | **0.024337%/h** |
+| max as % of cap | **0.582%** | **1.623%** |
+| hours ≥ 1% of cap | **0** | 8 (0.0913%) |
+| hours ≥ 10% of cap | **0** | **0** |
+| **hours ≥ 50% of cap ("approached")** | **0** | **0** |
+| hours at exactly 0 | 0.00% | **3.60%** |
+
+### THE CAP SCENARIO DID NOT MATERIALISE — my own §3 concern, retired on evidence
+
+WO-064 warned that *"at the cap, funding dominates immediately"* — a one-minute Hyperliquid hold at
+4%/h would cost 0.0667%, 74% of the entire fee round trip.
+
+**In 8,760 hours neither venue came within 10% of its cap.** Hyperliquid's worst hour reached
+**0.582% of cap**; dYdX's **1.623%**. The mechanical worst case was correct arithmetic about a state
+that **did not occur once in a year.**
+
+*Falsifier, stated: a volatility regime outside this window — a liquidation cascade or a funding
+squeeze — could still reach the cap, and one year of BTC data does not exclude it. What is now
+established is that the cap scenario is rare, not that it is impossible.*
+
+### The "same quantity" falsifier was checked and did NOT fire
+
+I declared that the mechanism claim would be falsified by a venue's observed floor disagreeing with
+its documented interest component. **Hyperliquid's median is exactly +0.001250%/h — precisely the
+documented 0.01%/8h interest component.** Corroborated. And dYdX's **3.60% of hours at exactly zero**
+is what a 0% interest component with zero premium predicts. **Both venues' published mechanics match
+their published data.**
+
+---
+
+## §3.3 RECOMPUTED — expected funding at $100, from measured rates
+
+`E[cost] = (D/60) × rate`, the straddle derivation unchanged.
+
+| hold | P(straddle) | HL median | HL p95 | HL p99 | **HL max** | dYdX median | dYdX p95 | dYdX p99 | **dYdX max** |
+|---|---|---|---|---|---|---|---|---|---|
+| **1 min** | 1.7% | 0.00002% | 0.00002% | 0.00005% | 0.00039% | 0.00002% | 0.00009% | 0.00015% | 0.00041% |
+| **5 min** | 8.3% | 0.00010% | 0.00011% | 0.00025% | 0.00194% | 0.00008% | 0.00044% | 0.00075% | 0.00203% |
+| **15 min** | 25.0% | 0.00031% | 0.00034% | 0.00075% | 0.00582% | 0.00025% | 0.00131% | 0.00225% | 0.00608% |
+| **60 min** | 100% | 0.00125% | 0.00136% | 0.00300% | 0.02327% | 0.00099% | 0.00525% | 0.00899% | **0.02434%** |
+
+**Against fee round trips of 0.090% (HL) and 0.100% (dYdX):**
+
+- At **HF durations (1–15 min)**, funding at p99 is **0.06% to 2.3% of the fee round trip.**
+- At the **worst observed hour of the year**, a 60-minute hold costs **26% of the fee round trip on
+  dYdX** and **26% on Hyperliquid.**
+- **Funding never exceeded the fee round trip at any duration, at any percentile, in a full year.**
+
+---
+
+## THE SPECIFIC QUESTION ANSWERED
+
+> *Does dYdX's realised funding stay below Hyperliquid's, or does the ranking invert?*
+
+**It inverts at the tail and not at the median — and by my own pre-declared criterion, that counts
+as an inversion.**
+
+| statistic | Hyperliquid | dYdX | verdict |
+|---|---|---|---|
+| \|rate\| median | 0.001250%/h | **0.000987%/h** | **dYdX LOWER** |
+| \|rate\| p95 | **0.001363%/h** | 0.005250%/h | **dYdX HIGHER — 3.9×** |
+| \|rate\| p99 | **0.003003%/h** | 0.008988%/h | **dYdX HIGHER — 3.0×** |
+| \|rate\| max | **0.023266%/h** | 0.024337%/h | **dYdX HIGHER — 1.05×** |
+
+**Why, mechanically.** dYdX's **zero interest component** gives it a lower *median* — it sits at
+exactly zero 3.60% of the time, which Hyperliquid never does because its 0.00125%/h interest floor
+pins it above zero. **But dYdX's premium component is more volatile**, so its tail is worse.
+**Hyperliquid's `clamp(interest − premium, ±0.0005)` term bounds how far the rate can move from the
+interest component**, and that clamp is visible in the data: Hyperliquid's p95 sits at its median
+(+0.001250%) while dYdX's p95 is 5× its median. **The clamp is doing exactly what it is documented
+to do.**
+
+**And the answer that matters: it does not change the decision.** Both tails are so small relative
+to fees that the inversion is real but not material.
+
+```
+all-in round trip at $100, 15-minute hold, p99 funding:
+  Hyperliquid : 0.090% + 0.00075% = 0.09075%
+  dYdX v4     : 0.100% + 0.00225% = 0.10225%
+difference: 0.0115% -- the SAME 0.010% fee gap that existed before funding was measured
+```
+
+**Funding moved the gap by 0.0015 percentage points.** The measurement's value is that it
+**removes an unknown**, not that it changes an answer — and removing it is what the WO existed to do.
+
+---
+
+## §9 RESTATED — decision table, Binance removed, funding measured
+
+All figures at **$100 per-order notional**; funding at **p99, 15-minute hold** (the target HF band).
+
+| venue | inst. | fees RT | gas | **+funding p99@15m** | **all-in RT** | min | **concurrent @$100** | integrity | maker |
+|---|---|---|---|---|---|---|---|---|---|
+| **Hyperliquid** | perp | **0.090%** | 0 | +0.00075% | **0.09075%** ($0.091) | $10 | 10 | **NONE** | 0.030% |
+| **dYdX v4** | perp | 0.100% | 0 | +0.00225% | **0.10225%** ($0.102) | **$1** | **≈100** | offset; **no canonical book**; full-node L3 + height + finality | 0.020% |
+| **Injective** | perp | 0.100% ¹ | 0.0003% | **UNKNOWN** | **≥0.1003%** | UNKNOWN | UNKNOWN | **`seq` + `block_height`** | **−0.010% REBATE** |
+| **OKX** | perp | 0.100% | nil | UNKNOWN | ≥0.100% | UNKNOWN | UNKNOWN | UNKNOWN | 0.040% |
+| **Bybit** | perp | 0.110% | nil | UNKNOWN | ≥0.110% | UNKNOWN | UNKNOWN | UNKNOWN | 0.040% |
+| **Hyperliquid** | spot | 0.140% | 0 | n/a | **0.140%** | $10 | 10 | NONE | 0.080% |
+| ~~Binance~~ | — | — | — | — | **WITHDRAWN — operator decision** | — | — | — | — |
+| **Ndax** *(CEX, ref.)* | spot | 0.400% | nil | n/a | 0.400% | UNKNOWN | UNKNOWN | none documented | 0.200% |
+| **Kraken** *(incumbent)* | spot | **1.6216%** | nil | n/a | **1.6216%** ($1.62) | UNKNOWN | UNKNOWN | **CRC32** | 0.80% RT |
+
+¹ Injective's 0.05% taker is documented as *typical* and varies by market.
+
+### THE LEADER — restated
+
+**dYdX v4 still leads, and the funding measurement did not change that — it strengthened the basis
+for saying so.**
+
+Hyperliquid is **0.0115% cheaper all-in** at the target hold duration. dYdX gives **~100 concurrent
+positions against 10**, and a real integrity route via full-node streaming. **At $100 capital,
+concurrency is the binding constraint and 0.0115% is $0.0115 per round trip** — one cent. **The
+ordering is unchanged and now rests on measured funding rather than an unmeasured one.**
+
+**What could still overturn it, updated:**
+
+- **Price impact at $100** — still **DECLARED UNKNOWN** for every venue, still requiring a depth read
+  the scope does not permit. **This is now the ONLY unmeasured term in the cost stack**, and at a
+  0.0115% margin between the leaders it is more than large enough to decide between them.
+- **Injective remains unscored** on minimums, funding and depth — and it is the only venue paying a
+  **maker rebate**, which §7 showed dominates venue choice.
+- **dYdX's integrity semantics**: the book has no canonical form, so a corpus captured there records
+  the indexer's view rather than the matching state. **That is a semantics problem, and semantic
+  mismatches are silent.**
+
+**One sentence:** dYdX v4 leads on concurrency and integrity at a one-cent cost penalty per round
+trip; **the unknown that could still overturn it is price impact at $100**, which is now the last
+unmeasured term and needs one depth read per venue.
