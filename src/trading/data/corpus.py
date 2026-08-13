@@ -467,6 +467,36 @@ class CorpusLedger:
                 "SEAM_CAUSE_UNDECLARED: no measured last frame for the prior run, so the seam has "
                 "no true left bound. Refusing to open a seam whose duration could only be estimated."
             )
+
+        # ── A FAILED RESUME MUST NOT MINT A SECOND SEAM FOR THE SAME GAP ──────────────────────
+        #
+        # The seam opens BEFORE the socket, deliberately: the left bound is known then, and a
+        # process killed mid-run must leave the seam loud rather than absent. But that also means
+        # ANY failure between the preflight and the first frame — a refused adapter, a venue that
+        # will not connect, a kill — leaves an OPEN seam whose `resumed_run_id` never produced a
+        # frame and which therefore can never be closed by it.
+        #
+        # That is not a cosmetic untidiness. An unresolved seam is read as +infinity, so it
+        # intersects EVERY later query and the default-deny reader refuses the whole corpus from
+        # that instant onward. One failed launch would render every subsequent capture unreadable.
+        #
+        # The gap itself is unchanged by a failed attempt: same left bound, same cause, still open.
+        # So a resume that finds an unresolved seam with the SAME left bound ADOPTS it and records
+        # which run is now expected to close it, rather than appending a duplicate. Matching on the
+        # measured `prior_last_frame_utc` — not on the run id — is what makes this safe: a genuinely
+        # different gap has a different left bound and still gets its own seam.
+        for existing in self.manifest.seams:
+            if existing.resolved or existing.prior_last_frame_utc != prior_last_frame_utc:
+                continue
+            existing.resumed_run_id = resumed_run_id
+            existing.detail = (
+                f"{existing.detail}; READOPTED by run {resumed_run_id} after a prior resume "
+                f"attempt opened this seam and never emitted a frame"
+            ).lstrip("; ")
+            self._append_seam_event("readopted", existing)
+            self.save()
+            return existing
+
         seam = SeamRecord(
             seam_id=len(self.manifest.seams),
             cause=cause,
