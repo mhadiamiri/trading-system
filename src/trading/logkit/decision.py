@@ -214,6 +214,42 @@ VALID_REASON_CODES = {
         # proof (WO-037/WO-044 both caught codes that were declared but only ever constants).
         # Prefix-free (RAW_ is a unique stem in the union).
         "RAW_RETENTION_CAPPED",
+        # WO-066 §3.3: the INTEGRITY-SURFACE ABSENCE refusals, raised by the live-capture runner
+        # when an adapter's checksum declaration is incoherent. Hyperliquid publishes no book
+        # checksum, so the runner reports `checksum_failure_count: None` rather than 0 — `0` is a
+        # CLAIM ("we checked and found none") and manufacturing it out of a venue's silence is the
+        # WO-054 count:0-vs-count:null defect applied to an integrity metric.
+        # These two keep that declaration honest in both directions:
+        #   …UNDECLARED    — absence asserted with no reason given. A null with no reason is
+        #                    indistinguishable from a bug, so the run refuses rather than emit one.
+        #   …CONTRADICTED  — absence asserted while the adapter still exposes the counter. That is
+        #                    the wired-and-always-zero metric this project has now named three
+        #                    times; it fails loudly instead of shipping a counter that cannot move.
+        # Prefix-free: CHECKSUM_ABSENCE_ diverges from CHECKSUM_RESYNC at 'A' vs 'R', and the two
+        # members diverge at 'U' vs 'C'.
+        "CHECKSUM_ABSENCE_UNDECLARED",
+        "CHECKSUM_ABSENCE_CONTRADICTED",
+        # WO-066 §2: TERM 11's VERDICT VOCABULARY — the gate that used to be an operator declaration.
+        #
+        # `CORPUS_SHUTDOWN_POLICY_DISABLED == "true"` reported the operator's INTENTION, which no
+        # host state could contradict; it read GREEN and Windows Update restarted the host 5 h 21 m
+        # into a 24 h capture on 2026-08-12, destroying the run. A gate that cannot fail is not a
+        # gate — the same family as `checksum_failures_total` (wired, always zero) and
+        # `\Memory\Pages/sec` (a counter chosen by name, not mechanism). Term 11 now MEASURES the
+        # host's Windows Update posture, and these are the verdicts it can reach.
+        #
+        # Genuinely producible and genuinely EMITTED: every one is returned by
+        # `trading.loop.reboot_window.evaluate` and driven by `tests/test_reboot_window_gate.py`,
+        # whose central assertion is that the real 2026-08-12 host state reads RED.
+        # Prefix-free: RUN_OVERLAPS_… / RUN_INSIDE_… diverge at 'O' vs 'I'; the rest are unique stems.
+        "RUN_OVERLAPS_PERMITTED_REBOOT_WINDOW",  # the run window intersects a permitted reboot window
+        "RUN_INSIDE_ACTIVE_HOURS",               # GREEN — the whole run sits inside active hours
+        "UPDATES_PAUSED",                        # GREEN — updates paused past the end of the run
+        "PAUSE_EXPIRES_MID_RUN",                 # half a pause is not a pause; the tail is exposed
+        "REBOOT_ALREADY_PENDING",                # a held restart fires at the first opportunity
+        "SMART_ACTIVE_HOURS_ENABLED",            # Windows picks the hours; the stored values do not
+                                                 # describe behaviour, so the reading is untrustworthy
+        "UPDATE_POLICY_UNREADABLE",              # fail-CLOSED: a gate that cannot measure must not pass
         # WO-045 §3 (D46) — THE TERMINATION CAUSES, now first-class governed vocabulary.
         # Doctrine (docs/decisions/2026-08-07-the-line-that-says-why-it-ended.md), verbatim:
         #   "For unattended runs, any message that explains a TERMINATION logs at WARNING or above.

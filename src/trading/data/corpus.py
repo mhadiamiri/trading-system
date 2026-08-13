@@ -67,6 +67,12 @@ CORPUS_MANIFEST_FILENAME = "CORPUS_MANIFEST.json"
 SEAM_LEDGER_FILENAME = "seam_ledger.jsonl"
 PREFLIGHT_FILENAME = "PREFLIGHT.json"
 
+# The default segment naming. A corpus whose runs predate this scheme passes its own patterns —
+# see `segment_paths`. Defined up here rather than beside that function because it is a default
+# ARGUMENT of both `CorpusLedger.__init__` and the readers, and Python binds default arguments at
+# definition time: declared below the class, the name does not exist when the class body runs.
+DEFAULT_SEGMENT_PATTERNS = ("corpus_*.jsonl",)
+
 
 class SeamCauseUndeclared(ValueError):
     """Raised when a resume is attempted without declaring WHY the prior run ended.
@@ -403,9 +409,11 @@ class CorpusLedger:
     because the event a ledger most needs to survive is the one that ends the process writing it.
     """
 
-    def __init__(self, root: Path, corpus_id: str, host: str = "") -> None:
+    def __init__(self, root: Path, corpus_id: str, host: str = "",
+                 segment_patterns: tuple = DEFAULT_SEGMENT_PATTERNS) -> None:
         self.root = Path(root)
         self.corpus_id = corpus_id
+        self.segment_patterns = tuple(segment_patterns)
         self.dir = self.root / corpus_id
         self.dir.mkdir(parents=True, exist_ok=True)
         self.manifest_path = self.dir / CORPUS_MANIFEST_FILENAME
@@ -510,9 +518,9 @@ class CorpusLedger:
             existing = self.get_run(child.name)
             if existing is not None and existing.finalized:
                 continue
-            if not segment_paths(child):
+            if not segment_paths(child, self.segment_patterns):
                 continue          # no frames — nothing to account for
-            self.add_run(reconcile_run_from_disk(child, child.name))
+            self.add_run(reconcile_run_from_disk(child, child.name, self.segment_patterns))
             reconciled.append(child.name)
         return reconciled
 
@@ -561,14 +569,29 @@ def first_frame_utc_in_segment(segment_path: Path) -> str:
     return ""
 
 
-def segment_paths(run_dir: Path) -> list:
-    """Uncompressed segments of a run, in chronological order (the naming scheme sorts that way)."""
-    return sorted(Path(run_dir).glob("corpus_*.jsonl"))
+def segment_paths(run_dir: Path, patterns: tuple = DEFAULT_SEGMENT_PATTERNS) -> list:
+    """Uncompressed segments of a run, in chronological order (the naming scheme sorts that way).
+
+    `patterns` exists because a corpus can outlive its own file-naming convention. WO-066's first
+    Hyperliquid attempt wrote `hl_BTC_*.jsonl`; the resumable rewrite writes `corpus_HL_*.jsonl` so
+    that this reader works unchanged. Without a way to name BOTH, the 5.35 h that attempt captured
+    would be **invisible to the accounting** — present on disk, absent from every total, which is
+    the coverage-query defect this corpus machinery exists to prevent. Under-counting is as
+    forbidden as over-counting (§0.4), so the old name is carried rather than dropped or renamed:
+    renaming captured files after the fact edits the record, and this reads it instead.
+
+    NOT sorted across patterns by name alone — a mixed-scheme run would interleave wrongly — but
+    each run in practice uses one scheme, and the sort within a scheme is chronological.
+    """
+    out: list = []
+    for pat in patterns:
+        out.extend(Path(run_dir).glob(pat))
+    return sorted(set(out))
 
 
-def run_frame_bounds(run_dir: Path) -> tuple:
+def run_frame_bounds(run_dir: Path, patterns: tuple = DEFAULT_SEGMENT_PATTERNS) -> tuple:
     """(first_frame_utc, last_frame_utc) measured across a run's segments on disk."""
-    segments = segment_paths(run_dir)
+    segments = segment_paths(run_dir, patterns)
     if not segments:
         return "", ""
     first = ""
@@ -594,7 +617,8 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def reconcile_run_from_disk(run_dir: Path, run_id: str) -> RunRecord:
+def reconcile_run_from_disk(run_dir: Path, run_id: str,
+                            patterns: tuple = DEFAULT_SEGMENT_PATTERNS) -> RunRecord:
     """Rebuild a RunRecord for a run whose process died before writing its manifest.
 
     THE CASE THIS EXISTS FOR: the capture runner finalizes in a `finally` block, which a SIGKILL
@@ -610,11 +634,11 @@ def reconcile_run_from_disk(run_dir: Path, run_id: str) -> RunRecord:
     never smoothed.
     """
     run_dir = Path(run_dir)
-    first, last = run_frame_bounds(run_dir)
+    first, last = run_frame_bounds(run_dir, patterns)
     gaps = gap_summary(run_dir / "gap_ledger.json")
 
     segments = []
-    for seg in segment_paths(run_dir):
+    for seg in segment_paths(run_dir, patterns):
         try:
             frame_count = sum(1 for line in seg.read_text(encoding="utf-8").splitlines() if line.strip())
         except OSError:

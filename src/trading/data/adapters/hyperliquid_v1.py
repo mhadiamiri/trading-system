@@ -37,10 +37,13 @@ three times. The absence is documented here so a reader asking "where is the fif
 reason rather than a silent omission.
 
 **Consequently this adapter deliberately does NOT expose `get_checksum_failure_count()` or its
-siblings.** `trading.loop.live_capture` currently calls them unconditionally (lines ~190-193), so
-that call site must learn the difference between **0** ("we checked and found none") and
-**absent/null** ("there is nothing on this venue to check") — the WO-054 `count: 0` vs `count: null`
-distinction, applied to an integrity metric. That wiring is WO-066 §3.3 and is NOT done here.
+siblings.** `trading.loop.live_capture` used to call them unconditionally, which would have
+reported **0** — a claim meaning "we checked and found none" — for a venue where nothing was
+checked. **That call site now reads the declaration below** and reports **None with a reason**
+instead: the WO-054 `count: 0` vs `count: null` distinction, applied to an integrity metric.
+The declaration is `PUBLISHES_BOOK_CHECKSUM = False` + `CHECKSUM_ABSENT_REASON` on the adapter
+class; it is DECLARED rather than inferred from a missing method, because a missing method is
+also what a broken Kraken adapter looks like.
 """
 
 from __future__ import annotations
@@ -65,6 +68,23 @@ VENUE_COIN = "BTC"          # Hyperliquid's coin identifier for the BTC perpetua
 SUBSCRIBE_FAST = False
 PUBLISHED_LEVELS = 20 if not SUBSCRIBE_FAST else 5
 
+# §3.4 — THE TWO l2Book FEEDS, and what each one costs. Both MEASURED, 90 s per arm, l2Book-only
+# so nothing in our loop paces the result:
+#
+#     FEED_SLOW  20 levels/side   0.200 msg/s   inter-frame p50 5.406 s
+#     FEED_FAST   5 levels/side   1.867 msg/s   inter-frame p50 0.517 s
+#
+# The documented cadence — "pushed on each block that is at least 0.5 since last push" — describes
+# the FAST feed. The slow feed's ~5.4 s appears in NO citation and is 10.4x the documented figure.
+#
+# The capture subscribes to BOTH (ratified WO-066 §3.4). Depth and freshness are different
+# properties of the venue and neither substitutes for the other: the slow feed carries the 20-level
+# evidentiary bound, and the fast feed is the only one against which tape-vs-book reconciliation
+# means anything (33.3% of slow-feed frames cannot be reconciled at one tick, versus 2.5% of fast).
+FEED_SLOW = "slow"
+FEED_FAST = "fast"
+FEED_LEVELS = {FEED_SLOW: 20, FEED_FAST: 5}
+
 # ── The gap-cause taxonomy for THIS venue — four, and the fifth's absence is documented above ──
 GAP_CAUSES = (
     "KEEPALIVE_RECONNECT",
@@ -88,9 +108,24 @@ class HyperliquidAdapterError(Exception):
     """Raised when the adapter is asked to record something it cannot honestly record."""
 
 
-def build_book_subscribe(coin: str = VENUE_COIN) -> dict:
-    """The cited l2Book subscribe frame. `fast` omitted => the SLOW (20-level) feed."""
-    return {"method": "subscribe", "subscription": {"type": "l2Book", "coin": coin}}
+def build_book_subscribe(coin: str = VENUE_COIN, fast: bool = False) -> dict:
+    """The cited l2Book subscribe frame. `fast` omitted => the SLOW (20-level) feed.
+
+    MEASURED, because the citation only describes the depth half of the trade-off (WO-066 §3.4,
+    90 s per arm, l2Book-only so nothing else paces the loop):
+
+        slow (fast omitted)  20 levels/side   0.200 msg/s   inter-frame p50 **5.406 s**
+        fast (fast=True)      5 levels/side   1.867 msg/s   inter-frame p50 **0.517 s**
+
+    The documented cadence — "pushed on each block that is at least 0.5 since last push" — matches
+    the FAST feed. **The slow feed's ~5.4 s appears in no citation**, and it is 10.4x the
+    documented figure. Subscribing SLOW for the deeper evidentiary bound therefore costs an order
+    of magnitude in book freshness, which is a fact about what any figure from this corpus means.
+    """
+    sub = {"type": "l2Book", "coin": coin}
+    if fast:
+        sub["fast"] = True
+    return {"method": "subscribe", "subscription": sub}
 
 
 def build_trades_subscribe(coin: str = VENUE_COIN) -> dict:
@@ -119,6 +154,13 @@ class BookSnapshot:
     `levels_published` is carried on every snapshot rather than assumed, because it is this
     corpus's evidentiary bound (§3.4) and a feed that silently returned 5 where 20 was requested
     would otherwise be indistinguishable from one that returned 20.
+
+    `feed` says WHICH l2Book subscription produced it. Both feeds arrive on the same channel with
+    the same shape, so without this a dual-feed capture would silently interleave a 5-level 0.52 s
+    stream and a 20-level 5.4 s stream into one undifferentiated corpus — two different
+    observations of the venue wearing one label. **The discriminator is the venue's own `fast`
+    field**, verified present on 5-level messages and absent on 20-level ones (WO-066 §3.4), not
+    inferred from the level count, which would be circular.
     """
 
     coin: str
@@ -126,6 +168,7 @@ class BookSnapshot:
     asks: list
     venue_time_ms: int
     levels_published: int
+    feed: str = FEED_SLOW
 
 
 def parse_l2_book(raw: dict) -> Optional[BookSnapshot]:
@@ -148,7 +191,11 @@ def parse_l2_book(raw: dict) -> Optional[BookSnapshot]:
                 for x in levels[1]]
         return BookSnapshot(coin=data["coin"], bids=bids, asks=asks,
                             venue_time_ms=int(data["time"]),
-                            levels_published=max(len(bids), len(asks)))
+                            levels_published=max(len(bids), len(asks)),
+                            # THE VENUE'S OWN DISCRIMINATOR, not our inference. Deriving the feed
+                            # from the level count would be circular: the level count is exactly
+                            # the thing §4.4 exists to detect a lie about.
+                            feed=FEED_FAST if "fast" in data else FEED_SLOW)
     except (KeyError, ValueError, TypeError, ArithmeticError):
         return None
 
@@ -202,7 +249,17 @@ class HyperliquidBookAdapter:
     WS_URL = WS_URL
     PUBLISHED_LEVELS = PUBLISHED_LEVELS
 
+    # WO-066 §3.3 — the DECLARATION `trading.loop.live_capture` reads instead of inferring.
+    # False means "this venue publishes nothing to check", which makes the runner report the
+    # checksum figures as None rather than 0. The reason travels with the declaration because a
+    # null with no reason is indistinguishable from a bug.
+    PUBLISHES_BOOK_CHECKSUM = False
+    CHECKSUM_ABSENT_REASON = CAUSE_ABSENT_FROM_THIS_VENUE["CHECKSUM_RESYNC"]
+
     mode: str = MODE_FIXTURE
+    # §3.4 — which l2Book feeds this adapter subscribes to. BOTH is the ratified setting: depth and
+    # freshness are different properties and neither substitutes for the other. See FEED_LEVELS.
+    feeds: tuple = (FEED_SLOW, FEED_FAST)
     connect_fn: Optional[Callable] = None
     monotonic_clock: Callable = time.monotonic
     _wall_clock: Optional[Callable] = None
@@ -218,11 +275,21 @@ class HyperliquidBookAdapter:
         established is not honest evidence (Principle VIII)."""
         return self.VENUE_LIVE if self.mode == self.MODE_LIVE else self.VENUE_FIXTURE
 
+    @property
+    def published_levels(self) -> int:
+        """The DEEPEST book this adapter's subscriptions can deliver — the evidentiary bound.
+
+        An instance property rather than the module constant, because the bound is a property of
+        the subscriptions that were actually made, not of the module that could make either.
+        """
+        return max(FEED_LEVELS[f] for f in self.feeds)
+
     def subscriptions(self) -> list:
         """Every frame this adapter will send. ENUMERATED, so a reader can see the whole
         outbound surface in one place — WO-056 found six message kinds on Kraken where two
         were assumed, and the fix is to make the set inspectable rather than implied."""
-        return [build_book_subscribe(), build_trades_subscribe()]
+        return ([build_book_subscribe(fast=(f == FEED_FAST)) for f in self.feeds]
+                + [build_trades_subscribe()])
 
     def process_raw_frame(self, raw: dict) -> dict:
         """The SHARED entry point every inbound frame passes through.

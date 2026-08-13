@@ -181,15 +181,63 @@ class LiveCaptureRunner:
         emitted_per_minute = [per_minute.get(i, 0) for i in range(last_minute + 1)]
 
         ledger = adapter.get_gap_ledger()
-        return {
+        result = {
             "venue_name": adapter.venue_name,
             "persist_path": str(self._persist_path),
             "emitted_per_minute": emitted_per_minute,     # the §2.2 per-minute series
             "gap_ledger": ledger,
             "terminated": terminated,                     # breaker-trip forensic tail, or None
-            "checksum_failure_count": adapter.get_checksum_failure_count(),
-            "checksum_failure_captures": adapter.get_checksum_failure_captures(),
-            "checksum_failure_summaries": adapter.get_checksum_failure_summaries(),
             "diagnostic_counters": adapter.get_diagnostic_counters(),
             "loop_result": loop_result,
+        }
+        result.update(self._checksum_surface(adapter))
+        return result
+
+    # WO-066 §3.3 — 0 IS NOT NULL, AND THE DIFFERENCE IS THE VENUE'S TO DECLARE.
+    #
+    # These three reads were unconditional. On Kraken that is correct: the venue publishes a CRC32,
+    # we check every book against it, and `0` is a CLAIM — "we checked and found none". On a venue
+    # that publishes no checksum there is nothing to check, and reporting `0` would assert that
+    # claim falsely: an integrity figure manufactured out of the venue's silence. That is the
+    # WO-054 `count: 0` vs `count: null` distinction applied to an integrity metric, and it is the
+    # same defect shape as a counter that is wired and can never move.
+    #
+    # THE DECLARATION IS READ, NOT INFERRED. `hasattr` would answer "the method is missing", which
+    # is also what a BROKEN adapter looks like — a Kraken adapter that lost its checksum surface in
+    # a refactor would then be silently reported as a venue with nothing to check. So the absence
+    # must be DECLARED by the adapter class (`PUBLISHES_BOOK_CHECKSUM = False` with a reason), the
+    # same declared-not-inferred rule the clock gate's named exception follows (D34-3). An adapter
+    # that declares nothing keeps the old unconditional path, so a missing method on Kraken still
+    # raises AttributeError loudly rather than being absorbed here.
+    @staticmethod
+    def _checksum_surface(adapter) -> dict:
+        """Return the checksum keys: real counts, or None WITH THE REASON they are None."""
+        if getattr(adapter, "PUBLISHES_BOOK_CHECKSUM", True):
+            return {
+                "checksum_failure_count": adapter.get_checksum_failure_count(),
+                "checksum_failure_captures": adapter.get_checksum_failure_captures(),
+                "checksum_failure_summaries": adapter.get_checksum_failure_summaries(),
+                "checksum_absent_reason": None,
+            }
+        reason = getattr(adapter, "CHECKSUM_ABSENT_REASON", "")
+        if not reason:
+            raise LiveCaptureError(
+                "CHECKSUM_ABSENCE_UNDECLARED: adapter declares PUBLISHES_BOOK_CHECKSUM=False but "
+                "gives no CHECKSUM_ABSENT_REASON. An absent integrity mechanism must say why it is "
+                "absent, or the null is indistinguishable from a bug."
+            )
+        # A venue cannot both declare the mechanism absent AND expose a counter for it: that is the
+        # wired-and-always-zero metric this project has now named three times. Fail loudly instead.
+        leaked = [n for n in ("get_checksum_failure_count", "get_checksum_failure_captures",
+                              "get_checksum_failure_summaries") if hasattr(adapter, n)]
+        if leaked:
+            raise LiveCaptureError(
+                f"CHECKSUM_ABSENCE_CONTRADICTED: adapter declares PUBLISHES_BOOK_CHECKSUM=False "
+                f"but still exposes {leaked}. A counter that cannot move must not exist."
+            )
+        return {
+            "checksum_failure_count": None,        # NOT 0 — nothing on this venue to check
+            "checksum_failure_captures": None,
+            "checksum_failure_summaries": None,
+            "checksum_absent_reason": reason,
         }

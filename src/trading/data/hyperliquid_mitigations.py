@@ -34,6 +34,12 @@ COUNTERS = (
     "observed_levels_below_declared",
 )
 
+# The per-feed counters. §3.4 captures BOTH l2Book feeds, and a single set of totals would average
+# a 0.52 s stream against a 5.4 s one — hiding exactly the difference the dual subscription exists
+# to measure.
+PER_FEED_COUNTERS = ("frames_emitted", "frames_refused", "refused_staleness",
+                     "refused_tape_vs_book", "refused_cross_venue_band")
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -141,19 +147,94 @@ class CrossVenueBand:
 #   * A SUBTLY SHIFTED BOOK. A book displaced by less than the tolerance passes trivially.
 #   Integrity failures are loud; semantic mismatches are silent, and this catches only the loud kind.
 
-TAPE_BOOK_TICK_TOLERANCE = 1.0    # in ticks; a print may be at the touch, not beyond it by more
+TAPE_BOOK_TICK_TOLERANCE = 1.0    # in ticks; the FLOOR, never the derived bound itself
+
+# ── WHY THE TOLERANCE IS DERIVED AND NOT DECLARED ────────────────────────────────────────────
+#
+# A ONE-TICK tolerance was the first specification, and MEASURED against the live feed it refused
+# **33.3% of slow-feed frames** (5 min, 57 book frames, 652 prints). The mechanism is the cadence:
+# the slow feed publishes every ~5.4 s while the tape prints ~11 times in that interval, so the
+# price walks and prints land where the book was at instants that were never published. The same
+# measurement on the fast feed refuses 2.5%.
+#
+# **A guard that refuses a third of ordinary data is worse than no guard** — and worse here than
+# elsewhere, because the refusals are not random: a frame is dropped precisely when price MOVED, so
+# the surviving corpus is systematically calmer than the venue. A selection effect correlated with
+# volatility is the one bias a market-data corpus must not have.
+#
+# So the bound is derived the way §4.1's band is: from the MEASURED reconciliation-distance
+# distribution over the calibration window, returning None below the sample floor so that an
+# underived bound leaves the guard INACTIVE and says so. Widening a guessed constant until the
+# refusals stop would be tuning a bound to its data; deriving it states what ordinary
+# reconciliation error on this feed actually is, and refuses what lies beyond it.
+#
+# WHAT THIS COSTS, STATED PLAINLY: the wider the ordinary error, the less the guard can detect. On
+# the slow feed ordinary error reaches ~14 ticks, so a derived bound there catches only grossly
+# dislocated prints. That is not a defect in the derivation — it is the feed's cadence showing
+# through, and §4.5's residual must carry it rather than hide it behind a tighter-looking constant.
+
+TAPE_BOOK_K = 1.5                 # widening factor on the measured p99.5 reconciliation distance
+TAPE_BOOK_MIN_SAMPLES = 300
+
+
+@dataclass
+class TapeBookBound:
+    """The measured tape-vs-book tolerance. Constructed by `derive()` — never guessed."""
+
+    tolerance_abs: float          # price units, not ticks
+    observed_p995: float
+    n: int
+    outside_fraction: float       # how often a print sat outside the touch at ONE tick
+
+    @classmethod
+    def derive(cls, distances: list, tick: float, k: float = TAPE_BOOK_K
+               ) -> Optional["TapeBookBound"]:
+        """Derive from measured per-print reconciliation distances (0.0 when inside the touch)."""
+        if len(distances) < TAPE_BOOK_MIN_SAMPLES:
+            return None
+        s = sorted(distances)
+        p995 = s[min(len(s) - 1, int(0.995 * len(s)))]
+        return cls(tolerance_abs=max(TAPE_BOOK_TICK_TOLERANCE * tick, k * p995),
+                   observed_p995=p995, n=len(s),
+                   outside_fraction=sum(1 for d in s if d > 0) / len(s))
+
+    def check(self, print_px: float, best_bid: float, best_ask: float) -> Verdict:
+        return check_tape_vs_book(print_px, best_bid, best_ask, tick=1.0,
+                                  tolerance_abs=self.tolerance_abs)
+
+
+def reconciliation_distance(print_px: float, best_bid: float, best_ask: float,
+                            tolerance_abs: float = 0.0) -> float:
+    """How far a print lies BEYOND [bid - tol, ask + tol]. 0.0 means reconcilable.
+
+    The quantity the bound is derived from, defined once so the derivation and the check cannot
+    drift apart — measuring one thing and refusing on another is how a bound stops describing
+    what it was derived from.
+    """
+    if print_px < best_bid - tolerance_abs:
+        return (best_bid - tolerance_abs) - print_px
+    if print_px > best_ask + tolerance_abs:
+        return print_px - (best_ask + tolerance_abs)
+    return 0.0
 
 
 def check_tape_vs_book(print_px: float, best_bid: float, best_ask: float,
-                       tick: float) -> Verdict:
-    """REFUSE when a print cannot be reconciled with the book we hold."""
+                       tick: float, tolerance_abs: Optional[float] = None) -> Verdict:
+    """REFUSE when a print cannot be reconciled with the book we hold.
+
+    `tolerance_abs` is the DERIVED bound when one exists. Falling back to one tick is deliberate
+    for the invalid-quote case and for callers with no calibration window; the capture path never
+    relies on it, because until the bound is derived it does not run this check at all.
+    """
     if best_bid <= 0 or best_ask <= 0 or best_ask < best_bid:
         return Verdict(True, "TAPE_BOOK_INVALID_QUOTES",
                        {"bid": best_bid, "ask": best_ask})
-    tol = TAPE_BOOK_TICK_TOLERANCE * tick
-    if print_px < best_bid - tol or print_px > best_ask + tol:
+    tol = TAPE_BOOK_TICK_TOLERANCE * tick if tolerance_abs is None else tolerance_abs
+    d = reconciliation_distance(print_px, best_bid, best_ask, tol)
+    if d > 0:
         return Verdict(True, "TAPE_OUTSIDE_HELD_BOOK",
-                       {"print": print_px, "bid": best_bid, "ask": best_ask, "tol": tol})
+                       {"print": print_px, "bid": best_bid, "ask": best_ask, "tol": tol,
+                        "distance": d})
     return Verdict(False)
 
 
@@ -201,24 +282,35 @@ class StalenessBound:
 DECLARED_LEVELS = 20
 
 EVIDENTIARY_BOUND = (
-    "This corpus is captured from Hyperliquid's l2Book SLOW feed, which publishes at most "
-    f"{DECLARED_LEVELS} levels per side. DEPTH BEYOND LEVEL {DECLARED_LEVELS} IS UNOBSERVED BY "
-    "CONSTRUCTION. Any figure requiring deeper book — slippage for an order larger than the "
-    "cumulative 20-level notional, full-depth imbalance, or resting size beyond the top 20 — is "
-    "UNAVAILABLE from this corpus and must not be estimated from it. The corpus's integrity "
-    "property is CONSISTENCY, not correctness: the venue publishes no checksum, no sequence "
-    "number and no version, so no mechanism here establishes that a snapshot matches the book "
-    "Hyperliquid matched against."
+    "This corpus is captured from BOTH of Hyperliquid's l2Book feeds, and the two are NOT "
+    "interchangeable. The SLOW feed publishes at most "
+    f"{DECLARED_LEVELS} levels per side at a MEASURED ~5.41 s cadence; the FAST feed publishes 5 "
+    "levels at ~0.52 s. Every frame carries a `feed` field taken from the venue's own `fast` "
+    "marker, and a figure computed across both without separating them would average two "
+    "different observations of the venue. "
+    f"DEPTH BEYOND LEVEL {DECLARED_LEVELS} IS UNOBSERVED BY CONSTRUCTION on either feed, and "
+    "depth beyond level 5 is unobserved at the fast cadence. Any figure requiring deeper book — "
+    "slippage for an order larger than the cumulative 20-level notional, full-depth imbalance, or "
+    "resting size beyond the top 20 — is UNAVAILABLE from this corpus and must not be estimated "
+    "from it. Any figure requiring sub-5-second book resolution is available ONLY from the fast "
+    "feed, and therefore only to level 5. "
+    "The corpus's integrity property is CONSISTENCY, not correctness: the venue publishes no "
+    "checksum, no sequence number and no version, so no mechanism here establishes that a "
+    "snapshot matches the book Hyperliquid matched against."
 )
 
 
-def check_declared_levels(levels_published: int) -> Verdict:
+def check_declared_levels(levels_published: int, declared: int = DECLARED_LEVELS) -> Verdict:
     """A feed that silently returns 5 where 20 was requested must be DETECTABLE.
 
     This does not refuse the frame — fewer levels is still true data about the touch. It flags,
     so `observed_levels_below_declared` can move and the corpus's own bound is auditable.
+
+    `declared` is per-FEED (§3.4 subscribes both): the fast feed publishes 5 by contract, so
+    judging its frames against 20 would report a short book on every one of them and the counter
+    would stop meaning "the venue gave us less than it promised".
     """
-    if levels_published < DECLARED_LEVELS:
+    if levels_published < declared:
         return Verdict(False, "LEVELS_BELOW_DECLARED",
-                       {"observed": levels_published, "declared": DECLARED_LEVELS})
+                       {"observed": levels_published, "declared": declared})
     return Verdict(False)

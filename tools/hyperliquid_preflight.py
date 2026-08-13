@@ -137,10 +137,35 @@ except Exception as exc:                                          # noqa: BLE001
     term("8", "guards_armed", RED, f"guard demonstration raised {type(exc).__name__}: {exc}",
          mapping="ADAPTS")
 
-# ── 9 seam ────────────────────────────────────────────────────────────────────────────────────
-term("9", "seam", GREEN,
-     "a Hyperliquid capture would be a NEW corpus-id — first run, no seam owed",
-     mapping="TRANSFERS")
+# ── 9 seam — READ THE CORPUS, do not assert its state ─────────────────────────────────────────
+#
+# This term used to say "a Hyperliquid capture would be a NEW corpus-id — first run, no seam owed"
+# as a hardcoded GREEN. That was true the day it was written and false the moment the corpus had a
+# run in it, which is now: the 2026-08-12 attempt left 5.35 h on disk. A term that states a fact
+# about the corpus without reading the corpus is the same defect as term 11's, one directory over.
+_corpus_id = os.environ.get("HL_CORPUS_ID", "hlspike_20260812")
+try:
+    from trading.data.corpus import CorpusLedger                    # noqa: E402
+    from tools.hyperliquid_capture import SEGMENT_PATTERNS          # noqa: E402
+    _ledger = CorpusLedger(pathlib.Path("captures/hyperliquid"), _corpus_id,
+                           segment_patterns=SEGMENT_PATTERNS)
+    _reconciled = _ledger.reconcile()
+    _prior = _ledger.prior_run()
+    if _prior is None:
+        _seam_detail = f"corpus {_corpus_id!r} holds no run — first run, no seam owed"
+    else:
+        _seam_detail = (
+            f"corpus {_corpus_id!r} already holds run {_prior.run_id!r} (last frame "
+            f"{_prior.last_frame_utc or 'NONE'}, finalized={_prior.finalized}) — A SEAM IS OWED "
+            f"and its cause must be DECLARED on the command line, never guessed")
+    term("9", "seam", GREEN, _seam_detail, mapping="TRANSFERS",
+         corpus_id=_corpus_id, seam_owed=_prior is not None,
+         prior_run_id=(_prior.run_id if _prior else None),
+         reconciled_runs=_reconciled,
+         cumulative_covered_hours=_ledger.progress().get("cumulative_covered_hours", 0.0))
+except Exception as exc:                                            # noqa: BLE001
+    term("9", "seam", RED, f"could not read the corpus: {type(exc).__name__}: {exc}",
+         mapping="TRANSFERS")
 
 # ── 10 term2_memory_gate ──────────────────────────────────────────────────────────────────────
 try:
@@ -154,10 +179,28 @@ try:
 except Exception as exc:                                          # noqa: BLE001
     term("10", "term2_memory_gate", RED, f"{type(exc).__name__}: {exc}", mapping="TRANSFERS")
 
-# ── 11 shutdown_policy_disabled ───────────────────────────────────────────────────────────────
-sd = os.environ.get("CORPUS_SHUTDOWN_POLICY_DISABLED", "").lower() == "true"
-term("11", "shutdown_policy_disabled", GREEN if sd else RED,
-     f"operator declaration via CORPUS_SHUTDOWN_POLICY_DISABLED={sd}", mapping="TRANSFERS")
+# ── 11 shutdown_policy_disabled — RE-SPECIFIED AS A MEASUREMENT (WO-066) ──────────────────────
+#
+# This term was `CORPUS_SHUTDOWN_POLICY_DISABLED == "true"` — an operator declaration, which is to
+# say an expression no host state could turn RED. It read GREEN on 2026-08-12 and Windows Update
+# restarted the host 5 h 21 m into a 24 h capture, destroying the run. A gate that cannot fail is
+# not a gate; this is the third naming of that family in this project. It now READS THE HOST.
+from trading.loop import reboot_window                              # noqa: E402
+try:
+    _hours = float(os.environ.get("HL_CAPTURE_HOURS", "24"))
+    _policy = reboot_window.read_host_policy()
+    _v = reboot_window.evaluate(_policy, datetime.now().astimezone(), _hours)
+    _declared = os.environ.get("CORPUS_SHUTDOWN_POLICY_DISABLED", "").lower() == "true"
+    term("11", "shutdown_policy_disabled", GREEN if _v.green else RED,
+         f"MEASURED for a {_hours:g} h run — {_v.reason}"
+         + ("  [operator ALSO declared it disabled; the declaration is recorded but no longer "
+            "decides the term]" if _declared else ""),
+         mapping="RE-SPECIFIED — was an operator declaration, now a host measurement",
+         operator_declaration=_declared, verdict=_v.to_dict())
+except Exception as exc:                                            # noqa: BLE001
+    term("11", "shutdown_policy_disabled", RED,
+         f"gate raised {type(exc).__name__}: {exc} — fail-closed, a gate that cannot measure "
+         f"must not pass", mapping="RE-SPECIFIED")
 
 # ── 12 grant_expiry — a NEW grant, not the corpus grant ────────────────────────────────────────
 expiry = os.environ.get("HYPERLIQUID_GRANT_EXPIRY", "")
@@ -182,7 +225,13 @@ methods = sorted({f.get("method") for f in outbound})
 print(f"ORDER PATH   : outbound methods = {methods}  (Hyperliquid's ORDER method is 'post' — absent)")
 print(f"               no order/sign/wallet symbol on module or class; no signing-capable import")
 print(f"               asserted STRUCTURALLY by tests/test_hyperliquid_no_order_path.py (14 tests)")
-print(f"EVIDENTIARY  : subscribing SLOW => {hl.PUBLISHED_LEVELS} levels; deeper depth UNOBSERVED")
+_adapter = hl.HyperliquidBookAdapter()
+print(f"EVIDENTIARY  : feeds {list(_adapter.feeds)} => "
+      f"{ {f: hl.FEED_LEVELS[f] for f in _adapter.feeds} } levels at MEASURED cadences "
+      f"slow 5.406 s / fast 0.517 s; depth beyond 20 UNOBSERVED, and beyond 5 unobserved at the "
+      f"fast cadence")
+record["feeds"] = list(_adapter.feeds)
+record["feed_levels"] = {f: hl.FEED_LEVELS[f] for f in _adapter.feeds}
 print(f"LIVE-CAPABLE : registry.is_live_capable('hyperliquid_v1') = "
       f"{registry.is_live_capable('hyperliquid_v1')}  (deliberately False until §3.3 wires it)")
 record["outbound_methods"] = methods
