@@ -85,6 +85,13 @@ from trading.loop import reboot_window                                # noqa: E4
 
 TICK = 1.0            # observed on the BTC perp book (WO-065: spread pinned at 1.0 USD)
 CALIBRATION_MINUTES = 60
+
+# In-flight liveness reporting. Not a guard — it refuses nothing. It exists because a latching
+# staleness bound took the fast feed offline at 03:23:50Z on 2026-08-13 and the run continued for
+# 5 h 39 m reporting healthy, then took the slow feed too. 120 s is well past the slow feed's
+# measured 5.4 s cadence and its 34.59 s derived bound, so it cannot fire on ordinary quiet.
+LIVENESS_CHECK_S = 60.0
+LIVENESS_DARK_S = 120.0
 CAPTURE_ROOT = pathlib.Path("captures/hyperliquid")
 
 # Segment names deliberately match the shared `corpus_*.jsonl` scheme so `segment_paths`,
@@ -126,7 +133,20 @@ class HyperliquidCapture:
         self._log_bases: list = []
         self._gaps_s: dict = {f: [] for f in self.feeds}
         self._tape_distances: list = []
+        # TWO CLOCKS, BECAUSE THEY ARE TWO DIFFERENT QUANTITIES.
+        #
+        # `_last_book_mono` — when we last SAW a book on this feed. Advances on EVERY arrival,
+        #   refused or not. Staleness is a statement about whether THE VENUE has gone quiet, so
+        #   this is what §4.3 must measure against.
+        # `_last_emitted_mono` — when we last WROTE a frame. Diagnostic only.
+        #
+        # Conflating them is what took the fast feed offline for five and a half hours on
+        # 2026-08-13: staleness measured against a clock that only advanced on a SUCCESSFUL emit,
+        # so the first refusal froze the reference instant, the measured age then grew without
+        # bound, and the guard could never accept another frame. A latching guard is
+        # indistinguishable from a dead feed, and the process reported healthy throughout.
         self._last_book_mono: dict = {f: None for f in self.feeds}
+        self._last_emitted_mono: dict = {f: None for f in self.feeds}
         self._latest_touch: tuple | None = None   # freshest touch from EITHER feed, for §4.2
         self._seg_path: pathlib.Path | None = None
         self._seg_fh = None
@@ -192,13 +212,20 @@ class HyperliquidCapture:
         # 4.3 staleness — PER FEED. One bound across both would be derived from a bimodal cadence
         # and would describe neither: 5.4 s and 0.52 s are 10x apart.
         stale = self.stale.get(feed)
-        last_mono = self._last_book_mono.get(feed)
-        if stale is not None and last_mono is not None:
-            v = stale.check(now_mono - last_mono)
+        last_arrival = self._last_book_mono.get(feed)
+        if stale is not None and last_arrival is not None:
+            v = stale.check(now_mono - last_arrival)
             if v.refuse:
                 refusals.append(v)
                 self.counters["refused_staleness"] += 1
                 pf["refused_staleness"] += 1
+
+        # THE ARRIVAL CLOCK ADVANCES WHATEVER THE VERDICT, and it must be set BEFORE the refusal
+        # return below. A frame we refused is still a frame the venue sent; forgetting that is
+        # exactly what latched this guard. Note this does NOT disarm staleness — a feed that stays
+        # silent still produces one refusal per arrival, because each arrival is measured against
+        # the previous ARRIVAL, not against the last acceptance.
+        self._last_book_mono[feed] = now_mono
 
         # 4.1 cross-venue band
         if self.band is not None and kraken_mid:
@@ -272,7 +299,7 @@ class HyperliquidCapture:
             self._first_frame_utc = stamp
         self.counters["frames_emitted"] += 1
         pf["frames_emitted"] += 1
-        self._last_book_mono[feed] = now_mono
+        self._last_emitted_mono[feed] = now_mono
         if bid and ask:
             self._latest_touch = (bid, ask)
 
@@ -363,6 +390,7 @@ class HyperliquidCapture:
         adapter = hl.HyperliquidBookAdapter(mode=hl.HyperliquidBookAdapter.MODE_LIVE,
                                             feeds=self.feeds)
         calibrated = False
+        last_liveness = time.monotonic()
         print(f"[run] connecting {hl.WS_URL}  duration {self.duration_s/3600:.1f} h", flush=True)
         print(f"[run] CALIBRATION for {CALIBRATION_MINUTES} min — mitigations 4.1/4.3 MEASURE "
               f"ONLY until their bounds are derived from data (a band that has not been measured "
@@ -433,6 +461,26 @@ class HyperliquidCapture:
                             # a late guard.
                             self._emit(book, pending_trades, km, kdt)
                             pending_trades = []
+
+                            # ── IN-FLIGHT LIVENESS. A guard took a feed offline for 5 h 39 m on
+                            # 2026-08-13 and nothing said so: the refusal counters exist but are
+                            # written only at run end, so a 24-hour run could not observe its own
+                            # suppression until it was over. This is NOT a guard — it refuses
+                            # nothing and changes no data. It exists so that a feed which has gone
+                            # dark is LOUD while there is still time to act on it.
+                            if now - last_liveness >= LIVENESS_CHECK_S:
+                                last_liveness = now
+                                for f in self.feeds:
+                                    em = self._last_emitted_mono.get(f)
+                                    dark = (now - em) if em is not None else None
+                                    if dark is not None and dark >= LIVENESS_DARK_S:
+                                        print(f"[LIVENESS] *** FEED {f.upper()} HAS WRITTEN NO "
+                                              f"FRAME FOR {dark:.0f}s *** arrivals are still "
+                                              f"reaching us, so this is SUPPRESSION, not silence. "
+                                              f"refused_staleness={self.per_feed[f]['refused_staleness']} "
+                                              f"refused_band={self.per_feed[f]['refused_cross_venue_band']} "
+                                              f"refused_tape={self.per_feed[f]['refused_tape_vs_book']}",
+                                              flush=True)
 
                             # The seam's right bound is THIS run's first frame — close it the
                             # moment one exists, so an unresumed seam stays loud.

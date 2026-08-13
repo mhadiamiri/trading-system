@@ -305,6 +305,95 @@ class TestStaleness:
         assert cap.per_feed["fast"]["refused_staleness"] == 1
         assert cap.per_feed["slow"]["refused_staleness"] == 0
 
+    def test_dual_a_guard_that_has_refused_must_be_able_to_accept_again(self, tmp_path):
+        """RECOVERY DUAL — the test whose absence cost the fast feed 5 h 39 m of a 24 h run.
+
+        On 2026-08-13 the fast feed went dark at 03:23:50Z and wrote nothing for the rest of the
+        run. `_emit` returned on refusal BEFORE updating the clock staleness measured against, so
+        the first refusal froze the reference instant, every later frame was measured against it,
+        and the age could only grow. The guard could never accept another frame.
+
+        Every other §4.3 test emits ONE frame and asserts refuse-or-emit. **A latching guard passes
+        all of them.** This is the assertion that does not.
+        """
+        cap = make_capture(tmp_path)
+        cap.stale["fast"] = mit.StalenessBound(max_age_s=5.32, observed_p99_s=0.887, n=1000)
+
+        cap._last_book_mono["fast"] = time.monotonic() - 300.0
+        cap._emit(book(levels=5, feed="fast"), [], None, None)
+        assert frames_on_disk(cap) == [], "the stale frame should have been refused"
+
+        # The feed resumes at its ordinary cadence. This frame MUST be written.
+        cap._emit(book(levels=5, feed="fast"), [], None, None)
+
+        assert len(frames_on_disk(cap)) == 1, (
+            "the guard refused a frame arriving at the venue's ordinary cadence, because refusing "
+            "the previous one froze its reference clock — it can never accept another frame, and "
+            "a latched guard is indistinguishable from a dead feed")
+
+    def test_the_recovery_fix_does_not_disarm_the_guard(self, tmp_path):
+        """COUNTER-DUAL — advancing the arrival clock must not stop staleness firing.
+
+        The wrong fix is to advance the clock only on emission (latches) or to treat every arrival
+        as fresh regardless of the silence before it (never fires). A persistently silent feed must
+        keep producing refusals, one per arrival, because each arrival is measured against the
+        previous ARRIVAL and the silence between them is real.
+        """
+        cap = make_capture(tmp_path)
+        cap.stale["fast"] = mit.StalenessBound(max_age_s=5.32, observed_p99_s=0.887, n=1000)
+
+        for _ in range(3):
+            cap._last_book_mono["fast"] = time.monotonic() - 60.0
+            cap._emit(book(levels=5, feed="fast"), [], None, None)
+
+        assert frames_on_disk(cap) == [], "a persistently silent feed stopped being refused"
+        assert cap.per_feed["fast"]["refused_staleness"] == 3
+
+    def test_a_refusal_on_one_feed_does_not_latch_the_other(self, tmp_path):
+        """The dual-feed corollary: the slow feed survived 5 h only because its bound is wider.
+
+        Both feeds latched in the end. This pins that a refusal is scoped to the feed it happened
+        on, so one feed stalling can never take the other with it.
+        """
+        cap = make_capture(tmp_path)
+        cap.stale["fast"] = mit.StalenessBound(max_age_s=5.32, observed_p99_s=0.887, n=1000)
+        cap.stale["slow"] = mit.StalenessBound(max_age_s=34.59, observed_p99_s=5.77, n=1000)
+
+        cap._last_book_mono["fast"] = time.monotonic() - 300.0
+        cap._emit(book(levels=5, feed="fast"), [], None, None)
+        cap._last_book_mono["slow"] = time.monotonic() - 5.4
+        cap._emit(book(levels=20, feed="slow"), [], None, None)
+
+        frames = frames_on_disk(cap)
+        assert len(frames) == 1 and frames[0]["feed"] == "slow", (
+            "a stale fast feed suppressed a healthy slow frame")
+
+    def test_mutation_restoring_the_latch_breaks_the_recovery_dual(self, tmp_path, monkeypatch):
+        """MUTATION — put the clock update back behind the refusal return: recovery fails.
+
+        Expressed as the real defect rather than an invented one: this IS the code that ran.
+        """
+        cap = make_capture(tmp_path)
+        cap.stale["fast"] = mit.StalenessBound(max_age_s=5.32, observed_p99_s=0.887, n=1000)
+
+        real_check = mit.StalenessBound.check
+        frozen = {"at": time.monotonic() - 300.0}
+
+        def latching_check(self, age_s):
+            # Emulate measuring against a clock that never advances past the first refusal.
+            return real_check(self, time.monotonic() - frozen["at"])
+
+        monkeypatch.setattr(mit.StalenessBound, "check", latching_check)
+
+        # A prior arrival must exist or the check is skipped entirely and the first frame emits
+        # for a reason that has nothing to do with the mutation.
+        cap._last_book_mono["fast"] = time.monotonic() - 300.0
+        cap._emit(book(levels=5, feed="fast"), [], None, None)
+        cap._emit(book(levels=5, feed="fast"), [], None, None)
+
+        assert frames_on_disk(cap) == [], (
+            "the mutation did not reproduce the latch; the recovery dual is not discriminating")
+
     def test_mutation_removing_the_bound_breaks_the_bite_not_the_dual(self, tmp_path, monkeypatch):
         monkeypatch.setattr(mit.StalenessBound, "check", lambda self, age: mit.Verdict(False))
 
