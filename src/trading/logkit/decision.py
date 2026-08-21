@@ -214,6 +214,18 @@ VALID_REASON_CODES = {
         # tests/test_seam_cause_referent.py. Prefix-free: diverges from SEAM_CAUSE_UNDECLARED at
         # U/W and neither is a prefix of the other.
         "SEAM_CAUSE_WITHOUT_REFERENT",
+        # WO-067 §2.2: the counterpart-feed dependency, refused AT START rather than discovered
+        # hours in. Raised by CounterpartLiveness.require_available_at_start before the socket
+        # opens, when no counterpart observation exists at all.
+        #
+        # THE DISTINCTION THIS CODE EXISTS TO PRESERVE. A counterpart that goes stale MID-RUN is
+        # not this: the guard drops to UNGUARDED, frames are MARKED, and the capture continues,
+        # because those frames are still true observations of Hyperliquid that we merely could not
+        # check. A counterpart that was NEVER available is different in kind — no basis to derive
+        # from, no window to warm up, so the guard could never become active and the entire run
+        # would be unguarded. WO-066 declared no dependency at all and found out at hour nine.
+        # Prefix-free: COUNTERPART_ is a unique stem in the union.
+        "COUNTERPART_NEVER_AVAILABLE",
         # WO-045 §2 (D46): announced ONCE when raw-wire-text retention reaches its declared cap
         # (MAX_RETAINED_RAW_FRAMES / MAX_RETAINED_RAW_BYTES) and retention becomes a bounded
         # trailing window. Direct sibling of FAILURE_CAPTURE_CAPPED and deliberately the same

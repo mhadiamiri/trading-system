@@ -20,7 +20,9 @@ is contractually required to drop the frame, and the capture tool does.
 
 from __future__ import annotations
 
+import math
 import statistics
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -130,6 +132,291 @@ class CrossVenueBand:
                             "half_width": self.half_width_log,
                             "basis_bps": (pow(2.718281828459045, lb) - 1) * 1e4})
         return Verdict(False, "", {"log_basis": lb})
+
+
+
+# ═══ 2.1 (WO-067) ROLLING RE-DERIVATION — THE REPAIR OF DEFECT #2 ════════════════════════════
+#
+# WHY THE FROZEN BAND FAILED, MEASURED RATHER THAN ASSERTED. Derived once and held, the band was
+# consumed by drift alone. Measured over the WO-066 corpus, the hourly median basis moved:
+#
+#     leg 20260812025444 ( 5.09 h)   1.622 bps
+#     leg 20260813015021 ( 7.16 h)   2.290 bps
+#     leg 20260813105120 (15.13 h)   3.956 bps   <- right-CENSORED, so a LOWER BOUND
+#     leg 20260814025236 ( 8.00 h)   3.167 bps
+#
+# against a half-width of only ~4.9 bps. A quantity that moves 3.2 bps in 8 h inside a +/-4.9 bps
+# band leaves it in under a day, and it leaves in ONE DIRECTION — which is why the refusals were
+# market-correlated rather than scattered. THIS IS THE FROZEN-BASELINE LESSON (D28/D29) ARRIVING
+# AT BAND DERIVATION.
+#
+# THE CENSORING, DECLARED (0.12). Every leg above was captured THROUGH the frozen band, so the
+# frames it refused are ABSENT FROM DISK. leg 20260813105120's maximum observed basis is
+# +10.408 bps against that leg's ceiling of +10.41 — pinned within 0.002 bps, which is the
+# truncation visible in the data. Measured drift is therefore a LOWER BOUND on true drift, and any
+# refusal rate replayed over this corpus is OPTIMISTIC. The rolling-vs-frozen COMPARISON is
+# unaffected: both replay the same censored stream.
+#
+# ── DERIVE FROM ARRIVALS, GATE ON EMISSION ────────────────────────────────────────────────────
+#
+# The trailing window is fed by every basis observation that ARRIVES, never by the frames the band
+# chose to emit. A band re-derived from its own emitted output consumes its own filtered tail and
+# ratchets tighter on every cycle — strictly WORSE than freezing, because the failure compounds
+# instead of merely persisting. Structurally the same defect as the §4.3 latch, where the emit path
+# returned before advancing the clock staleness was measured against: arrival must advance
+# unconditionally, and the verdict must be diagnostic only.
+#
+# ── THE WINDOW: 120 min, derived, not tuned ───────────────────────────────────────────────────
+#
+#   FLOOR   — sample count. The slow feed publishes at 0.200/s, so BAND_MIN_SAMPLES=300 needs
+#             1500 s = 25 min of slow-only arrivals. Round up (0.15): a 30 min floor.
+#   CEILING — drift smearing. Drift <= 3.167 bps / 8 h = 0.396 bps/h; round up (0.15) to
+#             0.5 bps/h. Over a window W the window's OWN spread is inflated by roughly
+#             drift x W, and inflating a ~5 bps half-width by more than ~20% (1 bps) makes the
+#             band describe its own drift rather than the basis distribution. W <= 1/0.5 = 2 h.
+#   CHOICE  — 120 min sits at the ceiling, four times the sample floor. Wider windows buy a lower
+#             refusal rate only by inflating the half-width toward inertness, which is the §4.2
+#             failure mode arriving here (see WINDOW_SENSITIVITY below).
+#
+# ── THE CADENCE: 10 min, derived from how stale a centre may become ───────────────────────────
+#
+#   Between re-derivations the centre goes stale by drift x cadence. Holding that under 10% of the
+#   half-width (0.5 bps of ~5 bps) gives cadence <= 0.5 / 0.5 = 1 h. 10 min is six times inside
+#   that bound and re-derives twelve times per window, so the centre is never more than 1/12 of a
+#   window behind.
+#
+# THIS IS A DERIVATION, NOT A TUNING. The numbers come from the sample floor, the measured drift
+# rate and a staleness fraction — each stated above with its mechanism. The simulation below is
+# reported as CORROBORATION and as the sensitivity the choice must survive, never as the search
+# that produced it. Tuning a threshold until the refusal rate looks good is what §2.4 forbids for
+# §4.2, and it is forbidden here for the same reason.
+#
+# WINDOW_SENSITIVITY — replayed over the real corpus, rolling vs frozen, refusal % (censored, so
+# optimistic in absolute terms; the COMPARISON is the point):
+#
+#     leg              30m/5m   60m/5m  120m/5m  120m/10m | FROZEN 120m/10m
+#     20260812025444    n/a      0.121    0.121    0.162  |   0.243   <- barely drifted: no gap
+#     20260813015021    0.320    0.242    0.213    0.223  |   4.928
+#     20260813105120    1.193    0.674    0.656    0.370  |  37.878
+#     20260814025236    0.897    0.731    0.195    0.169  |  26.471
+#
+# The leg that barely drifted (1.622 bps) shows almost no rolling-vs-frozen gap; the legs that
+# drifted 3+ bps show two orders of magnitude. THE FREEZE ONLY HURTS WHEN THE BASIS MOVES, which
+# is the claimed mechanism and is what the mutation asserts.
+#
+# FALSIFIER (0.12): the window/cadence are wrong if a fresh window shows the rolling band refusing
+# frames while kraken_dt is inside tolerance and the counterpart is publishing — the WO-067
+# pre-registered condition. A drift rate materially above 0.5 bps/h would also falsify the ceiling
+# derivation, since the 2 h window is computed directly from it.
+
+BAND_WINDOW_S = 7200.0            # 120 min — between the 30 min sample floor and the 2 h ceiling
+BAND_CADENCE_S = 600.0            # 10 min — six times inside the 1 h staleness bound
+BAND_MEASURED_DRIFT_BPS_PER_H = 0.5   # measured <=0.396, rounded UP (0.15)
+
+
+@dataclass
+class RollingCrossVenueBand:
+    """A band that re-derives against a trailing window instead of being fitted once and frozen.
+
+    Holds no opinion about which frames were emitted: `observe()` is called on every arrival, and
+    `check()` reports a verdict without feeding it back.
+    """
+
+    window_s: float = BAND_WINDOW_S
+    cadence_s: float = BAND_CADENCE_S
+    k: float = BAND_K
+    min_samples: int = BAND_MIN_SAMPLES
+    alignment_tolerance_s: float = ALIGNMENT_TOLERANCE_S
+
+    def __post_init__(self):
+        self._samples = deque()        # (ts, log_basis) — ARRIVALS, never emissions
+        self._band = None
+        self._last_derive_ts = None
+        self._derivations = 0
+
+    # ── arrivals ──────────────────────────────────────────────────────────────────────────────
+    def observe(self, ts: float, kraken_mid: float, hl_mid: float) -> None:
+        """Record one basis ARRIVAL and re-derive if the cadence has elapsed.
+
+        Called for every frame that arrives, including frames `check` goes on to refuse. That is
+        the whole point: a band fed only its own survivors ratchets tighter every cycle.
+        """
+        if kraken_mid > 0 and hl_mid > 0:
+            self._samples.append((ts, math.log(hl_mid / kraken_mid)))
+        while self._samples and ts - self._samples[0][0] > self.window_s:
+            self._samples.popleft()
+        if self._last_derive_ts is None or ts - self._last_derive_ts >= self.cadence_s:
+            candidate = CrossVenueBand.derive([b for _, b in self._samples], k=self.k)
+            self._last_derive_ts = ts
+            if candidate is not None:
+                self._band = candidate
+                self._derivations += 1
+
+    # ── state, for the three-way guards_active and for the segment record ─────────────────────
+    @property
+    def derived(self) -> bool:
+        return self._band is not None
+
+    @property
+    def band(self):
+        return self._band
+
+    @property
+    def derivations(self) -> int:
+        return self._derivations
+
+    @property
+    def sample_count(self) -> int:
+        return len(self._samples)
+
+    def check(self, kraken_mid: float, hl_mid: float, dt_seconds: float) -> Verdict:
+        """Verdict against the CURRENT band. Warm-up returns a non-refusing UNDERIVED verdict.
+
+        Warm-up does NOT refuse and does NOT silently pass: it reports CROSS_VENUE_BAND_UNDERIVED
+        with refuse=False, and the caller marks the frame UNGUARDED in the segment record. That is
+        the derive()->None precedent — measured-but-not-acted-on beats a guessed bound — and the
+        count:0 / count:null doctrine: an unguarded frame is not a guarded one.
+        """
+        if self._band is None:
+            return Verdict(False, "CROSS_VENUE_BAND_UNDERIVED",
+                           {"samples": len(self._samples), "min_samples": self.min_samples})
+        return self._band.check(kraken_mid, hl_mid, dt_seconds)
+
+
+
+# ═══ 2.2 (WO-067) THE COUNTERPART-FEED DEPENDENCY — THE REPAIR OF DEFECT #3 ═══════════════════
+#
+# WHAT WAS WRONG. The cross-venue guard silently assumed a live Kraken feed. Nothing expressed the
+# dependency, so nothing could report it, and it was invisible until it bit: when the Kraken leg
+# ended at its declared deadline, kraken_dt grew past tolerance and EVERY Hyperliquid frame was
+# refused. The capture reads a DIRECTORY, and a directory that stops growing is indistinguishable
+# from a venue that went quiet.
+#
+# 0.16 AT DECLARATION, FOR THE LIVENESS BOUND ITSELF. Two quantities, and they are not the same:
+#   LEFT  : the age of the newest Kraken observation available to us, measured on OUR wall clock
+#           against OUR capture's own file writes. It measures the COUNTERPART PROCESS, not Kraken.
+#   RIGHT : COUNTERPART_LIVENESS_S, a bound on how stale that observation may be before the basis
+#           it anchors stops being a basis.
+#   They are NOT simultaneous with the Hyperliquid frame being judged: the Hyperliquid snapshot
+#   carries the venue's own time, the Kraken reading carries ours, and WO-061 measured our wall
+#   clock running 0.848 s behind Kraken's venue time. That known offset is why the bound is set
+#   well above the ~106 ms Kraken cadence rather than near it.
+#
+# THE BOUND. Kraken's measured cadence is ~106 ms (WO-040 baseline). A counterpart reading older
+# than a few seconds is not a live quote, it is a memory. Set at 30 s: ~283x the cadence, so
+# ordinary jitter, a keepalive reconnect and a bounded VENUE_DISCONNECT gap (the two measured on
+# phaseb_20260809 were 3.88 s and 1.90 s) all pass, while a process that has actually stopped is
+# caught within half a minute. Round up (0.15) — 30 s is the rounded figure, not a fitted one.
+#
+# ⚠ THE BOUND IS DELIBERATELY LOOSER THAN ALIGNMENT_TOLERANCE_S (2.0 s), AND THEY ARE DIFFERENT
+# QUESTIONS. The alignment tolerance asks "are these two observations close enough in time to be
+# compared at all?" and gates ONE comparison. The liveness bound asks "is the counterpart process
+# still alive?" and gates THE GUARD ITSELF. Conflating them is what produced the WO-066 blackout:
+# a dead counterpart failed the per-frame alignment test over and over, and the system read a
+# dependency failure as 4,549 separate price anomalies.
+#
+# ── THE THREE STATES, DISTINGUISHED (the count:0 / count:null doctrine) ───────────────────────
+#
+#   GUARDED    — counterpart live AND the band derived. The frame is judged; a refusal means the
+#                price was genuinely outside a live, current band.
+#   UNGUARDED  — counterpart stale/absent, or the band still in warm-up. The frame is EMITTED and
+#                MARKED, never silently passed and never refused wholesale. A reader must be able
+#                to tell an unguarded frame from a guarded one, because a corpus of unguarded
+#                frames supports different claims.
+#   REFUSE-TO-START — the counterpart was NEVER available. Not a degraded mode: if there was never
+#                a counterpart, there is no basis to derive from and no window to warm up, so the
+#                run must not begin. This is the one case that is a STOP rather than a marking.
+#
+# WHY UNGUARDED IS NOT "REFUSE". Refusing every frame while the counterpart is down is precisely
+# the WO-066 blackout, and it deletes data for a reason that has nothing to do with the data. The
+# frames are still true observations of Hyperliquid; what is missing is our ability to CHECK them.
+# Marking says exactly that, and a later reader can filter on it. Refusing says the venue misbehaved,
+# which is false.
+
+COUNTERPART_LIVENESS_S = 30.0     # ~283x Kraken's ~106 ms cadence; see the derivation above
+
+GUARD_STATE_GUARDED = "GUARDED"
+GUARD_STATE_UNGUARDED_COUNTERPART_STALE = "UNGUARDED_COUNTERPART_STALE"
+GUARD_STATE_UNGUARDED_BAND_UNDERIVED = "UNGUARDED_BAND_UNDERIVED"
+GUARD_STATES = (GUARD_STATE_GUARDED,
+                GUARD_STATE_UNGUARDED_COUNTERPART_STALE,
+                GUARD_STATE_UNGUARDED_BAND_UNDERIVED)
+
+
+class CounterpartNeverAvailable(RuntimeError):
+    """Raised at startup when the counterpart feed was never available at all.
+
+    Distinct from staleness on purpose. A counterpart that goes stale mid-run degrades the guard
+    to UNGUARDED and the capture continues, marking frames. A counterpart that was NEVER there
+    means the cross-venue guard cannot warm up at all, so the run must not start — declaring the
+    dependency is worth nothing if the process starts anyway and discovers it later.
+    """
+
+
+@dataclass
+class CounterpartLiveness:
+    """The counterpart feed's own liveness, tracked separately from any single comparison."""
+
+    bound_s: float = COUNTERPART_LIVENESS_S
+
+    def __post_init__(self):
+        self._last_seen_ts = None
+        self._ever_seen = False
+        self._stale_transitions = 0
+        self._was_stale = False
+
+    def observe(self, ts: float) -> None:
+        """Record that a counterpart observation of wall-time `ts` is available."""
+        self._last_seen_ts = ts
+        self._ever_seen = True
+
+    def require_available_at_start(self) -> None:
+        """Third state: never available at all -> refuse to start (0.9 — refuse, do not warn)."""
+        if not self._ever_seen:
+            raise CounterpartNeverAvailable(
+                "COUNTERPART_NEVER_AVAILABLE: the cross-venue guard declares a hard dependency on "
+                "a live counterpart feed and none was found. This is not a degraded mode: with no "
+                "counterpart there is no basis to derive a band from and no window to warm up, so "
+                "the guard could never become active and every frame would be UNGUARDED for the "
+                "whole run. Start the counterpart capture first."
+            )
+
+    def age_s(self, now_ts: float):
+        """Age of the newest counterpart observation, or None if there has never been one."""
+        if self._last_seen_ts is None:
+            return None
+        return now_ts - self._last_seen_ts
+
+    def live(self, now_ts: float) -> bool:
+        age = self.age_s(now_ts)
+        stale = age is None or age > self.bound_s
+        if stale and not self._was_stale:
+            self._stale_transitions += 1
+        self._was_stale = stale
+        return not stale
+
+    @property
+    def stale_transitions(self) -> int:
+        """How many times the counterpart went from live to stale. A count, not a log line."""
+        return self._stale_transitions
+
+    @property
+    def ever_seen(self) -> bool:
+        return self._ever_seen
+
+
+def guard_state(counterpart_live: bool, band_derived: bool) -> str:
+    """The three-way state a reader needs, computed in one place rather than inferred downstream.
+
+    Order matters: a stale counterpart is reported even when the band also happens to be underived,
+    because the counterpart is the CAUSE and the underived band is then its consequence — a band
+    cannot warm up on a feed that is not arriving.
+    """
+    if not counterpart_live:
+        return GUARD_STATE_UNGUARDED_COUNTERPART_STALE
+    if not band_derived:
+        return GUARD_STATE_UNGUARDED_BAND_UNDERIVED
+    return GUARD_STATE_GUARDED
 
 
 # ═══ 4.2 TAPE-VS-BOOK RECONCILIATION ═════════════════════════════════════════════════════════

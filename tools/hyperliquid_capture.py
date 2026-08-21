@@ -126,10 +126,22 @@ class HyperliquidCapture:
         self.counters = {k: 0 for k in mit.COUNTERS}
         self.counters["frames_emitted"] = 0
         self.counters["frames_refused"] = 0
+        # WO-067 §2.2/§2.3 — unguarded frames are COUNTED, not silently mixed in with guarded ones.
+        self.counters["unguarded_frames"] = 0
+        self.counters["unguarded_counterpart_stale"] = 0
+        self.counters["unguarded_band_underived"] = 0
+        self.counters["counterpart_stale_transitions"] = 0
         # PER FEED, because a 0.52 s stream and a 5.4 s stream are different observations and one
         # set of totals would average away the difference the dual subscription exists to measure.
         self.per_feed = {f: {k: 0 for k in mit.PER_FEED_COUNTERS} for f in self.feeds}
-        self.band: mit.CrossVenueBand | None = None
+        # WO-067 §2.1 — ROLLING, not fitted-once. Constructed immediately and self-warming:
+        # `observe()` feeds it on every arrival and it becomes active the moment the trailing
+        # window holds enough samples. There is no longer a calibration instant at which the band
+        # is frozen, because that instant is what made the guard market-correlated.
+        self.band = mit.RollingCrossVenueBand()
+        # WO-067 §2.2 — the counterpart dependency, DECLARED and tracked with its own liveness
+        # bound. WO-066 assumed a live Kraken feed and could not report the assumption.
+        self.counterpart = mit.CounterpartLiveness()
         self.stale: dict = {f: None for f in self.feeds}      # §4.3 cadence differs 10x per feed
         self.tape: mit.TapeBookBound | None = None
         self._log_bases: list = []
@@ -154,6 +166,9 @@ class HyperliquidCapture:
         self._seg_fh = None
         self._seg_hour: str | None = None
         self._seg_frames = 0
+        # WO-067 §2.3 — counters for the CURRENT segment only, reset at every rotation. The
+        # aggregate cannot show that a blackout ran for six consecutive hours; this can.
+        self._seg_counters: dict = {}
         self._seg_start_utc = ""
         self._seg_last_utc = ""
         self._first_frame_utc = ""
@@ -169,6 +184,7 @@ class HyperliquidCapture:
         self._seg_path = self.run_dir / f"{SEGMENT_PREFIX}_{hour}.jsonl"
         self._seg_fh = open(self._seg_path, "a", encoding="utf-8")
         self._seg_frames = 0
+        self._seg_counters = {}          # WO-067 §2.3 — per SEGMENT, so reset at rotation
         self._seg_start_utc = ts.isoformat()
 
     def _close_segment(self):
@@ -188,6 +204,11 @@ class HyperliquidCapture:
             size_bytes=self._seg_path.stat().st_size, compressed=True,
             start_utc=self._seg_start_utc, end_utc=self._seg_last_utc,
             run_id=self.run_id, hashed_at_capture=True,
+            # WO-067 §2.3 — the counters reach the RECORD, not just the object. WO-055's
+            # `raw_text_trim_events` reached the object and never the record, and a count that
+            # lives outside the corpus cannot be audited from it. Written even when every value is
+            # zero: for a segment the capture actually counted, zero is a claim we can make.
+            guard_counters=dict(self._seg_counters),
         )
         self.segments.append(rec)
         # WRITE-THROUGH. This line is the whole repair from the 2026-08-12 loss: the digest reaches
@@ -211,6 +232,22 @@ class HyperliquidCapture:
 
         refusals = []
 
+        # WO-067 §2.2 — the counterpart's own liveness, tracked BEFORE any per-frame comparison.
+        # `kraken_dt` answers "are these two reads close enough to compare?"; this answers "is the
+        # counterpart process still alive?". WO-066 conflated them and read one dead dependency as
+        # 4,549 separate price anomalies.
+        if kraken_mid:
+            self.counterpart.observe(time.time() - (kraken_dt or 0.0))
+        counterpart_live = self.counterpart.live(time.time())
+
+        # WO-067 §2.1 — ARRIVALS FEED THE BAND, whatever the verdict turns out to be. A band
+        # re-derived from its own emitted output consumes its own filtered tail and ratchets
+        # tighter every cycle — strictly worse than freezing. Same shape as the §4.3 latch.
+        if kraken_mid and mid:
+            self.band.observe(now_mono, kraken_mid, mid)
+
+        state = mit.guard_state(counterpart_live, self.band.derived)
+
         # 4.3 staleness — PER FEED. One bound across both would be derived from a bimodal cadence
         # and would describe neither: 5.4 s and 0.52 s are 10x apart.
         stale = self.stale.get(feed)
@@ -229,13 +266,33 @@ class HyperliquidCapture:
         # the previous ARRIVAL, not against the last acceptance.
         self._last_book_mono[feed] = now_mono
 
-        # 4.1 cross-venue band
-        if self.band is not None and kraken_mid:
+        # 4.1 cross-venue band — ONLY when the state is GUARDED. The other two states do not
+        # refuse: a stale counterpart or a warming band means we cannot CHECK the frame, not that
+        # the frame is wrong. Refusing on a dependency failure is the WO-066 blackout, and it
+        # deletes data for a reason that has nothing to do with the data.
+        if state == mit.GUARD_STATE_GUARDED and kraken_mid:
             v = self.band.check(kraken_mid, mid, kraken_dt)
             if v.refuse:
                 refusals.append(v)
                 self.counters["refused_cross_venue_band"] += 1
                 pf["refused_cross_venue_band"] += 1
+                self._seg_bump("refused_cross_venue_band")
+                # THE FALSIFIER'S EXACT CONDITION (WO-067 §4.2), counted at the moment it applies
+                # rather than reconstructed afterwards: a refusal while the pair was well aligned
+                # AND the counterpart was publishing is what falsifies the repair.
+                if abs(kraken_dt or 0.0) <= mit.ALIGNMENT_TOLERANCE_S:
+                    self.counters["refused_band_while_pair_aligned"] = (
+                        self.counters.get("refused_band_while_pair_aligned", 0) + 1)
+                    self._seg_bump("refused_band_while_pair_aligned")
+        else:
+            self.counters["unguarded_frames"] += 1
+            self._seg_bump("unguarded_frames")
+            if state == mit.GUARD_STATE_UNGUARDED_COUNTERPART_STALE:
+                self.counters["unguarded_counterpart_stale"] += 1
+                self._seg_bump("unguarded_counterpart_stale")
+            else:
+                self.counters["unguarded_band_underived"] += 1
+                self._seg_bump("unguarded_band_underived")
 
         # 4.2 tape vs book — reconciled against the FRESHEST touch from EITHER feed, and only once
         # the tolerance has been DERIVED. Until then the distances are measured, not acted on: a
@@ -266,6 +323,7 @@ class HyperliquidCapture:
             self.counters["book_consistency_failures_total"] += 1
             self.counters["frames_refused"] += 1
             pf["frames_refused"] += 1
+            self._seg_bump("frames_refused")
             return                       # THE FRAME IS SUPPRESSED — not merely logged (0.9)
 
         self._rotate(wall)
@@ -287,6 +345,11 @@ class HyperliquidCapture:
             "venue_time_ms": book.venue_time_ms,
             "trades": [{"px": str(t.px), "sz": str(t.sz), "side": t.side} for t in trades],
             "kraken_mid": kraken_mid, "kraken_dt_s": kraken_dt,
+            # WO-067 §2.2 — every frame says which of the three states it was written under, so a
+            # reader can separate a guarded corpus from an unguarded one WITHOUT re-deriving
+            # anything. An unguarded frame is a true observation of Hyperliquid that we could not
+            # check; conflating it with a checked one is the count:0 / count:null error.
+            "guard_state": state,
         }
         self._seg_fh.write(json.dumps(rec) + "\n")
         # WRITE-THROUGH. An open buffered handle over a 24-hour run holds frames in memory,
@@ -300,10 +363,15 @@ class HyperliquidCapture:
         if not self._first_frame_utc:
             self._first_frame_utc = stamp
         self.counters["frames_emitted"] += 1
+        self._seg_bump("frames_emitted")
         pf["frames_emitted"] += 1
         self._last_emitted_mono[feed] = now_mono
         if bid and ask:
             self._latest_touch = (bid, ask)
+
+    def _seg_bump(self, name: str, n: int = 1) -> None:
+        """WO-067 §2.3 — count into the CURRENT segment. Written into its record at close."""
+        self._seg_counters[name] = self._seg_counters.get(name, 0) + n
 
     # ── the Kraken side: read the LIVE leg-3 segment tail ─────────────────────────────────────
     def _kraken_mid(self):
@@ -360,14 +428,46 @@ class HyperliquidCapture:
             "EVIDENTIARY_BOUND": mit.EVIDENTIARY_BOUND,
             "declared_levels": mit.DECLARED_LEVELS,
             "counters": self.counters,
-            "band": self.band.__dict__ if self.band else None,
+            # WO-067 §2.1/§2.2 — the band is a ROLLING object, so the manifest reports its
+            # configuration and its current state, never a single frozen tuple presented as
+            # "the band" for the whole run. There was no single band.
+            "band_rolling": {
+                "window_s": self.band.window_s,
+                "cadence_s": self.band.cadence_s,
+                "k": self.band.k,
+                "min_samples": self.band.min_samples,
+                "alignment_tolerance_s": self.band.alignment_tolerance_s,
+                "derivations": self.band.derivations,
+                "derived_at_end": self.band.derived,
+                "final_band": self.band.band.__dict__ if self.band.derived else None,
+                "measured_drift_bps_per_h_ceiling": mit.BAND_MEASURED_DRIFT_BPS_PER_H,
+            },
+            "counterpart": {
+                "declared_dependency": True,
+                "liveness_bound_s": self.counterpart.bound_s,
+                "ever_seen": self.counterpart.ever_seen,
+                "stale_transitions": self.counterpart.stale_transitions,
+            },
             "tape_bound": self.tape.__dict__ if self.tape else None,
             "staleness_bound": {f: (b.__dict__ if b else None)
                                 for f, b in self.stale.items()},
             # Which guards were ARMED. A reader must be able to tell a corpus that was guarded
             # from one whose bounds never derived — they are different evidence.
             "guards_active": {
-                "cross_venue_band": self.band is not None,
+                # THREE STATES, not a boolean. A reader must be able to tell a guarded corpus
+                # from an unguarded one from one whose guard never derived — the count:0 /
+                # count:null doctrine applied to the guard itself.
+                "cross_venue_band": {
+                    "states": list(mit.GUARD_STATES),
+                    "derived_at_end": self.band.derived,
+                    "frames_guarded": self.counters.get("frames_emitted", 0)
+                                      - self.counters.get("unguarded_frames", 0),
+                    "frames_unguarded": self.counters.get("unguarded_frames", 0),
+                    "unguarded_counterpart_stale":
+                        self.counters.get("unguarded_counterpart_stale", 0),
+                    "unguarded_band_underived":
+                        self.counters.get("unguarded_band_underived", 0),
+                },
                 "tape_vs_book": self.tape is not None,
                 "staleness": {f: self.stale[f] is not None for f in self.feeds},
             },
@@ -438,17 +538,27 @@ class HyperliquidCapture:
                             # a measurement's authority.
                             if time.monotonic() >= calib_until and not calibrated:
                                 calibrated = True
-                                self.band = mit.CrossVenueBand.derive(self._log_bases)
+                                # WO-067 §2.1 — THE BAND IS NO LONGER DERIVED HERE. It rolls,
+                                # fed by `observe()` on every arrival, so there is no instant at
+                                # which it is fitted and frozen. Deriving it once here is exactly
+                                # the defect this WO repairs; the line is deliberately absent
+                                # rather than left assigning a value nothing reads.
                                 self.tape = mit.TapeBookBound.derive(self._tape_distances, TICK)
                                 for f in self.feeds:
                                     self.stale[f] = mit.StalenessBound.derive(
                                         self._gaps_s.get(f, []))
-                                print(f"[calib] band={self.band}", flush=True)
+                                print(f"[calib] band=ROLLING window={self.band.window_s:.0f}s "
+                                      f"cadence={self.band.cadence_s:.0f}s "
+                                      f"derived={self.band.derived} "
+                                      f"derivations={self.band.derivations} "
+                                      f"samples={self.band.sample_count}", flush=True)
                                 print(f"[calib] tape={self.tape}", flush=True)
                                 for f in self.feeds:
                                     print(f"[calib] staleness[{f}]={self.stale[f]}", flush=True)
-                                inactive = ([n for n, b in (("cross_venue_band", self.band),
-                                                            ("tape_vs_book", self.tape))
+                                inactive = ([n for n, b in (
+                                                ("cross_venue_band",
+                                                 self.band.band if self.band.derived else None),
+                                                ("tape_vs_book", self.tape))
                                              if b is None]
                                             + [f"staleness[{f}]" for f in self.feeds
                                                if self.stale[f] is None])
@@ -608,6 +718,33 @@ def main():
 
     kd = pathlib.Path(args.kraken_run_dir) if args.kraken_run_dir else None
     cap = HyperliquidCapture(ledger, run_id, args.duration_hours * 3600, kd, feeds=feeds)
+
+    # ── WO-067 §2.2 — THE COUNTERPART DEPENDENCY, ENFORCED BEFORE THE SOCKET OPENS ────────────
+    #
+    # The third state. A counterpart that goes stale MID-RUN degrades the guard to UNGUARDED and
+    # the capture continues, marking frames — those are still true observations of Hyperliquid.
+    # A counterpart that was NEVER there is different in kind: there is no basis to derive a band
+    # from and no window to warm up, so the cross-venue guard could never become active and every
+    # frame of the whole run would be unguarded. Declaring a dependency is worth nothing if the
+    # process starts anyway and finds out hours later — which is precisely how WO-066 discovered
+    # it. So this is checked HERE, before the socket, and it REFUSES (0.9).
+    probe_mid, probe_dt = cap._kraken_mid()
+    if probe_mid:
+        cap.counterpart.observe(time.time() - (probe_dt or 0.0))
+    try:
+        cap.counterpart.require_available_at_start()
+    except mit.CounterpartNeverAvailable as exc:
+        raise SystemExit(
+            f"{exc}\n"
+            f"           --kraken-run-dir = {kd if kd else '(not passed)'}\n"
+            f"           Probed for the newest Kraken frame and found none. Start the counterpart "
+            f"capture and point --kraken-run-dir at its RUN directory."
+        ) from exc
+    print(f"[counterpart] LIVE — newest Kraken frame {probe_dt:.3f}s old, liveness bound "
+          f"{cap.counterpart.bound_s:.0f}s. Declared dependency satisfied at start; if it goes "
+          f"stale mid-run the band drops to UNGUARDED and frames are MARKED, not refused.",
+          flush=True)
+
     asyncio.run(cap.run(seam=seam))
 
     p = ledger.progress()

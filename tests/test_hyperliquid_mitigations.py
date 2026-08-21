@@ -63,13 +63,39 @@ def frames_on_disk(cap: HyperliquidCapture) -> list:
     return out
 
 
-def a_band(centre_bps: float = 5.0, half_bps: float = 4.0) -> mit.CrossVenueBand:
-    """A band of declared width, so the proof does not depend on a calibration window."""
-    centre = math.log(1 + centre_bps / 1e4)
-    half = math.log(1 + half_bps / 1e4)
-    return mit.CrossVenueBand(centre_log=centre, half_width_log=half, n=1000,
-                              p005=centre - half, p995=centre + half,
-                              median_basis_bps=centre_bps)
+def a_band(centre_bps: float = 5.0, half_bps: float = 4.0):
+    """A ROLLING band warmed to a declared centre and width (WO-067 §2.1 migration).
+
+    WHY THESE PROOFS CHANGED SHAPE AND WHY THEY DID NOT WEAKEN. WO-066's §4.1 guard was a
+    `CrossVenueBand` fitted once. WO-067 replaced it with `RollingCrossVenueBand`, and the frame
+    path now feeds the band on every ARRIVAL before asking for a verdict — so a fitted-once object
+    no longer satisfies the production interface at all. The proofs below are unchanged in what
+    they assert: the same basis values, the same economic effect (frame absent from disk), the same
+    counters.
+
+    WARMED, NOT PINNED. The band is derived from real samples through the real `derive()` path
+    rather than by writing into a private attribute, so the helper cannot drift away from how
+    production actually builds a band. Uniform samples over +/-h with h = half/1.5 reproduce the
+    requested half-width, because `derive` computes `1.5 * (p99.5 - p0.5) / 2`.
+
+    ANCHORED TO `time.monotonic()` deliberately: `_emit` timestamps arrivals with the monotonic
+    clock, and a window warmed at t=0 would be pruned entirely by the first real emit — leaving a
+    band that happened to survive for the wrong reason.
+    """
+    h_bps = half_bps / mit.BAND_K
+    rb = mit.RollingCrossVenueBand()
+    # The samples must SPAN a cadence boundary, or the band never re-derives: the first
+    #  derives with one sample (None) and nothing re-triggers inside 600 s. Stepping
+    # 2 s over 600 samples spans 1200 s and crosses the boundary twice.
+    n = mit.BAND_MIN_SAMPLES * 2
+    step = 2.0
+    t0 = time.monotonic() - n * step
+    for i in range(n):
+        frac = (i / (n - 1)) * 2.0 - 1.0                 # -1 .. +1, uniform
+        bps = centre_bps + frac * h_bps
+        rb.observe(t0 + i * step, 1e5, 1e5 * (1 + bps / 1e4))
+    assert rb.derived, "the warmed band must have derived through the real path"
+    return rb
 
 
 def hl_mid_at_basis(kraken_mid: float, basis_bps: float) -> tuple:
@@ -130,6 +156,9 @@ class TestCrossVenueBand:
     def test_mutation_removing_the_comparison_breaks_the_bite_not_the_dual(self, tmp_path,
                                                                           monkeypatch):
         """MUTATION — neuter the band comparison: the BITE fails, the DUAL still passes."""
+        # The rolling band delegates its verdict to the derived `CrossVenueBand`, so neutering
+        # that comparison is still the smallest edit that removes the check and nothing else —
+        # which is what makes this mutation discriminating rather than a rewrite.
         monkeypatch.setattr(mit.CrossVenueBand, "check",
                             lambda self, k, h, dt: mit.Verdict(False))
 

@@ -170,6 +170,26 @@ class SegmentRecord:
     # useful (it pins the file from here on) but it is NOT at-capture provenance, and conflating the
     # two is how an archive quietly loses the ability to say which of its own claims are witnessed.
     hashed_at_capture: bool = True
+    # WO-067 §2.3 — PER-SEGMENT GUARD COUNTERS. Refusals, excursions and unguarded frames counted
+    # for THIS segment, in the segment's own record.
+    #
+    # WHY PER-SEGMENT AND NOT ONLY IN AGGREGATE. A run-level total answers "did anything go wrong
+    # during these 8 hours?" — which is the wrong granularity for the thing that actually went
+    # wrong. WO-066's band truncated SIX CONSECUTIVE HOURS while the run-level counter showed a
+    # single number that looked survivable; the shape of the failure lived entirely in its
+    # distribution over time, and the aggregate destroyed exactly that. Per-segment counters make
+    # a six-hour blackout visible as six consecutive segments, which is what a reader would act on.
+    #
+    # WHY IN THE RECORD AND NOT ONLY IN A LOG. WO-055's `raw_text_trim_events` reached the object
+    # and never the record: a count that lives outside the corpus cannot be audited FROM the
+    # corpus, so a future reader holding only the capture cannot reconstruct it. A counter that
+    # cannot be recomputed from what was preserved is a claim, not evidence.
+    #
+    # EMPTY DICT, NOT ZEROS. `{}` means this segment predates the counters or was written by a
+    # capture that does not keep them — NOT that nothing was refused. Zeros would manufacture the
+    # claim "we counted and found none" out of silence, which is the `checksum_failures_total`
+    # error one directory over. A reader distinguishes the two by presence of the key.
+    guard_counters: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -182,6 +202,7 @@ class SegmentRecord:
             "end_utc": self.end_utc,
             "run_id": self.run_id,
             "hashed_at_capture": self.hashed_at_capture,
+            "guard_counters": self.guard_counters,
         }
 
     @classmethod
@@ -192,6 +213,8 @@ class SegmentRecord:
             start_utc=d.get("start_utc", ""), end_utc=d.get("end_utc", ""),
             run_id=d.get("run_id", ""),
             hashed_at_capture=d.get("hashed_at_capture", True),
+            # absent -> {} (unknown), never zeros: see the field comment.
+            guard_counters=d.get("guard_counters", {}) or {},
         )
 
 
