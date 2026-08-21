@@ -101,6 +101,7 @@ CAPTURE_ROOT = pathlib.Path("captures/hyperliquid")
 # Kraken corpus depends on. Reusing a proven reader beats a parallel one that drifts.
 SEGMENT_PREFIX = "corpus_HL"
 SEGMENT_LEDGER = "segment_ledger.jsonl"
+PREFLIGHT_FILENAME = "PREFLIGHT.json"
 
 # THE FIRST ATTEMPT'S NAMING, CARRIED DELIBERATELY. The 2026-08-12 run wrote `hl_BTC_*.jsonl`
 # before this scheme existed. Its 5.35 h is real captured data and stays in the corpus under
@@ -173,6 +174,9 @@ class HyperliquidCapture:
         self._seg_last_utc = ""
         self._first_frame_utc = ""
         self._last_frame_utc = ""
+        # WO-067 — the twelve-term record, written INTO the run directory and hashed at capture.
+        self._preflight_digest: str | None = None
+        self._preflight_all_green: bool | None = None
 
     # ── segment rotation with WRITE-THROUGH capture-time hashing ───────────────────────────────
     def _rotate(self, ts: datetime):
@@ -369,6 +373,62 @@ class HyperliquidCapture:
         if bid and ask:
             self._latest_touch = (bid, ask)
 
+    # ── the twelve-term preflight, RUN FRESH AND RECORDED IN THE CORPUS ───────────────────
+    def _write_preflight_record(self) -> bool:
+        """Execute all twelve terms now, write PREFLIGHT.json into the run dir, hash it at capture.
+
+        WHY THIS EXISTS (WO-067). Every Kraken run carries a PREFLIGHT.json in its run directory.
+        The Hyperliquid legs carried NONE: the twelve-term record went to `.artifacts/wo066/`,
+        which is git-ignored and outside the corpus entirely. A capture whose opening record cannot
+        be read back FROM the corpus cannot be audited from it — the same defect as WO-055's
+        `raw_text_trim_events`, which reached the object and never the record. It surfaced
+        concretely when the Hyperliquid grant expiry had to be recovered from a scratch file
+        because no corpus artifact held it.
+
+        RUN FRESH, NEVER COPIED. Re-executing every term is the point: the record must attest the
+        preflight that gated THIS run, on this host, at this instant. Copying the artifact from an
+        earlier standalone run would attest a different machine-instant while looking identical —
+        and term 8 is EXECUTED, not printed, so a copy would smuggle a printed guard back in by
+        another route (the WO-044 §3.7 scar).
+
+        HASHED AT CAPTURE, like a segment. The digest is written through to the segment ledger
+        before the socket opens, so a process killed at any later instant still leaves an
+        at-capture attestation of the conditions it started under. A hash computed later attests
+        only what the file contains NOW, and the whole value of the record is that it witnesses a
+        moment that has passed.
+        """
+        from tools import hyperliquid_preflight as pf          # deferred: pf reads this module
+
+        record, all_green = pf.evaluate()
+        record["run_id"] = self.run_id
+        record["corpus_id"] = self.ledger.corpus_id
+        record["duration_hours_requested"] = self.duration_s / 3600.0
+        record["kraken_run_dir"] = str(self.kraken_dir) if self.kraken_dir else None
+
+        path = self.run_dir / PREFLIGHT_FILENAME
+        path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
+
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        self._preflight_digest = h.hexdigest()
+        self._preflight_all_green = all_green
+
+        with open(self.run_dir / SEGMENT_LEDGER, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "event": "preflight_recorded",
+                "filename": PREFLIGHT_FILENAME,
+                "sha256": self._preflight_digest,
+                "hashed_at_capture": True,
+                "all_green": all_green,
+                "utc": record["utc"],
+            }) + "\n")
+
+        print(f"[preflight] recorded {path}  sha256 {self._preflight_digest[:16]}…  "
+              f"all_green={all_green}  (in the CORPUS, hashed at capture)", flush=True)
+        return all_green
+
     def _seg_bump(self, name: str, n: int = 1) -> None:
         """WO-067 §2.3 — count into the CURRENT segment. Written into its record at close."""
         self._seg_counters[name] = self._seg_counters.get(name, 0) + n
@@ -480,7 +540,17 @@ class HyperliquidCapture:
             end_utc=datetime.now(UTC).isoformat(),
             first_frame_utc=first or self._first_frame_utc,
             last_frame_utc=last or self._last_frame_utc,
-            segments=self.segments, preflight={"venue": "hyperliquid_mainnet"},
+            segments=self.segments,
+            # The run record NAMES its preflight and its digest, so the manifest alone is enough
+            # to find and verify the conditions this run started under.
+            preflight={
+                "venue": "hyperliquid_mainnet",
+                "filename": PREFLIGHT_FILENAME,
+                "sha256": self._preflight_digest,
+                "hashed_at_capture": self._preflight_digest is not None,
+                "all_green": self._preflight_all_green,
+                "terms": 12,
+            },
             finalized=True,
         ))
         print(f"[run] finalized — {self.counters}", flush=True)
@@ -718,6 +788,20 @@ def main():
 
     kd = pathlib.Path(args.kraken_run_dir) if args.kraken_run_dir else None
     cap = HyperliquidCapture(ledger, run_id, args.duration_hours * 3600, kd, feeds=feeds)
+
+    # ── WO-067 — THE TWELVE-TERM PREFLIGHT, EXECUTED AND RECORDED IN THE CORPUS ──────────────
+    #
+    # Before the counterpart probe and long before the socket. A RED term stops the run here, with
+    # the record already on disk and hashed: a refused launch is exactly the case where you most
+    # want to know which conditions were RED, and WO-066's four failed launches left no corpus
+    # artifact saying so.
+    if not cap._write_preflight_record():
+        raise SystemExit(
+            "HL_PREFLIGHT_RED: one or more of the twelve terms is RED — see "
+            f"{cap.run_dir / PREFLIGHT_FILENAME} for which. No socket opened. The record is "
+            "written and hashed regardless of the verdict, because a refused launch is worth "
+            "auditing too."
+        )
 
     # ── WO-067 §2.2 — THE COUNTERPART DEPENDENCY, ENFORCED BEFORE THE SOCKET OPENS ────────────
     #
