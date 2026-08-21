@@ -78,7 +78,9 @@ from trading.data import hyperliquid_mitigations as mit               # noqa: E4
 from trading.data.corpus import (                                     # noqa: E402
     CorpusLedger,
     RunRecord,
+    SeamCauseWithoutReferent,
     SegmentRecord,
+    require_seam_referent,
     run_frame_bounds,
 )
 from trading.loop import reboot_window                                # noqa: E402
@@ -565,6 +567,17 @@ def main():
     run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     seam = None
     prior = ledger.prior_run()
+    # WO-066 queue item (a): validate the DECLARED cause before the branch that consumes it.
+    # `open_seam` checks the cause against the closed set, but it is only reached when a prior
+    # run exists — so a cause declared against an empty corpus directory was dropped in silence
+    # and the run started as a first run. See `SeamCauseWithoutReferent`.
+    try:
+        require_seam_referent(prior, args.seam_cause, corpus_id=args.corpus_id,
+                              corpus_root=CAPTURE_ROOT)
+    except SeamCauseWithoutReferent as exc:
+        # SystemExit, not a traceback: this file reports every operator-facing refusal that way
+        # (see SEAM_CAUSE_UNDECLARED below), and a traceback reads as a crash rather than a gate.
+        raise SystemExit(str(exc)) from exc
     if prior is not None:
         if not args.seam_cause:
             raise SystemExit(

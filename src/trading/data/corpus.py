@@ -81,6 +81,63 @@ class SeamCauseUndeclared(ValueError):
     """
 
 
+class SeamCauseWithoutReferent(ValueError):
+    """Raised when a seam cause is DECLARED but the corpus holds no prior run to attach it to.
+
+    THE INVERSE OF `SeamCauseUndeclared`, AND IT WAS THE UNGUARDED HALF. `open_seam` validates a
+    cause against the closed set — but it is only ever reached on the branch where a prior run
+    exists. When the ledger finds no prior run, the operator's declared cause was neither validated
+    nor used: it was read off the command line and dropped in silence, and the run started as a
+    FIRST RUN of the corpus.
+
+    FOUND IN THE FIELD (WO-066 §6 attempt #4). A Kraken leg 3 launch carried `--seam-cause
+    POLICY_SHUTDOWN` against a corpus that already held runs — but `CORPUS_DIR` was wrong, so the
+    ledger looked in an empty directory, found no prior run, reported "FIRST run of this corpus —
+    no seam owed", and went GREEN. The launch looked healthy. The operator's declaration was the
+    one piece of evidence that contradicted the process's reading of the disk, and the process
+    threw it away.
+
+    WHY A DECLARATION IS EVIDENCE AND NOT A HINT. `--seam-cause` is only ever passed by someone who
+    believes this is a resume. If the disk disagrees, exactly one of the two is wrong, and the
+    disk-side reading is the one that can be wrong for a mundane reason — a mistyped or unset
+    `CORPUS_DIR` names an empty directory, and an empty directory is indistinguishable from a
+    genuinely new corpus. Refusing puts the contradiction in front of the operator BEFORE the
+    socket opens, which is the only point at which it is cheap.
+    """
+
+
+def require_seam_referent(prior, declared_cause: str, *, corpus_id: str,
+                          corpus_root) -> None:
+    """Refuse a DECLARED seam cause that has no prior run to attach it to.
+
+    A seam cause is a claim ABOUT A PRIOR RUN — "this is why the run before this one ended". With
+    no prior run there is no such run, so the claim has no referent. Silence here is what let a
+    wrong-`CORPUS_DIR` launch read as healthy.
+
+    No cause declared and no prior run is the ordinary first run: this returns without comment.
+    The reverse case — a prior run with no declared cause — stays where it already lives, in the
+    preflight seam term and in `open_seam`.
+    """
+    if not declared_cause:
+        return
+    if declared_cause not in CORPUS_SEAM_CAUSES:
+        raise SeamCauseWithoutReferent(
+            f"SEAM_CAUSE_WITHOUT_REFERENT: {declared_cause!r} is not one of "
+            f"{list(CORPUS_SEAM_CAUSES)}. An undeclared cause names nothing, and this run would "
+            f"otherwise have started with the declaration silently discarded."
+        )
+    if prior is None:
+        raise SeamCauseWithoutReferent(
+            f"SEAM_CAUSE_WITHOUT_REFERENT: {declared_cause!r} was declared, but corpus "
+            f"{corpus_id!r} under {corpus_root} holds NO PRIOR RUN for it to describe. "
+            f"A seam cause is a claim about the run before this one; there is no such run here. "
+            f"Either this is a first run and the cause should not be passed, or — far more "
+            f"likely — the corpus root is wrong and this process is reading an empty directory "
+            f"while the real corpus sits elsewhere. Refusing rather than starting a FIRST RUN "
+            f"against a declaration that says otherwise."
+        )
+
+
 def _parse_utc(value: str) -> Optional[datetime]:
     """Parse an ISO-8601 UTC stamp, tolerating the trailing-Z form Kraken sends."""
     if not value:

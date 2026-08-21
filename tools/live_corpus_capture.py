@@ -89,8 +89,10 @@ from trading.data.corpus import (  # noqa: E402
     CorpusLedger,
     RunRecord,
     SeamCauseUndeclared,
+    SeamCauseWithoutReferent,
     SegmentRecord,
     gap_summary,
+    require_seam_referent,
     run_frame_bounds,
 )
 
@@ -616,8 +618,24 @@ class CorpusCaptureRunner:
         print(f"           elapsed wall-clock (NOT the metric): "
               f"{progress['elapsed_wall_hours']:.4f}h")
         if prior is None:
-            print(f"           FIRST run of this corpus — no seam owed")
-            record["conditions"]["seam"] = {"green": True, "first_run": True}
+            # WO-066 queue item (a): "no prior run" is only an ordinary FIRST RUN when nobody
+            # said otherwise. A declared `--seam-cause` is an operator assertion that this IS a
+            # resume; if the ledger disagrees, one of the two is wrong and the cheap explanation
+            # is a wrong CORPUS_DIR pointing at an empty directory. Discarding the declaration
+            # here is what let the WO-066 attempt #4 launch read as healthy.
+            try:
+                require_seam_referent(prior, self._seam_cause, corpus_id=self._corpus_id,
+                                      corpus_root=self._config.corpus_dir)
+                print(f"           FIRST run of this corpus — no seam owed")
+                record["conditions"]["seam"] = {"green": True, "first_run": True}
+            except SeamCauseWithoutReferent as exc:
+                print(f"  ❌ RED: {exc}")
+                all_green = False
+                record["conditions"]["seam"] = {
+                    "green": False, "first_run": True,
+                    "declared_cause": self._seam_cause,
+                    "detail": str(exc),
+                }
         else:
             if self._seam_cause not in CORPUS_SEAM_CAUSES:
                 print(f"  ❌ RED: resuming corpus {self._corpus_id} after run {prior.run_id} "

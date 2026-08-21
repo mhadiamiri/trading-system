@@ -202,6 +202,18 @@ VALID_REASON_CODES = {
         # GAP_PERSIST_UNCONFIGURED and LIVE_CAPTURE_ENV_REFUSED: a refusal that lives IN the code
         # path, not in a checklist. Prefix-free (SEAM_ is a unique stem in the union).
         "SEAM_CAUSE_UNDECLARED",
+        # WO-066 queue item (a): the INVERSE refusal, and it was the unguarded half. Raised by
+        # require_seam_referent when a cause IS declared but the corpus holds no prior run for it
+        # to describe — or when the declared string is outside the closed set on the no-prior-run
+        # path, which SEAM_CAUSE_UNDECLARED never reached because open_seam only runs when a prior
+        # run exists. A seam cause is a claim ABOUT A PRIOR RUN; with no such run the claim has no
+        # referent, and the likeliest explanation is a corpus root pointing at an empty directory
+        # while the real corpus sits elsewhere. Silence here let a wrong-CORPUS_DIR launch read as
+        # a healthy FIRST RUN (WO-066 §6 attempt #4). Genuinely producible: emitted by
+        # require_seam_referent and driven from both launchers, bite-proved in
+        # tests/test_seam_cause_referent.py. Prefix-free: diverges from SEAM_CAUSE_UNDECLARED at
+        # U/W and neither is a prefix of the other.
+        "SEAM_CAUSE_WITHOUT_REFERENT",
         # WO-045 §2 (D46): announced ONCE when raw-wire-text retention reaches its declared cap
         # (MAX_RETAINED_RAW_FRAMES / MAX_RETAINED_RAW_BYTES) and retention becomes a bounded
         # trailing window. Direct sibling of FAILURE_CAPTURE_CAPPED and deliberately the same
