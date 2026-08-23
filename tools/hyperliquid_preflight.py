@@ -16,6 +16,7 @@ script reports a guard it did not run.
 
 import json
 import os
+import pathlib
 import sys
 from datetime import UTC, datetime
 
